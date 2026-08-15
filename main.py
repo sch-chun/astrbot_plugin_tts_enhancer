@@ -1,11 +1,12 @@
 import re
-import traceback
+from pathlib import Path
 
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api.star import Context, Star
 from astrbot.api.event.filter import on_llm_request, on_decorating_result
 from astrbot.api.message_components import Plain, Record
 from astrbot.core.provider.entities import ProviderRequest
+from astrbot.core.agent.tool import ToolSet
 from astrbot.core import logger
 
 from .sub_agent import TTSSubAgent
@@ -31,9 +32,13 @@ class TTSEnhancerPlugin(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context, config)
         self.config = config or {}
-        self._own_name = "astrbot_tts_enhancer"
+        self.providers = self._load_providers()
         self.sub_agent = TTSSubAgent(context, config)
-        self.provider_factory = ProviderFactory(config)
+
+    def _load_providers(self) -> list:
+        """加载并排序 providers"""
+        providers_raw = self.config.get("providers", [])
+        return sorted(providers_raw, key=lambda x: x.get("priority", 100))
 
     @staticmethod
     def _trim_boundary_separators(text: str, *, leading: bool = False) -> str:
@@ -180,56 +185,82 @@ class TTSEnhancerPlugin(Star):
         event: AstrMessageEvent,
         context_messages: list[dict],
     ) -> Record | None:
-        """核心合成流程：SubAgent 增强 → Provider 调用。"""
-        provider_name = self._get_cfg("active_provider", "ali_qwen_audio")
+        """按优先级尝试所有供应商，集成 SubAgent 工具调用。"""
+        providers = self._get_sorted_providers()
+        last_error = None
+        for entry in providers:
+            adapter = ProviderFactory.get_adapter(entry)
+            if not adapter:
+                continue
 
-        adapter = self.provider_factory.get_adapter(provider_name)
-        if not adapter:
-            logger.error(f"TTS Enhancer: 未知的 provider '{provider_name}'")
-            return None
+            # 检查是否有文档
+            has_docs = bool(adapter.docs_content)
+            enable_enhance = self.config.get("enable_enhance", True) and has_docs
 
-        enhanced_text = raw_text
-        api_params = None
+            # 无文档：降级为纯文本，直接调用 API
+            if not enable_enhance:
+                logger.warning(f"供应商 {entry.get('provider_type')} 缺少文档，降级为纯文本请求")
+                try:
+                    audio_path = await adapter.call_api(
+                        text=raw_text,
+                        raw_params={},   # 不传任何额外参数
+                        config=entry
+                    )
+                    if audio_path:
+                        return Record.fromFileSystem(audio_path, text=raw_text)
+                except Exception as e:
+                    logger.warning(f"纯文本 TTS 失败: {e}")
+                    continue
+            else:
 
-        enable_enhance = self._get_cfg("enable_enhance", True)
-        if enable_enhance:
-            try:
-                subagent_prompt = adapter.get_subagent_system_prompt(context_messages, raw_text)
-
-                llm_response = await self.sub_agent.call(
-                    event,
-                    system_prompt=subagent_prompt,
-                    user_message=raw_text,
-                    context_messages=context_messages,
-                )
-
-                if llm_response:
-                    api_params = adapter.parse_subagent_response(llm_response)
-                    if api_params and "text" in api_params:
-                        enhanced_text = api_params["text"]
-                        logger.debug(
-                            f"TTS SubAgent 增强: {raw_text[:50]}... -> {enhanced_text[:50]}..."
-                        )
+                # 准备 SubAgent 工具（如果启用增强）
+                tool_set = None
+                if self.config.get("enable_enhance", True):
+                    # 适配器应实现 get_tool_schema()
+                    if hasattr(adapter, "get_tool_schema"):
+                        tool = adapter.get_tool_schema()
+                        tool_set = ToolSet(tools=[tool])
                     else:
-                        logger.warning("SubAgent 返回无法解析，使用原始文本")
-                        api_params = None
-                else:
-                    logger.warning("SubAgent 调用失败，降级为原始文本")
-            except Exception as e:
-                logger.error(f"TTS SubAgent 增强失败: {e}")
-                logger.debug(traceback.format_exc())
+                        logger.warning(f"适配器 {adapter.provider_name} 不支持工具调用")
+
+                # 调用 SubAgent
                 api_params = None
+                enhanced_text = raw_text
+                try:
+                    sys_prompt = adapter.get_subagent_system_prompt(raw_text)
+                    result = await self.sub_agent.call(
+                        event,
+                        sys_prompt,
+                        raw_text,
+                        context_messages,
+                        tool_set=tool_set
+                    )
+                    if result and isinstance(result, dict):
+                        api_params = adapter.parse_subagent_response(result)
+                        if api_params and "text" in api_params:
+                            enhanced_text = api_params["text"]
+                            logger.debug(f"SubAgent 增强: {raw_text[:30]}... -> {enhanced_text[:30]}...")
+                        else:
+                            logger.warning("SubAgent 返回参数缺少 text，使用原始文本")
+                    else:
+                        logger.warning("SubAgent 未返回有效参数，使用原始文本")
+                except Exception as e:
+                    logger.warning(f"SubAgent 增强失败: {e}，使用原始文本")
 
-        try:
-            audio_path = await adapter.call_api(
-                text=enhanced_text,
-                raw_params=api_params or {},
-                config=self.config,
-            )
-            if audio_path:
-                return Record.fromFileSystem(audio_path, text=enhanced_text)
-        except Exception as e:
-            logger.error(f"TTS API 调用失败: {e}")
-            logger.debug(traceback.format_exc())
+                # 调用 TTS API
+                try:
+                    audio_path = await adapter.call_api(
+                        text=enhanced_text,
+                        raw_params=api_params or {},   # 包含所有工具参数
+                        config=entry
+                    )
+                    if audio_path:
+                        logger.info(f"TTS 合成成功，供应商: {entry.get('provider_type')}")
+                        return Record.fromFileSystem(audio_path, text=enhanced_text)
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"供应商 {entry.get('provider_type')} 失败: {e}，尝试下一个")
 
-        return None
+            if last_error:
+                logger.error(f"所有 TTS 供应商均失败: {last_error}")
+            return None

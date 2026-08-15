@@ -1,74 +1,107 @@
 {
-  "active_provider": {
-    "description": "当前使用的 TTS 供应商",
-    "type": "string",
-    "hint": "可选: ali_qwen_audio / ali_cosyvoice / minimax",
-    "default": "ali_qwen_audio"
-  },
   "enable_enhance": {
     "description": "启用 SubAgent 语音增强",
     "type": "bool",
-    "hint": "开启后，插件会额外调用 LLM 根据 Provider 能力说明书自动注入情感标签和指令控制",
-    "default": true
+    "default": true,
+    "hint": "开启后，插件会额外调用 LLM 根据 Provider 能力说明书自动注入情感标签和指令控制"
+  },
+  "enhance_llm_provider": {
+    "description": "TTS 增强模型",
+    "type": "string",
+    "_special": "select_provider",
+    "hint": "选择用于生成 TTS 情感标签和指令的模型。若未选择，将使用当前会话的聊天模型",
+    "default": ""
   },
   "context_window": {
     "description": "SubAgent 上下文窗口",
     "type": "int",
-    "hint": "取最近几轮对话作为 SubAgent 的上下文参考",
-    "default": 3
+    "default": 10,
+    "hint": "取最近几轮对话作为 SubAgent 的上下文参考"
   },
   "dual_output": {
     "description": "同时输出文本和语音",
     "type": "bool",
-    "hint": "开启后，TTS 段落会同时保留文本和语音消息",
-    "default": false
+    "default": false,
+    "hint": "开启后，TTS 段落会同时保留文本和语音消息"
   },
   "tts_prompt": {
-    "description": "TTS 触发提示词",
+    "description": "TTS 触发提示词（注入主模型）",
     "type": "text",
-    "hint": "注入到主模型系统提示词中",
-    "default": "当你想要发送语音时，使用<tts></tts>标签包裹需要转语音的文本。语音标签内的文本会被自动优化为语音合成参数。"
+    "default": "当你想要发送语音时，使用 <tts></tts> 标签包裹需要转语音的文本。"
   },
-  "api_key": {
-    "description": "阿里云百炼 API Key",
-    "type": "string",
-    "hint": "在 https://bailian.console.aliyun.com/?tab=model#/api-key 获取",
-    "default": ""
-  },
-  "workspace_id": {
-    "description": "阿里云百炼 Workspace ID",
-    "type": "string",
-    "hint": "在百炼控制台查看",
-    "default": ""
-  },
-  "model": {
-    "description": "TTS 模型",
-    "type": "string",
-    "hint": "Qwen-Audio: qwen-audio-3.0-tts-flash/plus | CosyVoice: cosyvoice-v3-flash/plus | MiniMax: MiniMax/speech-2.8-hd",
-    "default": "qwen-audio-3.0-tts-flash"
-  },
-  "voice": {
-    "description": "系统音色 / Voice ID",
-    "type": "string",
-    "hint": "Qwen-Audio: longanhuan_v3.6 | CosyVoice: longanyang | MiniMax: male-qn-qingse",
-    "default": "longanhuan_v3.6"
-  },
-  "instruction": {
-    "description": "指令控制（可选，全局默认）",
-    "type": "text",
-    "hint": "通过自然语言控制语音表现力。SubAgent 增强开启时会自动生成指令覆盖此值",
-    "default": ""
-  },
-  "format": {
-    "description": "音频格式",
-    "type": "string",
-    "hint": "wav / mp3 / pcm",
-    "default": "wav"
-  },
-  "sample_rate": {
-    "description": "采样率",
-    "type": "int",
-    "hint": "16000 / 24000 / 32000 / 44100",
-    "default": 24000
+  "providers": {
+    "type": "template_list",
+    "description": "TTS 供应商列表（支持多个，按 priority 回退）",
+    "templates": {
+      "bailian_qwen_audio_3.0_tts": {
+        "name": "百炼 Qwen Audio 3.0 TTS",
+        "hint": "支持情感标签和指令控制",
+        "display_item": "voice",
+        "items": {
+          "priority": {
+            "description": "优先级（数字越小越优先）",
+            "type": "int",
+            "default": 0
+          },
+          "api_key": {
+            "description": "API Key",
+            "type": "string",
+            "default": ""
+          },
+          "workspace_id": {
+            "description": "Workspace ID",
+            "type": "string",
+            "default": ""
+          },
+          "model": {
+            "description": "模型版本",
+            "type": "string",
+            "options": ["flash", "plus"],
+            "default": "flash"
+          },
+          "voice": {
+            "description": "音色 ID",
+            "type": "string",
+            "default": "longanhuan_v3.6"
+          },
+          "format": {
+            "description": "音频格式",
+            "type": "string",
+            "default": "wav",
+            "options": ["wav", "mp3", "pcm", "opus"]
+          },
+          "sample_rate": {
+            "description": "采样率",
+            "type": "int",
+            "default": 24000,
+            "options": [8000, 16000, 22050, 24000, 44100, 48000]
+          },
+          "seed": {
+            "description": "随机种子",
+            "type": "int",
+            "default": -1,
+            "hint": "若设置为 [0, 65535] 之内的数字，则会固定种子，在模型版本、文本、音色及其他参数均相同的前提下，每次生成的音频都相同；若设置在该范围之外，则会随机生成种子"
+          },
+          "enable_aigc_tag": {
+            "description": "AIGC 隐性标识",
+            "type": "bool",
+            "default": false,
+            "hint": "开启时，会将隐性标识嵌入到支持格式（wav/mp3/opus）的音频中"
+          },
+          "aigc_propagator": {
+            "description": "传播者标识",
+            "type": "string",
+            "default": "",
+            "hint": "设置 AIGC 隐性标识中的 ContentPropagator 字段，用于标识内容的传播者。仅在 AIGC 隐性标识开启时生效。留空则使用默认值：阿里云UID"
+          },
+          "aigc_propagate_id": {
+            "description": "传播行为 ID",
+            "type": "string",
+            "default": "",
+            "hint": "设置 AIGC 隐性标识中的 PropagateID 字段，用于唯一标识一次具体的传播行为。仅在 AIGC 隐性标识开启时生效。留空则使用默认值：本次语音合成请求 Request ID"
+          }
+        }
+      }
+    }
   }
 }

@@ -1,60 +1,64 @@
-"""TTS Provider 适配器抽象基类。"""
+"""TTS Provider 适配器工厂 —— 自动发现机制"""
 
-from abc import ABC, abstractmethod
+import importlib.util
+import inspect
+from pathlib import Path
+from typing import Dict, Type
+
+from .base import TTSProviderAdapter
 
 
-class TTSProviderAdapter(ABC):
-    """TTS 供应商适配器抽象基类。"""
+class ProviderFactory:
+    _adapters: Dict[str, Type[TTSProviderAdapter]] = None
 
-    def __init__(self, config: dict = None):
-        self.config = config or {}
+    @classmethod
+    def _discover_adapters(cls):
+        """扫描当前目录，自动发现所有 TTSProviderAdapter 子类。"""
+        if cls._adapters is not None:
+            return
 
-    @abstractmethod
-    def get_subagent_system_prompt(self, context_messages: list[dict], raw_tts_text: str) -> str:
-        pass
+        cls._adapters = {}
+        package_dir = Path(__file__).parent
 
-    @abstractmethod
-    def parse_subagent_response(self, response_text: str) -> dict:
-        pass
+        for py_file in package_dir.glob("*.py"):
+            if py_file.name.startswith("_") or py_file.name == "base.py":
+                continue
 
-    @abstractmethod
-    async def call_api(self, text: str, raw_params: dict, config: dict) -> str:
-        pass
-
-    def _get_provider_config(self, config: dict, key: str, default=None):
-        provider_name = self.provider_name
-        providers_config = config.get("providers_config", {})
-        provider_cfg = providers_config.get(provider_name, {})
-        return provider_cfg.get(key, config.get(key, default))
-
-    @property
-    @abstractmethod
-    def provider_name(self) -> str:
-        pass
-
-    @staticmethod
-    def _try_parse_json(text: str) -> dict | None:
-        import json
-        import re
-
-        text = text.strip()
-        try:
-            return json.loads(text)
-        except Exception:
-            pass
-
-        match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
-        if match:
+            module_name = py_file.stem
             try:
-                return json.loads(match.group(1).strip())
-            except Exception:
+                # 动态导入模块
+                spec = importlib.util.spec_from_file_location(
+                    f"{__package__}.{module_name}", py_file
+                )
+                if spec is None or spec.loader is None:
+                    continue
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+
+                # 查找继承 TTSProviderAdapter 的具体类
+                for _, obj in inspect.getmembers(module, inspect.isclass):
+                    if (
+                        issubclass(obj, TTSProviderAdapter)
+                        and obj is not TTSProviderAdapter
+                    ):
+                        # 使用模块名作为映射 key（与 __template_key 一致）
+                        cls._adapters[module_name] = obj
+                        # 也支持通过类名小写匹配，但优先模块名
+                        cls._adapters[obj.__name__.lower()] = obj
+            except Exception as e:
+                # 静默跳过无法导入的模块，或打印调试日志
                 pass
 
-        match = re.search(r"\{[\s\S]*\}", text)
-        if match:
-            try:
-                return json.loads(match.group(0))
-            except Exception:
-                pass
+    @classmethod
+    def get_adapter(cls, entry: dict) -> TTSProviderAdapter | None:
+        """根据配置条目获取适配器实例。"""
+        cls._discover_adapters()
+        template_key = entry.get("__template_key")
+        if not template_key:
+            return None
 
+        adapter_cls = cls._adapters.get(template_key)
+        if adapter_cls:
+            return adapter_cls(entry)
         return None
+    
