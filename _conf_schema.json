@@ -29,11 +29,17 @@
     "type": "text",
     "default": "当你想要发送语音时，使用 <tts></tts> 标签包裹需要转语音的文本。"
   },
+  "log_enhanced_params": {
+    "description": "打印增强参数",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后，会在 INFO 级别记录 SubAgent 生成的语音参数（含情感标签、音量、语速等）"
+  },
   "providers": {
     "type": "template_list",
     "description": "TTS 供应商列表（支持多个，按 priority 回退）",
     "templates": {
-      "bailian_qwen_audio_3.0_tts": {
+      "bailian_qwen_audio_3_0_tts": {
         "name": "百炼 Qwen Audio 3.0 TTS",
         "hint": "支持情感标签和指令控制",
         "display_item": "voice",
@@ -63,6 +69,12 @@
             "description": "音色 ID",
             "type": "string",
             "default": "longanhuan_v3.6"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "type": "int",
+            "default": 60,
+            "hint": "单位：秒。合成较长文本时可能需要增加此值。调用超时与下载超时共用此值"
           },
           "format": {
             "description": "音频格式",

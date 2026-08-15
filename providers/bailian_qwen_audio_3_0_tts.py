@@ -3,6 +3,8 @@
 import httpx
 from datetime import datetime
 from pathlib import Path
+import traceback
+
 from typing import Any
 
 from astrbot.core import logger
@@ -12,18 +14,9 @@ from astrbot.core.agent.tool import FunctionTool
 from .base import TTSProviderAdapter
 
 
-class BailianQwenAudioAdapter(TTSProviderAdapter):
+class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
     """百炼 Qwen-Audio-TTS 供应商适配器，通过 Tool Calling 接收增强参数。"""
-
     _API_ENDPOINT = "https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer"
-
-    @property
-    def provider_name(self) -> str:
-        return "bailian_qwen_audio"
-
-    def __init__(self, entry:dict[str, Any]):
-        self.entry = entry
-        self.docs_content = entry.get("docs_content", "")
 
     # ---------- 1. 定义工具 Schema ----------
     def get_tool_schema(self) -> FunctionTool:
@@ -70,7 +63,7 @@ class BailianQwenAudioAdapter(TTSProviderAdapter):
 
     # ---------- 2. 构建 SubAgent 系统提示 ----------
     def get_subagent_system_prompt(self, raw_tts_text: str) -> str:
-        docs = self.entry.get("docs_content", "")
+        docs = self.docs_content
         return f"""你是语音合成参数优化助手，负责为 TTS 模型准备合成参数。以下是 TTS 模型的参数使用说明：
 
 {docs}
@@ -111,6 +104,7 @@ class BailianQwenAudioAdapter(TTSProviderAdapter):
         model_suffix = config.get("model", "flash")
         model = f"qwen-audio-3.0-tts-{model_suffix}"
         voice = config.get("voice", "longanhuan_v3.6")
+        timeout = config.get("timeout", 60)
         format_type = config.get("format", "wav")
         sample_rate = config.get("sample_rate", 24000)
         seed = config.get("seed", -1)
@@ -174,7 +168,7 @@ class BailianQwenAudioAdapter(TTSProviderAdapter):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.post(url, headers=headers, json=payload)
                 resp.raise_for_status()
                 data = resp.json()
@@ -184,13 +178,16 @@ class BailianQwenAudioAdapter(TTSProviderAdapter):
                 logger.error(f"Qwen Audio 3.0 TTS API 未返回音频 URL: {data}")
                 return ""
 
-            return await self._download_audio(audio_url, format_type)
+            return await self._download_audio(audio_url, format_type, timeout)
 
+        except httpx.TimeoutException as e:
+            logger.error(f"Qwen Audio 3.0 TTS API 超时 (超时设置: {timeout}s): {e}")
+            return ""
         except Exception as e:
-            logger.error(f"Qwen Audio 3.0 TTS 合成失败: {e}")
+            logger.error(f"Qwen Audio 3.0 TTS API 调用失败: {e}\n{traceback.format_exc()}")
             return ""
 
-    async def _download_audio(self, url: str, fmt: str) -> str:
+    async def _download_audio(self, url: str, fmt: str, timeout: int = 60) -> str:
         """下载音频到本地。"""
         try:
             data_dir = Path(get_astrbot_data_path()) / "tts_enhancer"
@@ -199,7 +196,7 @@ class BailianQwenAudioAdapter(TTSProviderAdapter):
             filename = f"tts_{timestamp}.{fmt}"
             filepath = data_dir / filename
 
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
                 filepath.write_bytes(resp.content)
@@ -210,4 +207,58 @@ class BailianQwenAudioAdapter(TTSProviderAdapter):
         except Exception as e:
             logger.error(f"下载音频失败: {e}")
             return ""
-        
+
+    VALID_LANGS = ["zh", "en", "fr", "de", "ja", "ko", "ru", "pt", "th", "id", "vi", "es", "it", "ms", "fil", "ar"]
+
+    def validate_params(self, params: dict) -> tuple[bool, str]:
+        """验证 Qwen Audio 3.0 TTS 参数"""
+        if "volume" in params:
+            vol = params["volume"]
+            if not isinstance(vol, int) or not (0 <= vol <= 100):
+                return False, f"volume 必须是 0-100 之间的整数。当前值: {vol}"
+
+        if "rate" in params:
+            rate = params["rate"]
+            if not isinstance(rate, (int, float)) or not (0.5 <= rate <= 2.0):
+                return False, f"rate 必须是 0.5-2.0 之间的数字。当前值: {rate}"
+
+        if "language_hints" in params:
+            hints = params["language_hints"]
+            if not isinstance(hints, list):
+                return False, f"language_hints 必须是一个列表。当前值: {hints}"
+            for lang in hints:
+                if lang not in self.VALID_LANGS:
+                    return False, f"不支持的语言代码: {lang}，支持: {', '.join(self.VALID_LANGS)}"
+
+        return True, ""
+
+    def sanitize_params(self, params: dict) -> dict:
+        """清理 Qwen Audio 3.0 TTS 参数"""
+        sanitized = {}
+        sanitized["text"] = params.get("text", "")
+        sanitized["instruction"] = params.get("instruction", "")
+        if "volume" in params:
+            vol = params["volume"]
+            if isinstance(vol, int) and 0 <= vol <= 100:
+                sanitized["volume"] = vol
+            else:
+                logger.warning(f"丢弃非法的 volume 参数: {vol}")
+
+        if "rate" in params:
+            rate = params["rate"]
+            if isinstance(rate, (int, float)) and 0.5 <= rate <= 2.0:
+                sanitized["rate"] = rate
+            else:
+                logger.warning(f"丢弃非法的 rate 参数: {rate}")
+
+        if "language_hints" in params:
+            hints = params["language_hints"]
+            if isinstance(hints, list):
+                valid_hints = [lang for lang in hints if lang in self.VALID_LANGS]
+                if valid_hints:
+                    sanitized["language_hints"] = valid_hints
+                else:
+                    logger.warning(f"丢弃非法的 language_hints 参数: {hints}")
+
+        return sanitized
+    

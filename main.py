@@ -1,5 +1,5 @@
 import re
-from pathlib import Path
+import json
 
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api.star import Context, Star
@@ -11,6 +11,9 @@ from astrbot.core import logger
 
 from .sub_agent import TTSSubAgent
 from .providers import ProviderFactory
+
+from typing import Optional
+
 
 # ─── TTS 标签正则 ───
 TTS_PATTERN = re.compile(r"<tts>(.*?)</tts>", re.DOTALL)
@@ -29,7 +32,7 @@ class TTSEnhancerPlugin(Star):
     架构：主模型输出 <tts> 标签 → SubAgent 增强语音参数 → Provider Adapter 调用 API
     """
 
-    def __init__(self, context: Context, config: dict = None):
+    def __init__(self, context: Context, config: Optional[dict] = None):
         super().__init__(context, config)
         self.config = config or {}
         self.providers = self._load_providers()
@@ -38,6 +41,8 @@ class TTSEnhancerPlugin(Star):
     def _load_providers(self) -> list:
         """加载并排序 providers"""
         providers_raw = self.config.get("providers", [])
+        if not providers_raw:
+            logger.warning("TTS Enhancer: 配置中未找到任何 TTS 供应商（providers 为空），请检查插件配置")
         return sorted(providers_raw, key=lambda x: x.get("priority", 100))
 
     @staticmethod
@@ -96,12 +101,9 @@ class TTSEnhancerPlugin(Star):
                 segments.append({"type": "text", "content": stripped})
         return segments
 
-    def _get_cfg(self, key: str, default=None):
-        return self.config.get(key, default)
-
     @on_llm_request()
     async def on_llm_req(self, event: AstrMessageEvent, request: ProviderRequest):
-        tts_prompt = self._get_cfg("tts_prompt", "")
+        tts_prompt = self.config.get("tts_prompt", "")
         if not tts_prompt:
             return
         request.system_prompt += f"\n{tts_prompt}"
@@ -120,7 +122,7 @@ class TTSEnhancerPlugin(Star):
         if not has_tts_tag:
             return
 
-        context_messages = self._get_context_messages(event)
+        context_messages = await self._get_context_messages(event)
 
         new_chain = []
         modified = False
@@ -137,23 +139,26 @@ class TTSEnhancerPlugin(Star):
         if modified:
             result.chain = new_chain
 
-    def _get_context_messages(self, event: AstrMessageEvent) -> list[dict]:
-        context_window = self._get_cfg("context_window", 3)
+    async def _get_context_messages(self, event: AstrMessageEvent) -> list[dict]:
+        context_window = self.config.get("context_window", 10)
         messages = []
         try:
             session_id = event.unified_msg_origin
-            provider = self.context.get_using_provider(session_id)
-            if provider and hasattr(provider, 'conversation_history'):
-                history = provider.conversation_history.get(session_id, [])
-                for msg in history[-context_window * 2:]:
-                    role = msg.get("role", "user")
-                    content = msg.get("content", "")
-                    if isinstance(content, list):
-                        content = " ".join(
-                            c.get("text", "") for c in content if isinstance(c, dict)
-                        )
-                    messages.append({"role": role, "content": str(content)[:200]})
-        except Exception:
+            conv_mgr = self.context.conversation_manager
+            if conv_mgr:
+                conv_id = await conv_mgr.get_curr_conversation_id(session_id)
+                if conv_id:
+                    conv = await conv_mgr.get_conversation(session_id, conv_id)
+                    if conv and conv.history:
+                        history = json.loads(conv.history)
+                        recent = history[-context_window * 2:] if context_window > 0 else []
+                        for msg in recent:
+                            role = msg.get("role", "user")
+                            content = msg.get("content", "")
+                            if content:
+                                messages.append({"role": role, "content": str(content)[:200]})
+        except Exception as e:
+            logger.warning(f"获取上下文消息失败: {e}")
             pass
         return messages
 
@@ -173,7 +178,7 @@ class TTSEnhancerPlugin(Star):
                 audio_component = await self._synthesize(seg["content"], event, context_messages)
                 if audio_component:
                     components.append(audio_component)
-                    if self._get_cfg("dual_output", False):
+                    if self.config.get("dual_output", False):
                         components.append(Plain(seg["content"]))
                 else:
                     components.append(Plain(seg["content"]))
@@ -185,10 +190,13 @@ class TTSEnhancerPlugin(Star):
         event: AstrMessageEvent,
         context_messages: list[dict],
     ) -> Record | None:
-        """按优先级尝试所有供应商，集成 SubAgent 工具调用。"""
-        providers = self._get_sorted_providers()
+        """按优先级尝试所有供应商，集成 SubAgent 工具调用 + 参数验证重试"""
+        if not self.providers:
+            logger.warning("没有配置任何 TTS 供应商，请在插件配置中添加 providers 条目")
+            return None
+        
         last_error = None
-        for entry in providers:
+        for entry in self.providers:
             adapter = ProviderFactory.get_adapter(entry)
             if not adapter:
                 continue
@@ -199,11 +207,11 @@ class TTSEnhancerPlugin(Star):
 
             # 无文档：降级为纯文本，直接调用 API
             if not enable_enhance:
-                logger.warning(f"供应商 {entry.get('provider_type')} 缺少文档，降级为纯文本请求")
+                logger.warning(f"供应商 {entry.get('__template_key', 'unknown')} 缺少文档，降级为纯文本请求")
                 try:
                     audio_path = await adapter.call_api(
                         text=raw_text,
-                        raw_params={},   # 不传任何额外参数
+                        raw_params={},
                         config=entry
                     )
                     if audio_path:
@@ -211,56 +219,122 @@ class TTSEnhancerPlugin(Star):
                 except Exception as e:
                     logger.warning(f"纯文本 TTS 失败: {e}")
                     continue
+
+            # 准备 SubAgent 工具
+            tool_set = None
+            if hasattr(adapter, "get_tool_schema"):
+                tool = adapter.get_tool_schema()
+                if tool:
+                    tool_set = ToolSet(tools=[tool])
+                else:
+                    logger.warning(f"适配器 {entry.get('__template_key', 'unknown')} 的 get_tool_schema 返回 None，不启用工具")
             else:
+                logger.warning(f"适配器 {entry.get('__template_key', 'unknown')} 不支持工具调用")
 
-                # 准备 SubAgent 工具（如果启用增强）
-                tool_set = None
-                if self.config.get("enable_enhance", True):
-                    # 适配器应实现 get_tool_schema()
-                    if hasattr(adapter, "get_tool_schema"):
-                        tool = adapter.get_tool_schema()
-                        tool_set = ToolSet(tools=[tool])
-                    else:
-                        logger.warning(f"适配器 {adapter.provider_name} 不支持工具调用")
+            # 复制上下文，用于重试时追加错误信息
+            current_context = context_messages.copy() if context_messages else []
+            api_params = None
+            max_attempts = 2
+            attempt = 0
 
-                # 调用 SubAgent
-                api_params = None
-                enhanced_text = raw_text
+            # --- SubAgent 调用循环（含参数验证与重试） ---
+            while attempt < max_attempts:
                 try:
                     sys_prompt = adapter.get_subagent_system_prompt(raw_text)
                     result = await self.sub_agent.call(
                         event,
                         sys_prompt,
                         raw_text,
-                        context_messages,
+                        current_context,
                         tool_set=tool_set
                     )
+
                     if result and isinstance(result, dict):
-                        api_params = adapter.parse_subagent_response(result)
-                        if api_params and "text" in api_params:
-                            enhanced_text = api_params["text"]
-                            logger.debug(f"SubAgent 增强: {raw_text[:30]}... -> {enhanced_text[:30]}...")
+                        temp_params = adapter.parse_subagent_response(result)
+                        is_valid, err_msg = adapter.validate_params(temp_params)
+
+                        if is_valid:
+                            api_params = temp_params
+                            logger.debug(f"SubAgent 参数验证通过 (尝试 {attempt+1})")
+                            break
                         else:
-                            logger.warning("SubAgent 返回参数缺少 text，使用原始文本")
+                            if attempt == max_attempts - 1:
+
+                                # 最后一次尝试：清理非法参数
+                                logger.warning(f"SubAgent 参数验证失败，清理非法参数: {err_msg}")
+                                api_params = adapter.sanitize_params(temp_params)
+                                break
+                            else:
+
+                                # 非最后一次：将 AI 回复和错误反馈追加到上下文
+                                current_context.append({
+                                    "role": "assistant",
+                                    "content": f"我尝试调用 tts_enhance，参数为：{json.dumps(temp_params, ensure_ascii=False)}"
+                                })
+                                current_context.append({
+                                    "role": "user",
+                                    "content": f"参数格式错误：{err_msg}。请检查参数范围并仅调用 tts_enhance 工具修正。"
+                                })
+                                logger.info(f"SubAgent 参数验证失败，要求重试 ({attempt+1}/{max_attempts}): {err_msg}")
+                                attempt += 1
+                                continue
                     else:
-                        logger.warning("SubAgent 未返回有效参数，使用原始文本")
-                except Exception as e:
-                    logger.warning(f"SubAgent 增强失败: {e}，使用原始文本")
 
-                # 调用 TTS API
-                try:
-                    audio_path = await adapter.call_api(
-                        text=enhanced_text,
-                        raw_params=api_params or {},   # 包含所有工具参数
-                        config=entry
-                    )
-                    if audio_path:
-                        logger.info(f"TTS 合成成功，供应商: {entry.get('provider_type')}")
-                        return Record.fromFileSystem(audio_path, text=enhanced_text)
-                except Exception as e:
-                    last_error = e
-                    logger.warning(f"供应商 {entry.get('provider_type')} 失败: {e}，尝试下一个")
+                        # 未返回有效结构
+                        if attempt == max_attempts - 1:
+                            logger.warning("SubAgent 未返回有效结构，使用原始文本")
+                            break
+                        else:
+                            current_context.append({
+                                "role": "assistant",
+                                "content": "我尝试调用 tts_enhance，但未返回有效结构。"
+                            })
+                            current_context.append({
+                                "role": "user",
+                                "content": "请检查你的 tts_enhance 工具调用，并确保返回有效的结构。"
+                            })
+                            logger.info(f"SubAgent 未返回有效结构，要求重试 ({attempt+1}/{max_attempts})")
+                            attempt += 1
+                            continue
 
-            if last_error:
-                logger.error(f"所有 TTS 供应商均失败: {last_error}")
-            return None
+                except Exception as e:
+
+                    # SubAgent 调用异常
+                    logger.warning(f"SubAgent 调用异常 (尝试 {attempt+1}): {e}")
+                    if attempt == max_attempts - 1:
+                        break
+
+                    # 追加异常信息到上下文并重试
+                    current_context.append({
+                        "role": "user",
+                        "content": f"调用过程中出现异常：{e}，请重新调用 tts_enhance 工具。"
+                    })
+                    attempt += 1
+                    continue
+
+            # --- 提取最终文本 ---
+            enhanced_text = raw_text
+            if api_params and "text" in api_params:
+                enhanced_text = api_params["text"]
+
+            # --- 打印增强参数（若配置开启）---
+            if self.config.get("log_enhanced_params", False) and api_params:
+                logger.info(f"增强参数: {json.dumps(api_params, ensure_ascii=False)}")
+
+            # --- 调用 TTS API ---
+            try:
+                audio_path = await adapter.call_api(
+                    text=enhanced_text,
+                    raw_params=api_params or {},
+                    config=entry
+                )
+                if audio_path:
+                    logger.info(f"TTS 合成成功，供应商: {entry.get('__template_key', 'unknown')}")
+                    return Record.fromFileSystem(audio_path, text=enhanced_text)
+            except Exception as e:
+                last_error = e
+                logger.warning(f"供应商 {entry.get('__template_key', 'unknown')} TTS API 失败: {e}，尝试下一个")
+
+        if last_error:
+            logger.error(f"所有 TTS 供应商均失败: {last_error}")
+        return None

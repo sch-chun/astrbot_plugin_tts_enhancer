@@ -3,13 +3,16 @@
 import importlib.util
 import inspect
 from pathlib import Path
-from typing import Dict, Type
+
+from typing import Type, Optional
 
 from .base import TTSProviderAdapter
 
+from astrbot.core import logger
+
 
 class ProviderFactory:
-    _adapters: Dict[str, Type[TTSProviderAdapter]] = None
+    _adapters: Optional[dict[str, Type[TTSProviderAdapter]]] = None
 
     @classmethod
     def _discover_adapters(cls):
@@ -17,7 +20,7 @@ class ProviderFactory:
         if cls._adapters is not None:
             return
 
-        cls._adapters = {}
+        discovered: dict[str, Type[TTSProviderAdapter]] = {}
         package_dir = Path(__file__).parent
 
         for py_file in package_dir.glob("*.py"):
@@ -26,6 +29,7 @@ class ProviderFactory:
 
             module_name = py_file.stem
             try:
+
                 # 动态导入模块
                 spec = importlib.util.spec_from_file_location(
                     f"{__package__}.{module_name}", py_file
@@ -41,20 +45,21 @@ class ProviderFactory:
                         issubclass(obj, TTSProviderAdapter)
                         and obj is not TTSProviderAdapter
                     ):
+                        
                         # 使用模块名作为映射 key（与 __template_key 一致）
-                        cls._adapters[module_name] = obj
-                        # 也支持通过类名小写匹配，但优先模块名
-                        cls._adapters[obj.__name__.lower()] = obj
+                        discovered[module_name] = obj
             except Exception as e:
-                # 静默跳过无法导入的模块，或打印调试日志
+                logger.warning(f"Failed to load TTS Provider adapter: {module_name}: {e}")
                 pass
+
+        cls._adapters = discovered
 
     @classmethod
     def get_adapter(cls, entry: dict) -> TTSProviderAdapter | None:
         """根据配置条目获取适配器实例。"""
         cls._discover_adapters()
         template_key = entry.get("__template_key")
-        if not template_key:
+        if not template_key or cls._adapters is None:
             return None
 
         adapter_cls = cls._adapters.get(template_key)
