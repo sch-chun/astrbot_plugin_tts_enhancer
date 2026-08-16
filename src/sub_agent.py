@@ -12,7 +12,20 @@ from astrbot.core import logger
 
 
 class TTSSubAgent:
+    """
+    TTS 子代理类，用于生成文本转语音的参数。
+    
+    该类通过调用大语言模型来生成 TTS 所需的参数，支持通过 Function Calling
+    输出结构化参数，也支持从普通文本响应中提取参数。
+    """
     def __init__(self, context: Context, config: Optional[dict] = None):
+        """
+        初始化TTS子代理。
+        
+        Args:
+            context (Context): 星球上下文对象，用于获取 provider 等资源
+            config (Optional[dict]): 配置字典，包含 enhance_llm_provider 等配置项
+        """
         self.context = context
         self.config = config or {}
 
@@ -27,8 +40,26 @@ class TTSSubAgent:
         """
         调用 LLM 生成 TTS 参数。
 
-        :param tool_set: 如果提供，LLM 将通过 Function Calling 输出结构化参数。
-        :return: 如果 LLM 调用了工具，返回工具参数字典；否则返回 None。
+        Args:
+            event (AstrMessageEvent): 消息事件对象，包含会话信息
+            system_prompt (str): 系统提示词，用于指导 LLM 生成 TTS 参数
+            user_message (str): 用户输入的消息内容
+            context_messages (Optional[list[dict[str, str]]]): 对话上下文消息列表，每个消息包含 role 和 content
+            tool_set (Optional[ToolSet]): 可用的工具集，包含 TTS 增强相关的工具函数
+
+        Returns:
+            Optional[dict[str, Any]]: 成功时返回包含 TTS 参数的字典，失败时返回 None
+            返回的字典可能包含以下键：
+                - text (str): 需要转换为语音的文本内容
+                - 其他 TTS 相关参数（根据工具调用结果而定）
+
+        Raises:
+            无直接抛出的异常，所有异常都会被捕获并记录日志
+
+        Note:
+            1. 优先使用工具调用方式获取 TTS 参数
+            2. 如果工具调用失败，会降级到文本解析方式
+            3. 如果都失败，返回 None
         """
         try:
             session_id = event.unified_msg_origin

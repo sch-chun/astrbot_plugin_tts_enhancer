@@ -42,8 +42,14 @@
       "bailian_qwen_audio_3_0_tts": {
         "name": "百炼 Qwen Audio 3.0 TTS",
         "hint": "支持情感标签和指令控制",
-        "display_item": "voice",
+        "display_item": "display_name",
         "items": {
+          "display_name": {
+            "description": "显示名称",
+            "type": "string",
+            "default": "",
+            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+          },
           "priority": {
             "description": "优先级（数字越小越优先）",
             "type": "int",

@@ -15,12 +15,29 @@ from .base import TTSProviderAdapter
 
 
 class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
-    """百炼 Qwen-Audio-TTS 供应商适配器，通过 Tool Calling 接收增强参数。"""
+    """
+    百炼 Qwen-Audio-TTS 供应商适配器，通过 Tool Calling 接收增强参数。
+    
+    该适配器实现了阿里云百炼平台的 Qwen Audio 3.0 TTS 服务，支持通过 Function Calling
+    方式接收结构化的语音合成参数，包括情感标签、指令、音量、语速和语言提示等。
+    
+    Attributes:
+        _API_ENDPOINT (str): 阿里云百炼 TTS API 的端点地址
+        VALID_LANGS (list): 支持的语言代码列表
+    """
     _API_ENDPOINT = "https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer"
 
     # ---------- 1. 定义工具 Schema ----------
     def get_tool_schema(self) -> FunctionTool:
-        """返回用于 TTS 参数增强的 Function Tool。"""
+        """
+        返回用于 TTS 参数增强的 Function Tool。
+        
+        该方法定义了一个名为 "tts_enhance" 的工具，用于接收和结构化语音合成参数。
+        参数包括文本内容、情感指令、音量、语速和语言提示等。
+        
+        Returns:
+            FunctionTool: 配置好的 FunctionTool 对象，包含所有必要的参数定义
+        """
         return FunctionTool(
             name="tts_enhance",
             description="为语音合成提供增强参数，包括带情感标签的文本、指令、音量、语速和语言提示。",
@@ -51,18 +68,32 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
                         "type": "array",
                         "items": {
                             "type": "string",
-                            "enum": ["zh", "en", "fr", "de", "ja", "ko", "ru", "pt", "th", "id", "vi", "es", "it", "ms", "fil", "ar"]
+                            "enum": self.VALID_LANGS
                         },
                         "description": "指定语音合成的目标语言，建议与文本语种一致。"
                     }
                 },
                 "required": ["text"]
             },
-            handler=None  # 无需执行，只用于让 LLM 输出参数
+            
+            # 无需执行，只用于让 LLM 输出参数
+            handler=None  
         )
 
     # ---------- 2. 构建 SubAgent 系统提示 ----------
     def get_subagent_system_prompt(self, raw_tts_text: str) -> str:
+        """
+        构建 SubAgent 的系统提示，用于指导参数优化。
+        
+        该方法生成一个系统提示，指导 SubAgent 如何根据待合成文本优化语音合成参数。
+        提示中包含了 TTS 模型的参数使用说明和具体的优化要求。
+        
+        Args:
+            raw_tts_text (str): 原始待合成文本
+            
+        Returns:
+            str: 包含参数优化指导的系统提示文本
+        """
         docs = self.docs_content
         return f"""你是语音合成参数优化助手，负责为 TTS 模型准备合成参数。以下是 TTS 模型的参数使用说明：
 
@@ -73,9 +104,16 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
     # ---------- 3. 解析 SubAgent 响应 ----------
     def parse_subagent_response(self, response_data: Any) -> dict[str, Any]:
         """
-        解析 SubAgent 返回的数据。
-        如果 response_data 是 dict（工具参数），直接返回；
-        否则视为纯文本，将其作为 `text`，其余参数留空。
+        解析 SubAgent 返回的数据，提取语音合成参数。
+        
+        该方法处理 SubAgent 的响应数据，将其转换为语音合成所需的参数格式。
+        如果响应是字典格式，则直接返回；如果是字符串，则作为文本参数返回。
+        
+        Args:
+            response_data (Any): SubAgent 的响应数据，可以是字典或字符串
+            
+        Returns:
+            dict[str, Any]: 包含语音合成参数的字典，至少包含 text 字段
         """
         if isinstance(response_data, dict):
 
@@ -97,7 +135,23 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
         raw_params: dict[str, Any],  # 从工具解析出的参数（优先）
         config: dict[str, Any]   # 当前供应商的 entry 配置
     ) -> str:
-        """执行 TTS 合成，返回音频文件路径。"""
+        """
+        执行 TTS 合成，调用阿里云百炼 API 并返回音频文件路径。
+        
+        该方法是 TTS 合成的核心方法，负责：
+        1. 提取和合并配置参数
+        2. 构造 API 请求 payload
+        3. 调用阿里云百炼 TTS API
+        4. 下载生成的音频文件
+        
+        Args:
+            text (str): 原始待合成文本，作为备用参数
+            raw_params (dict[str, Any]): 从工具解析出的参数，优先级高于 text
+            config (dict[str, Any]): 当前供应商的配置信息，包含 API 密钥等
+            
+        Returns:
+            str: 生成的音频文件路径，失败时返回空字符串
+        """
         # 提取配置
         api_key = config.get("api_key", "")
         workspace_id = config.get("workspace_id", "")
@@ -188,7 +242,20 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
             return ""
 
     async def _download_audio(self, url: str, fmt: str, timeout: int = 60) -> str:
-        """下载音频到本地。"""
+        """
+        下载音频文件到本地存储。
+        
+        该方法负责从指定的 URL 下载音频文件，并将其保存到本地 TTS 增强器目录中。
+        文件名包含时间戳以确保唯一性。
+        
+        Args:
+            url (str): 音频文件的下载 URL
+            fmt (str): 音频文件格式（如 "wav"、"mp3" 等）
+            timeout (int, optional): 下载超时时间，默认为 60 秒
+            
+        Returns:
+            str: 下载后的音频文件路径，失败时返回空字符串
+        """
         try:
             data_dir = Path(get_astrbot_data_path()) / "tts_enhancer"
             data_dir.mkdir(parents=True, exist_ok=True)
@@ -211,7 +278,19 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
     VALID_LANGS = ["zh", "en", "fr", "de", "ja", "ko", "ru", "pt", "th", "id", "vi", "es", "it", "ms", "fil", "ar"]
 
     def validate_params(self, params: dict) -> tuple[bool, str]:
-        """验证 Qwen Audio 3.0 TTS 参数"""
+        """
+        验证语音合成参数的有效性。
+        
+        该方法检查传入的参数是否符合 Qwen Audio 3.0 TTS API 的要求，
+        包括音量范围、语速范围和语言代码的有效性。
+        
+        Args:
+            params (dict): 待验证的语音合成参数字典
+            
+        Returns:
+            tuple[bool, str]: 验证结果，第一个元素表示是否通过验证，
+                              第二个元素是错误信息（验证失败时）
+        """
         if "volume" in params:
             vol = params["volume"]
             if not isinstance(vol, int) or not (0 <= vol <= 100):
@@ -233,7 +312,20 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
         return True, ""
 
     def sanitize_params(self, params: dict) -> dict:
-        """清理 Qwen Audio 3.0 TTS 参数"""
+        """
+        清理和规范化语音合成参数。
+        
+        该方法对输入的参数进行清理，确保所有参数都符合 API 要求：
+        - 移除无效的参数值
+        - 保留有效的参数值
+        - 记录被移除的无效参数
+        
+        Args:
+            params (dict): 待清理的语音合成参数字典
+            
+        Returns:
+            dict: 清理后的语音合成参数字典
+        """
         sanitized = {}
         sanitized["text"] = params.get("text", "")
         sanitized["instruction"] = params.get("instruction", "")
