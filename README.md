@@ -2,7 +2,6 @@
 
 多供应商智能 TTS（语音合成）插件，支持 SubAgent 模式自动注入情感标签与指令控制。
 
-> 当前版本：**v0.1.0** · 最低 AstrBot 版本：**>= 3.4.0**
 
 ## 架构
 
@@ -28,4 +27,4 @@
 
 ## 许可
 
-MIT
+GNU Affero General Public License v3.0
