@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.1.3] - 2026-08-18
+
+### Added
+
+- 新增音色管理 Web API 路由（`main.py`）：
+  - `GET /tts_enhancer/providers`：按 `template_key` 分组返回已配置的供应商列表，API Key 脱敏。
+  - `POST /tts_enhancer/voice/create`：创建音色，按 `entry_id` 路由到对应适配器的 `create_voice()`。
+  - `POST /tts_enhancer/voice/list`：查询音色列表，路由至适配器的 `list_voice()`。
+  - `POST /tts_enhancer/voice/delete`：删除音色，路由至适配器的 `delete_voice()`。
+- `providers/base.py` 新增音色管理抽象方法：`create_voice()`、`list_voice()`、`delete_voice()`，默认抛出 `NotImplementedError`，由各供应商适配器自行实现。
+- `providers/bailian_qwen_audio_3_0_tts.py` 实现百炼音色管理：
+  - `create_voice()`：调用百炼 `voice-enrollment` / `create_voice` API，支持 `audio_url`、`prefix`、`language_hints`、`enable_volume_normalization`、`enable_preprocess` 等参数。
+  - `list_voice()`：调用 `list_voice` API，仅返回 `qwen-audio-3.0-tts` 开头的音色列表。
+  - `delete_voice()`：调用 `delete_voice` API 删除指定音色。
+- 新增音色管理 Pages 前端（`pages/tts_manager/`）：
+  - `index.html`：Vue 3 应用骨架，动态渲染供应商选项卡。
+  - `app.js`：通过 Bridge 拉取供应商列表并映射到对应的供应商组件。
+  - `components/bailian_qwen_audio_3_0_tts.js`：百炼音色管理组件（创建/列表/删除）。
+  - `style.css`：页面样式。
+
+### Changed
+
+- `metadata.yaml` 更新：新增 `display_name`，版本升至 `v0.1.3`，`astrbot_version` 要求提升至 `>=4.24.0`，仓库地址修正为 `astrbot_plugin_tts_enhancer`。
+- 修复 `main.py` 中 `_plugin_name` 被默认值覆盖的问题：现改为优先读取 `metadata.yaml` 中的 `name`，读取失败时才回退到默认值。
+
 ## [0.1.2] - 2026-08-16
 
 ### Added

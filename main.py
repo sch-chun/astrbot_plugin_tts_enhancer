@@ -31,8 +31,9 @@ class TTSEnhancerPlugin(Star):
         self.providers = self.config.get_providers()
         self.sub_agent = TTSSubAgent(context, config)
 
-        meta_path = Path(__file__).parent / "metadata.yaml"
         plugin_name = "tts_enhancer"
+        self._plugin_name = plugin_name
+        meta_path = Path(__file__).parent / "metadata.yaml"
         if meta_path.exists():
             try:
                 with open(meta_path, "r", encoding="utf-8") as f:
@@ -40,7 +41,6 @@ class TTSEnhancerPlugin(Star):
                     self._plugin_name = meta.get("name", plugin_name)
             except Exception as e:
                 logger.error(f"读取插件元数据失败: {e}")
-        self._plugin_name = plugin_name
 
         self._register_routes()
 
