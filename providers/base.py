@@ -24,6 +24,9 @@ class TTSProviderAdapter(ABC):
     - parse_subagent_response: 解析 SubAgent 返回的数据
     - call_api: 调用具体的 TTS API
     """
+
+    # ———————— 语音合成 ————————
+
     def __init__(self, entry: dict):
         """
         初始化 TTS 供应商适配器
@@ -143,3 +146,51 @@ class TTSProviderAdapter(ABC):
             dict: 清洗后的参数字典
         """
         return params
+
+    # ————————————————————————
+
+    # ———————— 音色管理 ————————
+
+    async def create_voice(self, params: dict) -> dict:
+        """
+        创建语音
+
+        调用 TTS API 进行语音合成，并返回合成结果。
+
+        Args:
+            params (dict): TTS 参数字典
+
+        Returns:
+            dict: 包含合成结果的字典
+        """
+        raise NotImplementedError
+
+    async def list_voice(self, **kwargs) -> dict:
+        """
+        列出语音
+
+        调用 TTS API 列出已有的语音，并返回结果。
+
+        Args:
+            由供应商自定义
+
+        Returns:
+            dict: 包含语音列表结果的字典
+        """
+        raise NotImplementedError
+
+    async def delete_voice(self, **kwargs) -> bool:
+        """
+        删除语音
+
+        调用 TTS API 删除指定的语音，并返回删除结果。
+
+        Args:
+            由供应商自定义
+
+        Returns:
+            bool: 删除结果，True 表示删除成功，False 表示删除失败
+        """
+        raise NotImplementedError
+
+    # ————————————————————————

@@ -353,4 +353,165 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
                     logger.warning(f"丢弃非法的 language_hints 参数: {hints}")
 
         return sanitized
-    
+
+    # ———————— 音色管理 ————————
+
+    async def create_voice(self, params: dict) -> dict:
+        """
+        创建新的音色。
+
+        该方法负责创建一个新的音色，并返回音色的唯一标识符。
+
+        Args:
+            params (dict): 创建音色的参数
+
+        Returns:
+            str: 新音色的唯一标识符，失败时返回空字符串
+        """
+        workspace_id = self.entry.get("workspace_id", "")
+        api_key = self.entry.get("api_key", "")
+        model = params.get("model") or self.entry.get("model", "flash")
+        target_model = f"qwen-audio-3.0-tts-{model}"
+
+        if not workspace_id or not api_key:
+            raise ValueError("workspace_id 和 api_key 不能为空")
+
+        audio_url = params.get("audio_url")
+        prefix = params.get("prefix")
+        if not audio_url or not prefix:
+            raise ValueError("audio_url 和 prefix 为必填参数")
+
+        # 可选参数
+        language_hints = params.get("language_hints", [])
+        enable_volume_normalization = params.get("enable_volume_normalization", False)
+        enable_preprocess = params.get("enable_preprocess", False)
+        max_prompt_audio_length = params.get("max_prompt_audio_length")
+
+        url = f"https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/customization"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+
+        }
+        payload = {
+            "model": "voice-enrollment",
+            "input": {
+                "action": "create_voice",
+                "target_model": target_model,
+                "prefix": prefix,
+                "url": audio_url,
+                "enable_volume_normalization": str(enable_volume_normalization).lower(),
+            }
+        }
+        if language_hints:
+            payload["input"]["language_hints"] = language_hints
+        if enable_preprocess:
+            payload["input"]["enable_preprocess"] = True
+        if max_prompt_audio_length is not None:
+            payload["input"]["max_prompt_audio_length"] = float(max_prompt_audio_length)
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code != 200:
+                    try:
+                        error_json = resp.json()
+                        
+                        # 常见错误字段：message、error、detail 等
+                        error_msg = error_json.get("message") or error_json.get("error") or error_json.get("detail") or resp.text
+                    except:
+                        error_msg = resp.text
+                    raise RuntimeError(f"百炼 API 错误 (HTTP {resp.status_code}): {error_msg}")
+                data = resp.json()
+        except httpx.HTTPStatusError as e:
+
+            # 捕获 httpx 抛出的 HTTPStatusError
+            try:
+                error_json = e.response.json()
+                error_msg = error_json.get("message") or error_json.get("error") or error_json.get("detail") or e.response.text
+            except:
+                error_msg = e.response.text
+            raise RuntimeError(f"请求失败: {error_msg}")
+        except Exception as e:
+            raise RuntimeError(f"请求异常: {str(e)}")
+
+        voice_id = data.get("output", {}).get("voice_id")
+        if not voice_id:
+            raise RuntimeError(f"创建音色失败: {data}")
+        return {"voice_id": voice_id, "extra": data.get("output", {})}
+
+    async def list_voice(self, **kwargs) -> dict:
+        """查询百炼音色列表"""
+        workspace_id = self.entry.get("workspace_id", "")
+        api_key = self.entry.get("api_key", "")
+        if not workspace_id or not api_key:
+            raise ValueError("workspace_id 和 api_key 不能为空")
+
+        prefix = kwargs.get("prefix", "")
+        page_size = kwargs.get("page_size", 20)
+        page_index = kwargs.get("page_index", 0)
+
+        url = f"https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/customization"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "voice-enrollment",
+            "input": {
+                "action": "list_voice",
+                "page_size": page_size,
+                "page_index": page_index
+            }
+        }
+        if prefix:
+            payload["input"]["prefix"] = prefix
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+
+        voice_list = data.get("output", {}).get("voice_list", [])
+        items = []
+        for v in voice_list:
+            voice_id = v.get("voice_id")
+
+            # 只保留 qwen-audio-3.0-tts 开头的音色
+            if voice_id.startswith("qwen-audio-3.0-tts"):
+                items.append({
+                    "voice_id": v.get("voice_id"),
+                    "created_at": v.get("gmt_create"),
+                    "updated_at": v.get("gmt_modified"),
+                    "status": v.get("status", "UNKNOWN")
+                })
+        return {"items": items, "total": len(items)}
+
+    async def delete_voice(self, **kwargs) -> bool:
+        """删除百炼音色"""
+        workspace_id = self.entry.get("workspace_id", "")
+        api_key = self.entry.get("api_key", "")
+        voice_id = kwargs.get("voice_id")
+        if not workspace_id or not api_key or not voice_id:
+            raise ValueError("workspace_id, api_key, voice_id 不能为空")
+
+        url = f"https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/customization"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "voice-enrollment",
+            "input": {
+                "action": "delete_voice",
+                "voice_id": voice_id
+            }
+        }
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+
+            # 百炼删除成功会返回 {}，无错误即为成功
+            return True
+
+    # ————————————————————————

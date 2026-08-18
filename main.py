@@ -1,4 +1,6 @@
 import json
+from pathlib import Path
+import yaml
 
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api.star import Context, Star
@@ -7,6 +9,7 @@ from astrbot.api.message_components import Plain, Record
 from astrbot.core.provider.entities import ProviderRequest
 from astrbot.core.agent.tool import ToolSet
 from astrbot.core import logger
+from astrbot.api.web import request, json_response, error_response
 
 from .src.config import TTSEnhancerConfig
 from .src.sub_agent import TTSSubAgent
@@ -27,6 +30,19 @@ class TTSEnhancerPlugin(Star):
         self.config = TTSEnhancerConfig(config)
         self.providers = self.config.get_providers()
         self.sub_agent = TTSSubAgent(context, config)
+
+        meta_path = Path(__file__).parent / "metadata.yaml"
+        plugin_name = "tts_enhancer"
+        if meta_path.exists():
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = yaml.safe_load(f)
+                    self._plugin_name = meta.get("name", plugin_name)
+            except Exception as e:
+                logger.error(f"读取插件元数据失败: {e}")
+        self._plugin_name = plugin_name
+
+        self._register_routes()
 
     async def _process_tts_text(
         self,
@@ -326,3 +342,128 @@ class TTSEnhancerPlugin(Star):
 
         logger.error(f"所有 TTS 供应商均失败")
         return None
+
+    def _register_routes(self):
+        """注册音色管理相关的 Web API"""
+        async def get_providers():
+            providers_raw = self.config.get_providers()
+            groups = {}
+            for idx, entry in enumerate(providers_raw):
+                template_key = entry.get("__template_key", "unknown")
+                if template_key not in groups:
+                    groups[template_key] = []
+
+                # 深拷贝原始配置，脱敏 api_key
+                item = dict(entry)
+                api_key = item.get("api_key", "")
+                if len(api_key) > 5:
+                    item["api_key"] = "*****" + api_key[-5:]
+                else:
+                    item["api_key"] = "*****"
+                item["id"] = idx
+                groups[template_key].append(item)
+            result = [{"template_key": k, "entries": v} for k, v in groups.items()]
+            return json_response({"code": 0, "data": result})
+
+        self.context.register_web_api(
+            f"/{self._plugin_name}/providers",
+            get_providers,
+            ["GET"],
+            "获取分组后的供应商列表"
+        )
+
+        async def create_voice():
+            """创建音色"""
+            payload = await request.json(default={})
+            if not payload:
+                return error_response("payload required", status_code=400)
+            entry_id = payload.get("entry_id")
+            if entry_id is None:
+                return error_response("entry_id required", status_code=400)
+            params = {k: v for k, v in payload.items() if k != "entry_id"}
+            providers_raw = self.config.get_providers()
+            if entry_id < 0 or entry_id >= len(providers_raw):
+                return error_response("entry not found", status_code=404)
+            entry = providers_raw[entry_id]
+            adapter = ProviderFactory.get_adapter(entry)
+            if not adapter:
+                return error_response("无法创建适配器，请检查配置", status_code=500)
+            try:
+                result = await adapter.create_voice(params)
+                return json_response({"code": 0, "data": result})
+            except NotImplementedError:
+                return error_response("该供应商不支持音色创建", status_code=501)
+            except Exception as e:
+                logger.error(f"创建音色失败: {e}")
+                return error_response(str(e), status_code=500)
+
+        self.context.register_web_api(
+            f"/{self._plugin_name}/voice/create",
+            create_voice,
+            ["POST"],
+            "创建音色（请求体包含 entry_id 及供应商特定参数）"
+        )
+
+        async def list_voices():
+            """列出音色"""
+            payload = await request.json(default={})
+            if not payload:
+                return error_response("payload required", status_code=400)
+            entry_id = payload.get("entry_id")
+            if entry_id is None:
+                return error_response("entry_id required", status_code=400)
+            params = {k: v for k, v in payload.items() if k != "entry_id"}
+            providers_raw = self.config.get_providers()
+            if entry_id < 0 or entry_id >= len(providers_raw):
+                return error_response("entry not found", status_code=404)
+            entry = providers_raw[entry_id]
+            adapter = ProviderFactory.get_adapter(entry)
+            if not adapter:
+                return error_response("无法创建适配器", status_code=500)
+            try:
+                result = await adapter.list_voice(**params)
+                return json_response({"code": 0, "data": result})
+            except NotImplementedError:
+                return error_response("该供应商不支持音色列表查询", status_code=501)
+            except Exception as e:
+                logger.error(f"查询音色列表失败: {e}")
+                return error_response(str(e), status_code=500)
+
+        self.context.register_web_api(
+            f"/{self._plugin_name}/voice/list",
+            list_voices,
+            ["POST"],
+            "查询音色列表（请求体包含 entry_id 及供应商特定参数）"
+        )
+
+        async def delete_voice():
+            """删除音色"""
+            payload = await request.json(default={})
+            if not payload:
+                return error_response("payload required", status_code=400)
+            entry_id = payload.get("entry_id")
+            if entry_id is None:
+                return error_response("entry_id required", status_code=400)
+            params = {k: v for k, v in payload.items() if k != "entry_id"}
+            providers_raw = self.config.get_providers()
+            if entry_id < 0 or entry_id >= len(providers_raw):
+                return error_response("entry not found", status_code=404)
+            entry = providers_raw[entry_id]
+            adapter = ProviderFactory.get_adapter(entry)
+            if not adapter:
+                return error_response("无法创建适配器", status_code=500)
+            try:
+                success = await adapter.delete_voice(**params)
+                return json_response({"code": 0, "data": {"success": success}})
+            except NotImplementedError:
+                return error_response("该供应商不支持音色删除", status_code=501)
+            except Exception as e:
+                logger.error(f"删除音色失败: {e}")
+                return error_response(str(e), status_code=500)
+
+        self.context.register_web_api(
+            f"/{self._plugin_name}/voice/delete",
+            delete_voice,
+            ["POST"],
+            "删除音色（请求体包含 entry_id 及供应商特定标识参数）"
+        )
