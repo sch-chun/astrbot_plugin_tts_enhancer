@@ -5,10 +5,21 @@ from aiohttp import web
 
 logger = logging.getLogger(__name__)
 
+_MIME_MAP = {
+    ".wav": "audio/wav",
+    ".mp3": "audio/mpeg",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".ogg": "audio/ogg",
+    ".flac": "audio/flac",
+}
+
+
 class TempFileServer:
     def __init__(self, file_path: Path, internal_port: int):
         self.file_path = file_path
         self.internal_port = internal_port
+        self._content_type = _MIME_MAP.get(file_path.suffix.lower(), "application/octet-stream")
         self._app = None
         self._runner = None
         self._site = None
@@ -30,7 +41,7 @@ class TempFileServer:
     async def _handle_file(self, request):
         try:
             content = self.file_path.read_bytes()
-            return web.Response(body=content, content_type='application/octet-stream')
+            return web.Response(body=content, content_type=self._content_type)
         except Exception as e:
             logger.error(f"文件读取失败: {e}")
             return web.Response(status=500)
