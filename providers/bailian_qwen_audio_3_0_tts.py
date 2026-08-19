@@ -176,8 +176,8 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
         else:
 
             # 非复刻音色：使用配置中的 model
-            model_suffix = config.get("model", "unkown")
-            if model_suffix == "unkown":
+            model_suffix = config.get("model")
+            if model_suffix not in ("flash", "plus"):
                 logger.warning("无法确定 model 参数，将使用默认模型 'flash'")
                 model_suffix = "flash"
 

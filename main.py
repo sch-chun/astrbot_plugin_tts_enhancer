@@ -484,9 +484,11 @@ class TTSEnhancerPlugin(Star):
                 upload_dir = self.plugin_data_path / "uploads"
                 upload_dir.mkdir(parents=True, exist_ok=True)
 
-                # 生成唯一文件名（时间戳 + 原始文件名）
+                # 生成唯一文件名（时间戳）
+                original_filename = file_field.filename or "file.bin"
+                ext = Path(original_filename).suffix.lower()
                 timestamp = int(time.time() * 1000)
-                unique_name = f"upload_{timestamp}_{file_field.filename}"
+                unique_name = f"upload_{timestamp}{ext}"
                 file_path = upload_dir / unique_name
 
                 await file_field.save(file_path)

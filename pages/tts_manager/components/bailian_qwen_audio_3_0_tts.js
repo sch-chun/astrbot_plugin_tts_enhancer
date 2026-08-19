@@ -478,7 +478,7 @@ export default {
                 <label>认证配置</label>
                 <select v-model="selectedEntryId">
                     <option v-for="entry in entries" :key="entry.id" :value="entry.id">
-                        {{ entry.display_name || entry.api_key_masked }} 
+                        {{ entry.display_name || entry.api_key }} 
                         ({{ entry.workspace_id }})
                     </option>
                 </select>
