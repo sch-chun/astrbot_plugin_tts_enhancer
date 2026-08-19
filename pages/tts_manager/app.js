@@ -1,4 +1,4 @@
-import { createApp, ref, shallowRef, onMounted } from 'vue';
+const { createApp, ref, shallowRef, onMounted } = Vue;
 
 // 静态导入所有已知供应商组件
 import BailianQwenAudio3_0 from './components/bailian_qwen_audio_3_0_tts.js';

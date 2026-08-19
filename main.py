@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
-import yaml
+import base64
+import time
 
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api.star import Context, Star
@@ -9,11 +10,13 @@ from astrbot.api.message_components import Plain, Record
 from astrbot.core.provider.entities import ProviderRequest
 from astrbot.core.agent.tool import ToolSet
 from astrbot.core import logger
-from astrbot.api.web import request, json_response, error_response
+from astrbot.api.web import request, json_response, error_response, file_response
+from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 
 from .src.config import TTSEnhancerConfig
 from .src.sub_agent import TTSSubAgent
 from .src.tts_parser import split_by_tts_tags, TTS_START_TAG, TTS_END_TAG
+from .src.file_server import TempFileServer, add_server, get_server, remove_server
 from .providers import ProviderFactory
 
 from typing import Optional
@@ -31,18 +34,11 @@ class TTSEnhancerPlugin(Star):
         self.providers = self.config.get_providers()
         self.sub_agent = TTSSubAgent(context, config)
 
-        plugin_name = "tts_enhancer"
-        self._plugin_name = plugin_name
-        meta_path = Path(__file__).parent / "metadata.yaml"
-        if meta_path.exists():
-            try:
-                with open(meta_path, "r", encoding="utf-8") as f:
-                    meta = yaml.safe_load(f)
-                    self._plugin_name = meta.get("name", plugin_name)
-            except Exception as e:
-                logger.error(f"读取插件元数据失败: {e}")
-
         self._register_routes()
+
+        self.plugin_data_path = Path(get_astrbot_data_path()) / "plugin_data" / self.name
+        (self.plugin_data_path / "uploads").mkdir(parents=True, exist_ok=True)
+        (self.plugin_data_path / "audio").mkdir(parents=True, exist_ok=True)
 
     async def _process_tts_text(
         self,
@@ -207,6 +203,9 @@ class TTSEnhancerPlugin(Star):
             if not adapter:
                 continue
 
+            entry_with_data_dir = dict(entry)
+            entry_with_data_dir["_data_dir"] = str(self.plugin_data_path / "audio")
+
             # 检查是否有文档
             has_docs = bool(adapter.docs_content)
             enable_enhance = self.config.get("enable_enhance", True) and has_docs
@@ -218,7 +217,7 @@ class TTSEnhancerPlugin(Star):
                     audio_path = await adapter.call_api(
                         text=raw_text,
                         raw_params={},
-                        config=entry
+                        config=entry_with_data_dir
                     )
                     if audio_path:
                         return Record.fromFileSystem(audio_path, text=raw_text)
@@ -332,7 +331,7 @@ class TTSEnhancerPlugin(Star):
                 audio_path = await adapter.call_api(
                     text=enhanced_text,
                     raw_params=api_params or {},
-                    config=entry
+                    config=entry_with_data_dir
                 )
                 if audio_path:
                     logger.info(f"TTS 合成成功，供应商: {entry_name}")
@@ -366,7 +365,7 @@ class TTSEnhancerPlugin(Star):
             return json_response({"code": 0, "data": result})
 
         self.context.register_web_api(
-            f"/{self._plugin_name}/providers",
+            f"/{self.name}/providers",
             get_providers,
             ["GET"],
             "获取分组后的供应商列表"
@@ -398,7 +397,7 @@ class TTSEnhancerPlugin(Star):
                 return error_response(str(e), status_code=500)
 
         self.context.register_web_api(
-            f"/{self._plugin_name}/voice/create",
+            f"/{self.name}/voice/create",
             create_voice,
             ["POST"],
             "创建音色（请求体包含 entry_id 及供应商特定参数）"
@@ -430,7 +429,7 @@ class TTSEnhancerPlugin(Star):
                 return error_response(str(e), status_code=500)
 
         self.context.register_web_api(
-            f"/{self._plugin_name}/voice/list",
+            f"/{self.name}/voice/list",
             list_voices,
             ["POST"],
             "查询音色列表（请求体包含 entry_id 及供应商特定参数）"
@@ -462,8 +461,183 @@ class TTSEnhancerPlugin(Star):
                 return error_response(str(e), status_code=500)
 
         self.context.register_web_api(
-            f"/{self._plugin_name}/voice/delete",
+            f"/{self.name}/voice/delete",
             delete_voice,
             ["POST"],
             "删除音色（请求体包含 entry_id 及供应商特定标识参数）"
+        )
+
+        async def upload_file():
+            """上传文件"""
+            try:
+                data = await request.files()
+                file_field = data.get('file')
+                if not file_field:
+                    return error_response("缺少文件", status_code=400)
+
+                # 检查扩展名
+                filename = file_field.filename or "file.bin"
+                ext = Path(filename).suffix.lower()
+                if ext not in ['.wav', '.mp3', '.m4a']:
+                    return error_response("仅支持 wav, mp3, m4a 格式", status_code=400)
+
+                upload_dir = self.plugin_data_path / "uploads"
+                upload_dir.mkdir(parents=True, exist_ok=True)
+
+                # 生成唯一文件名（时间戳 + 原始文件名）
+                timestamp = int(time.time() * 1000)
+                unique_name = f"upload_{timestamp}_{file_field.filename}"
+                file_path = upload_dir / unique_name
+
+                await file_field.save(file_path)
+
+                return json_response({
+                    "code": 0,
+                    "data": {
+                        "file_id": unique_name,
+                        "file_path": str(file_path)
+                    }
+                })
+            except Exception as e:
+                logger.error(f"文件上传失败: {e}")
+                return error_response(str(e), status_code=500)
+
+        self.context.register_web_api(
+            f"/{self.name}/upload",
+            upload_file,
+            ["POST"],
+            "上传音频文件，返回 file_id"
+        )
+
+        async def start_file_server():
+            """启动临时文件服务器，只绑定内部端口，不构造 URL"""
+            try:
+                payload = await request.json()
+                if not payload:
+                    return error_response("payload required", status_code=400)
+                file_id = payload.get('file_id')
+                internal_port = payload.get('internal_port')
+                if not all([file_id, internal_port]):
+                    return error_response("缺少 file_id 或 internal_port", status_code=400)
+
+                try:
+                    internal_port = int(internal_port)
+                    if not (1024 <= internal_port <= 65535):
+                        raise ValueError
+                except ValueError:
+                    return error_response("内部端口必须为 1024-65535 的整数", status_code=400)
+
+                file_path = self.plugin_data_path / "uploads" / file_id
+                if not file_path.exists():
+                    return error_response("文件不存在", status_code=404)
+
+                if get_server(file_id):
+                    return error_response("该文件已有服务器在运行", status_code=400)
+
+                server = TempFileServer(file_path, internal_port)
+                await server.start()
+                add_server(file_id, server)
+                return json_response({"code": 0, "data": {"success": True}})
+            except Exception as e:
+                logger.error(f"启动文件服务器失败: {e}")
+                return error_response(str(e), status_code=500)
+
+        self.context.register_web_api(
+            f"/{self.name}/start_file_server",
+            start_file_server,
+            ["POST"],
+            "启动临时文件服务器，返回公网 URL"
+        )
+
+        async def stop_file_server():
+            """停止文件服务器，并删除临时文件"""
+            try:
+                payload = await request.json()
+                if not payload:
+                    return error_response("payload required", status_code=400)
+                file_id = payload.get('file_id')
+                if not file_id:
+                    return error_response("缺少 file_id", status_code=400)
+
+                server = get_server(file_id)
+                if server:
+                    await server.stop()
+                    remove_server(file_id)
+
+                # 删除临时文件
+                file_path = self.plugin_data_path / "uploads" / file_id
+                if file_path.exists():
+                    file_path.unlink()
+
+                return json_response({"code": 0, "data": {"success": True}})
+            except Exception as e:
+                logger.error(f"停止文件服务器失败: {e}")
+                return error_response(str(e), status_code=500)
+
+        self.context.register_web_api(
+            f"/{self.name}/stop_file_server",
+            stop_file_server,
+            ["POST"],
+            "停止文件服务器并删除文件"
+        )
+
+        async def preview_voice():
+            """预览音色：合成语音并返回 Base64 编码的音频"""
+            try:
+                payload = await request.json()
+                if not payload:
+                    return error_response("payload required", status_code=400)
+                entry_id = payload.get("entry_id")
+                voice_id = payload.get("voice_id")
+                text = payload.get("text", "欢迎使用语音合成预览功能。")
+                if entry_id is None or not voice_id:
+                    return error_response("entry_id 和 voice_id 是必需的", status_code=400)
+
+                providers_raw = self.config.get_providers()
+                if entry_id < 0 or entry_id >= len(providers_raw):
+                    return error_response("entry not found", status_code=404)
+                entry = providers_raw[entry_id]
+
+                adapter = ProviderFactory.get_adapter(entry)
+                if not adapter:
+                    return error_response("无法创建适配器", status_code=500)
+
+                entry_with_data_dir = dict(entry)
+                entry_with_data_dir["_data_dir"] = str(self.plugin_data_path / "audio")
+
+                audio_path = await adapter.call_api(
+                    text=text,
+                    raw_params={"voice": voice_id, "_suppress_model_warning": True},
+                    config=entry_with_data_dir
+                )
+                if not audio_path:
+                    return error_response("合成失败", status_code=500)
+
+                # 读取音频文件并 Base64 编码
+                with open(audio_path, 'rb') as f:
+                    audio_bytes = f.read()
+                audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+                ext = Path(audio_path).suffix.lstrip('.')
+                
+                # 删除临时文件
+                Path(audio_path).unlink(missing_ok=True)
+
+                return json_response({
+                    "code": 0,
+                    "data": {
+                        "audio_base64": audio_base64,
+                        "format": ext
+                    }
+                })
+            except NotImplementedError:
+                return error_response("该适配器不支持预览", status_code=501)
+            except Exception as e:
+                logger.error(f"预览音色失败: {e}")
+                return error_response(str(e), status_code=500)
+
+        self.context.register_web_api(
+            f"/{self.name}/voice/preview",
+            preview_voice,
+            ["POST"],
+            "预览音色，返回音频文件"
         )

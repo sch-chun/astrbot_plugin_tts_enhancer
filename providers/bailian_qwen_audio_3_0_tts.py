@@ -155,9 +155,34 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
         # 提取配置
         api_key = config.get("api_key", "")
         workspace_id = config.get("workspace_id", "")
-        model_suffix = config.get("model", "flash")
+
+        # 确定使用的 voice
+        voice = raw_params.get("voice") or config.get("voice", "longanhuan_v3.6")
+
+        # 从 voice 解析模型（仅对复刻音色）
+        parsed_model = self._extract_model_from_voice_id(voice)
+        if parsed_model is not None:
+
+            # 复刻音色：使用解析出的模型
+            model_suffix = parsed_model
+            config_model = config.get("model")
+
+            # 如果配置中有 model 且不一致，发出警告（除非抑制）
+            if config_model and config_model != model_suffix and not raw_params.get("_suppress_model_warning", False):
+                logger.warning(
+                    f"配置中的 model 参数 '{config_model}' 与音色 ID 解析的模型 '{model_suffix}' 不一致，"
+                    f"将使用解析出的模型。请检查配置。"
+                )
+        else:
+
+            # 非复刻音色：使用配置中的 model
+            model_suffix = config.get("model", "unkown")
+            if model_suffix == "unkown":
+                logger.warning("无法确定 model 参数，将使用默认模型 'flash'")
+                model_suffix = "flash"
+
         model = f"qwen-audio-3.0-tts-{model_suffix}"
-        voice = config.get("voice", "longanhuan_v3.6")
+
         timeout = config.get("timeout", 60)
         format_type = config.get("format", "wav")
         sample_rate = config.get("sample_rate", 24000)
@@ -232,7 +257,7 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
                 logger.error(f"Qwen Audio 3.0 TTS API 未返回音频 URL: {data}")
                 return ""
 
-            return await self._download_audio(audio_url, format_type, timeout)
+            return await self._download_audio(audio_url, format_type, config, timeout)
 
         except httpx.TimeoutException as e:
             logger.error(f"Qwen Audio 3.0 TTS API 超时 (超时设置: {timeout}s): {e}")
@@ -241,7 +266,7 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
             logger.error(f"Qwen Audio 3.0 TTS API 调用失败: {e}\n{traceback.format_exc()}")
             return ""
 
-    async def _download_audio(self, url: str, fmt: str, timeout: int = 60) -> str:
+    async def _download_audio(self, url: str, fmt: str, config: dict, timeout: int = 60) -> str:
         """
         下载音频文件到本地存储。
         
@@ -257,7 +282,11 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
             str: 下载后的音频文件路径，失败时返回空字符串
         """
         try:
-            data_dir = Path(get_astrbot_data_path()) / "tts_enhancer"
+            data_dir = config.get("_data_dir")
+            if not data_dir:
+                logger.error("未找到 _data_dir")
+                return ""
+            data_dir = Path(data_dir)
             data_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             filename = f"tts_{timestamp}.{fmt}"
@@ -268,7 +297,7 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
                 resp.raise_for_status()
                 filepath.write_bytes(resp.content)
 
-            logger.info(f"TTS 音频已保存: {filepath}")
+            logger.debug(f"TTS 音频已保存: {filepath}")
             return str(filepath)
 
         except Exception as e:
@@ -412,6 +441,7 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:
+                logger.info(f"创建音色请求: {payload}")
                 resp = await client.post(url, headers=headers, json=payload)
                 if resp.status_code != 200:
                     try:
@@ -513,5 +543,16 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
 
             # 百炼删除成功会返回 {}，无错误即为成功
             return True
+
+    @staticmethod
+    def _extract_model_from_voice_id(voice_id: str) -> str | None:
+        """从音色 ID 中提取模型版本 (flash/plus)，若无法识别则返回 'flash'"""
+        if not voice_id or not voice_id.startswith("qwen-audio-3.0-tts-"):
+            return None
+        parts = voice_id.split('-')
+        for part in parts:
+            if part in ('flash', 'plus'):
+                return part
+        return None
 
     # ————————————————————————
