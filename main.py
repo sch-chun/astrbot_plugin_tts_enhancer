@@ -125,7 +125,7 @@ class TTSEnhancerPlugin(Star):
         modified = False
         for comp in result.chain:
             if isinstance(comp, Plain) and (
-                TTS_START_TAG in comp.text or TT_END_TAG in comp.text
+                TTS_START_TAG in comp.text or TTS_END_TAG in comp.text
             ):
                 # 替换为 TTS 处理后的组件列表
                 components = await self._process_tts_text(comp.text, event, context_messages)
@@ -418,7 +418,7 @@ class TTSEnhancerPlugin(Star):
             entry = providers_raw[entry_id]
             adapter = ProviderFactory.get_adapter(entry)
             if not adapter:
-                return error_response("无法创建适配器", status_code=500)
+                return error_response("无法创建适配器，请检查配置", status_code=500)
             try:
                 result = await adapter.list_voice(**params)
                 return json_response({"code": 0, "data": result})
@@ -450,7 +450,7 @@ class TTSEnhancerPlugin(Star):
             entry = providers_raw[entry_id]
             adapter = ProviderFactory.get_adapter(entry)
             if not adapter:
-                return error_response("无法创建适配器", status_code=500)
+                return error_response("无法创建适配器，请检查配置", status_code=500)
             try:
                 success = await adapter.delete_voice(**params)
                 return json_response({"code": 0, "data": {"success": success}})
@@ -602,7 +602,7 @@ class TTSEnhancerPlugin(Star):
 
                 adapter = ProviderFactory.get_adapter(entry)
                 if not adapter:
-                    return error_response("无法创建适配器", status_code=500)
+                    return error_response("无法创建适配器，请检查配置", status_code=500)
 
                 entry_with_data_dir = dict(entry)
                 entry_with_data_dir["_data_dir"] = str(self.plugin_data_path / "audio")
