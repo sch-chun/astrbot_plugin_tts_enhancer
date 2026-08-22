@@ -68,6 +68,7 @@ const app = createApp({
 
         return {
             groups,
+            loading,
             currentTab,
             currentComponent,
             currentEntries,

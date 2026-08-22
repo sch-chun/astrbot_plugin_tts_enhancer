@@ -81,6 +81,12 @@ h1 { font-size: 1.8rem; margin-top: 0; }
 .btn-danger { background: var(--danger); }
 .btn-danger:hover { background: #b91c1c; }
 .btn-sm { padding: 4px 10px; font-size: 0.8rem; }
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: var(--gray);
+    pointer-events: none;
+}
 table {
     width: 100%;
     border-collapse: collapse;
@@ -120,7 +126,7 @@ th { background: var(--bg); font-weight: 600; }
     display: flex;
     align-items: center;
     gap: 6px;
-    justify-content: flex-start;
+    flex-wrap: wrap;
 }
 .checkbox-group input[type="checkbox"] {
     width: auto;
@@ -130,6 +136,12 @@ th { background: var(--bg); font-weight: 600; }
     margin: 0;
     cursor: pointer;
 }
+
+.checkbox-group .hint {
+    flex-basis: 100%;      /* 占满整行，自然换到下一行 */
+    margin-top: 4px;       /* 与上方元素拉开一点距离 */
+}
+
 /* 语言单选按钮布局 */
 .language-radios {
     display: flex;

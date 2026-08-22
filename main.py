@@ -84,8 +84,11 @@ class TTSEnhancerPlugin(Star):
             request (ProviderRequest): 提供者请求对象，包含系统提示词等信息。
 
         Returns:
-            None: 如果未配置 TTS 提示词则直接返回，否则无显式返回值。
+            None: 如果未配置 TTS 提供商或提示词则直接返回，否则无显式返回值。
         """
+        if not self.providers:
+            logger.warning("未配置 TTS 提供商，跳过 TTS 提示词追加")
+            return
         tts_prompt = self.config.get("tts_prompt", "")
         if not tts_prompt:
             logger.warning("未配置 TTS 提示词，模型可能不会进行 TTS 生成")

@@ -34,6 +34,10 @@ export default {
         const creating = ref(false);
         const mode = ref('upload'); // 'upload' | 'url'
 
+        const currentForm = computed(() => {
+            return mode.value === 'upload' ? uploadForm : urlForm;
+        })
+
         // ----- 上传模式表单 -----
         const uploadForm = reactive({
             file: null,
@@ -52,7 +56,7 @@ export default {
         // ----- URL 模式表单 -----
         const urlForm = reactive({
             audio_url: '',
-            prefix: 'url_voice',
+            prefix: 'urlvoice',
             language_hint: 'zh',
             enable_volume_normalization: false,
             enable_preprocess: false,
@@ -119,6 +123,7 @@ export default {
 
         // ----- 通用创建音色（调用 /voice/create）-----
         async function callCreateVoice(payload) {
+
             // 清理 undefined 值
             Object.keys(payload).forEach(key => {
                 if (payload[key] === undefined) delete payload[key];
@@ -126,26 +131,31 @@ export default {
             try {
                 const result = await props.bridge.apiPost('voice/create', payload);
                 console.log('Create voice response:', result);
+
                 // 成功条件：存在 voice_id 或 voice
                 if (result.voice_id || result.voice) {
                     showSuccess('音色创建成功！Voice ID: ' + (result.voice_id || result.voice));
                     await fetchVoices();
                     return true;
                 }
+
                 // 错误响应（如 {status:'error', message:'...'}）
                 const errMsg = result.message || result.error || '创建失败，未返回音色 ID';
                 showError('创建音色失败: ' + errMsg);
                 return false;
             } catch (e) {
                 console.error('创建音色异常:', e);
+
                 // 尝试提取详细错误信息
                 let errMsg = e.message || '未知错误';
+
                 // 如果异常对象包含 response，尝试解析响应体
                 if (e.response) {
                     try {
                         const data = await e.response.json();
                         errMsg = data.message || data.error || errMsg;
                     } catch (_) {
+
                         // 无法解析 JSON，使用默认信息
                     }
                 }
@@ -432,6 +442,36 @@ export default {
             previewModalVisible.value = false;
         }
 
+        // ---- 表单校验 ----
+        const isPrefixValid = computed(() => {
+            const prefix = currentForm.value.prefix;
+            return /^[a-zA-Z0-9]{1,10}$/.test(prefix);
+        });
+
+        const isMaxLengthValid = computed(() => {
+
+            // 如果预处理未开启，则不校验 max_prompt_audio_length
+            if (!currentForm.value.enable_preprocess) return true;
+            const val = currentForm.value.max_prompt_audio_length;
+            return typeof val === 'number' && val >= 3.0 && val <= 30.0;
+        });
+
+        const isPortValid = computed(() => {
+
+            // URL 模式不需要端口
+            if (mode.value !== 'upload') return true;
+            const port = parseInt(uploadForm.internal_port);
+            return !isNaN(port) && port >= 1 && port <= 65535;
+        });
+
+        // 整体表单有效
+        const isFormValid = computed(() => {
+            const prefixOK = isPrefixValid.value;
+            const lengthOK = isMaxLengthValid.value;
+            const portOK = isPortValid.value;
+            return prefixOK && lengthOK && portOK;
+        });
+
         return {
             toastMessage,
             toastVisible,
@@ -442,20 +482,31 @@ export default {
             loading,
             creating,
             mode,
+            currentForm,
+
             // 上传模式
             uploadForm,
             uploading,
             handleFileChange,
             uploadAndClone,
+
             // URL 模式
             urlForm,
             createFromUrl,
+
             // 公共
             languages,
             fetchVoices,
             deleteVoice,
             copyToClipboard,
             getStatusDescription,
+
+            // 校验
+            isPrefixValid,
+            isMaxLengthValid,
+            isFormValid,
+            isPortValid,
+
             // 预览
             previewVoice,
             previewModalVisible,
@@ -467,7 +518,7 @@ export default {
             closePreviewModal,
         };
     },
-    template: `
+    template: /*html*/ `
         <div class="bailian-tts">
             <div v-if="toastVisible" class="toast" :class="{'toast-error': toastType === 'error'}">
                 {{ toastMessage }}
@@ -492,7 +543,7 @@ export default {
                 <legend>创建新音色</legend>
 
                 <!-- 公网 IPv4 确认提示 -->
-                <div style="background:#fef9e7;border-left:4px solid #f0ad4e;padding:8px 12px;margin-bottom:16px;border-radius:4px;">
+                <div style="background:#fef9e7;border-left:4px solid #f0971b;padding:8px 12px;margin-bottom:16px;border-radius:4px;">
                     <strong>⚠️ 重要：</strong> 请确认服务器拥有公网 IPv4 地址，且防火墙已开放指定端口 (上传模式) 或音频 URL 可被公网 IPv4 访问 (URL 模式)。
                 </div>
 
@@ -526,113 +577,128 @@ export default {
 
                     <div class="form-group">
                         <label>内部监听端口（服务器本地绑定的端口）</label>
-                        <input v-model="uploadForm.internal_port" placeholder="例如：8080（1024-65535）" />
-                        <div class="hint">临时文件服务器在本机监听的端口，需确保未被占用</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label>选择音频文件（wav, mp3, m4a）</label>
-                        <input type="file" id="fileInput" accept=".wav,.mp3,.m4a" @change="handleFileChange" />
-                        <div class="hint" v-if="uploadForm.file">已选择: {{ uploadForm.file.name }}</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label>音色前缀</label>
-                        <input v-model="uploadForm.prefix" placeholder="例如：upload" />
-                        <div class="hint">仅字母数字，≤10字符</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label>语言提示</label>
-                        <div class="language-radios">
-                            <label v-for="lang in languages" :key="lang.code" class="lang-radio">
-                                <input type="radio" :value="lang.code" v-model="uploadForm.language_hint" />
-                                {{ lang.label }}
-                            </label>
+                        <input
+                            v-model="uploadForm.internal_port"
+                            placeholder="例如：8080（1024-65535）"
+                            :class="{ 'input-error': !isPortValid }"
+                        />
+                        <div v-if="!isPortValid" class="error-hint">
+                            ⚠️ 必须是 1024-65535 之间的整数
+                        </div>
+                        <div class="hint">
+                            临时文件服务器在本机监听的端口，需确保未被占用
                         </div>
                     </div>
 
-                    <div class="form-group checkbox-group">
-                        <input type="checkbox" v-model="uploadForm.enable_volume_normalization" id="upload_vol_norm" />
-                        <label for="upload_vol_norm">启用音量归一化</label>
-                    </div>
-
-                    <div class="form-group checkbox-group">
-                        <input type="checkbox" v-model="uploadForm.enable_preprocess" id="upload_preproc" />
-                        <label for="upload_preproc">启用音频预处理</label>
-                    </div>
-
-                    <div class="form-group" v-if="uploadForm.enable_preprocess">
-                        <label>最大提示音频时长（秒）</label>
-                        <input type="number" v-model.number="uploadForm.max_prompt_audio_length" step="0.1" min="3.0" max="30.0" />
-                        <div class="hint">3.0 ~ 30.0，默认 10.0</div>
-                    </div>
-
                     <div class="form-group">
-                        <label>模型版本</label>
-                        <select v-model="uploadForm.model">
-                            <option value="flash">Flash</option>
-                            <option value="plus">Plus</option>
-                        </select>
+                        <label>选择音频文件（wav (16bit), mp3, m4a）</label>
+                        <input type="file" id="fileInput" accept=".wav,.mp3,.m4a" @change="handleFileChange" />
+                        <div class="hint">
+                        推荐 10 ~ 20s，最长不超过 60s。文件 ≤ 10MB，采样率 ≥ 16kHz。支持单双声道，双声道音频仅处理首声道。<!--
+                        -->音频必须包含至少 5s 连续清晰的朗读内容 (无背景音)，其余部分仅允许短暂停顿 (≤ 2s)。<!--
+                        -->整段音频应避免出现背景音乐、环境噪音或其他人声。请使用正常语速的说话音频，不要上传歌曲或唱歌录音
+                        </div>
                     </div>
-
-                    <button class="btn" @click="uploadAndClone" :disabled="uploading">
-                        {{ uploading ? '上传并处理中...' : '上传并复刻' }}
-                    </button>
                 </div>
 
                 <!-- URL 模式 -->
                 <div v-if="mode === 'url'">
                     <div class="form-group">
-                        <label>公网音频 URL</label>
+                        <label>公网音频 URL（wav (16bit), mp3, m4a）</label>
                         <input v-model="urlForm.audio_url" placeholder="例如：https://example.com/voice.wav" />
-                        <div class="hint">支持格式：WAV(16bit)、MP3、M4A；时长 10~60 秒，文件 ≤10MB</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label>音色前缀</label>
-                        <input v-model="urlForm.prefix" placeholder="例如：url_voice" />
-                        <div class="hint">仅字母数字，≤10字符</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label>语言提示</label>
-                        <div class="language-radios">
-                            <label v-for="lang in languages" :key="lang.code" class="lang-radio">
-                                <input type="radio" :value="lang.code" v-model="urlForm.language_hint" />
-                                {{ lang.label }}
-                            </label>
+                        <div class="hint">
+                        推荐 10 ~ 20s，最长不超过 60s。文件 ≤ 10MB，采样率 ≥ 16kHz。支持单双声道，双声道音频仅处理首声道。<!--
+                        -->音频必须包含至少 5s 连续清晰的朗读内容 (无背景音)，其余部分仅允许短暂停顿 (≤ 2s)。<!--
+                        -->整段音频应避免出现背景音乐、环境噪音或其他人声。请使用正常语速的说话音频，不要上传歌曲或唱歌录音
                         </div>
                     </div>
-
-                    <div class="form-group checkbox-group">
-                        <input type="checkbox" v-model="urlForm.enable_volume_normalization" id="url_vol_norm" />
-                        <label for="url_vol_norm">启用音量归一化</label>
-                    </div>
-
-                    <div class="form-group checkbox-group">
-                        <input type="checkbox" v-model="urlForm.enable_preprocess" id="url_preproc" />
-                        <label for="url_preproc">启用音频预处理</label>
-                    </div>
-
-                    <div class="form-group" v-if="urlForm.enable_preprocess">
-                        <label>最大提示音频时长（秒）</label>
-                        <input type="number" v-model.number="urlForm.max_prompt_audio_length" step="0.1" min="3.0" max="30.0" />
-                        <div class="hint">3.0 ~ 30.0，默认 10.0</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label>模型版本</label>
-                        <select v-model="urlForm.model">
-                            <option value="flash">Flash</option>
-                            <option value="plus">Plus</option>
-                        </select>
-                    </div>
-
-                    <button class="btn" @click="createFromUrl" :disabled="creating">
-                        {{ creating ? '创建中...' : '创建音色（URL）' }}
-                    </button>
                 </div>
+
+                <!-- 公共配置 -->
+                <div class="form-group">
+                    <label>音色前缀</label>
+                    <input
+                        v-model="currentForm.prefix"
+                        placeholder="例如：upload"
+                        :class="{ 'input-error': !isPrefixValid }"
+                    />
+                    <div v-if="!isPrefixValid" class="error-hint">
+                        ⚠️ 仅字母数字，长度 1~10 字符
+                    </div>
+                    <div class="hint">
+                        仅字母数字，≤ 10 字符。生成的音色名格式：{target_model}-{prefix}-{唯一标识}
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>语言提示</label>
+                    <div class="language-radios">
+                        <label v-for="lang in languages" :key="lang.code" class="lang-radio">
+                            <input type="radio" :value="lang.code" v-model="currentForm.language_hint" />
+                            {{ lang.label }}
+                        </label>
+                    </div>
+                    <div class="hint">
+                        辅助模型识别样本音频的语种，从而更准确地提取音色特征，提升复刻效果。<!--
+                        -->若设置的语种与实际音频语种不符，系统将忽略该设置并自动检测语种
+                    </div>
+                </div>
+
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" v-model="currentForm.enable_volume_normalization" id="upload_vol_norm" />
+                    <label for="upload_vol_norm">启用音量归一化</label>
+                    <div class="hint">开启后，使用所创建音色合成的音频，其音量可能与关闭该参数时创建的音色不同。</div>
+                </div>
+
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" v-model="currentForm.enable_preprocess" id="upload_preproc" />
+                    <label for="upload_preproc">启用音频预处理</label>
+                    <div class="hint">是否开启音频预处理 (降噪、音频增强、音量规整)。有背景噪音时建议开启；安静环境建议关闭以最大程度还原音色</div>
+                </div>
+
+                <div class="form-group" v-if="currentForm.enable_preprocess">
+                    <label>最大提示音频时长（s）</label>
+                    <input
+                        type="number"
+                        v-model.number="currentForm.max_prompt_audio_length"
+                        step="0.1"
+                        min="3.0"
+                        max="30.0"
+                        :class="{ 'input-error': !isMaxLengthValid }"
+                    />
+                    <div v-if="!isMaxLengthValid" class="error-hint">
+                        ⚠️ 请输入 3.0 ~ 30.0 之间的数值
+                    </div>
+                    <div class="hint">
+                        音频预处理后用于声音复刻的参考音频最大时长 (s)。取值范围：[3.0, 30.0]。默认值：10.0
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>模型版本</label>
+                    <select v-model="currentForm.model">
+                        <option value="flash">Flash</option>
+                        <option value="plus">Plus</option>
+                    </select>
+                </div>
+
+                <!-- 提交按钮（根据模式调用不同方法） -->
+                <button
+                    v-if="mode === 'upload'"
+                    class="btn"
+                    @click="uploadAndClone"
+                    :disabled="!isFormValid || uploading"
+                >
+                    {{ uploading ? '上传并处理中...' : '上传并复刻' }}
+                </button>
+                <button
+                    v-else
+                    class="btn"
+                    @click="createFromUrl"
+                    :disabled="!isFormValid || creating"
+                >
+                    {{ creating ? '创建中...' : '创建音色（URL）' }}
+                </button>
             </fieldset>
 
             <!-- 音色列表 -->

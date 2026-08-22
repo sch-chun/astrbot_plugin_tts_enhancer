@@ -9,26 +9,41 @@
 <body>
     <div id="app">
         <h1>TTS 音色管理</h1>
-        <div class="tabs" v-if="groups.length">
-            <button 
-                v-for="group in groups" 
-                :key="group.template_key"
-                class="tab"
-                :class="{ active: currentTab === group.template_key }"
-                @click="switchTab(group.template_key)"
-            >
-                {{ getDisplayName(group.template_key) }}
-            </button>
-        </div>
-        <div v-else class="loading">加载供应商配置中...</div>
-        <div class="tab-content">
-            <component 
-                :is="currentComponent" 
-                :entries="currentEntries"
-                :bridge="bridge"
-                :template-key="currentTab"
-            />
-        </div>
+
+         <!-- 加载中 -->
+        <div v-if="loading" class="loading">加载供应商配置中...</div>
+
+        <!-- 加载完成 -->
+        <template v-else>
+           
+            <!-- 有配置时显示 Tabs -->
+            <div class="tabs" v-if="groups.length">
+                <button 
+                    v-for="group in groups" 
+                    :key="group.template_key"
+                    class="tab"
+                    :class="{ active: currentTab === group.template_key }"
+                    @click="switchTab(group.template_key)"
+                >
+                    {{ getDisplayName(group.template_key) }}
+                </button>
+            </div>
+
+            <!-- 无配置时显示提示 -->
+            <div v-else class="empty-state" style="padding: 20px; color: var(--gray);">
+                ⚠️ 暂无 TTS 供应商配置，请在插件配置中添加 providers 条目。
+            </div>
+
+            <!-- 内容区域（有配置时渲染组件） -->
+            <div class="tab-content">
+                <component 
+                    :is="currentComponent" 
+                    :entries="currentEntries"
+                    :bridge="bridge"
+                    :template-key="currentTab"
+                />
+            </div>
+        </template>
     </div>
     <script src="./static/vue.global.prod.js"></script>
     <script type="module" src="./app.js"></script>
