@@ -5,12 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.1.6] - 2026-08-22
+
+### Added
+
+- 提供函数工具方式调用 TTS
+
+### Changed
+
+- 重构 `main.py`，将 TTS 逻辑拆分到 `src/tts_service.py` 中，避免 tools.py 回调 main.py
+
 ## [0.1.5] - 2026-08-20
 
 ### Changed
 
 - 未配置提供商时将不会注入 TTS 提示词
 - 优化 bailian_qwen_audio_3_0_tts 模板布局减少重复代码
+- 增强 bailian_qwen_audio_3_0_tts 模板配置项的校验
+- 引入 ESLint 提供代码质量检查
 
 ## [0.1.4] - 2026-08-19
 
