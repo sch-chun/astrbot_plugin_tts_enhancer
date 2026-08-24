@@ -120,14 +120,12 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
         
         该方法生成一个系统提示，指导 SubAgent 如何根据待合成文本优化语音合成参数。
         提示中包含了 TTS 模型的参数使用说明和具体的优化要求。
-        
-        Args:
-            raw_tts_text (str): 原始待合成文本
             
         Returns:
             str: 包含参数优化指导的系统提示文本
         """
-        docs = self.docs_content
+        voice = self.entry.get("voice", "")
+        docs = self.get_docs_for_voice(voice)
         return f"""你是语音合成参数优化助手，负责为 TTS 模型准备合成参数。以下是 TTS 模型的参数使用说明：
 
 {docs}
