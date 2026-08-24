@@ -4,6 +4,7 @@ import httpx
 from datetime import datetime
 from pathlib import Path
 import traceback
+import re
 
 from typing import Any
 
@@ -26,6 +27,38 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
         VALID_LANGS (list): 支持的语言代码列表
     """
     _API_ENDPOINT = "https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer"
+
+    def __init__(self, entry: dict):
+        """因为 Qwen Audio 3.0 TTS 声音设计音色不支持方言，所以分出两份文档"""
+        super().__init__(entry)
+        self.docs_content = self._load_docs()
+        self.design_docs_content = self._load_design_docs()
+
+    def _load_design_docs(self):
+        """加载声音设计音色专用文档"""
+        docs_path = Path(__file__).parent / "docs" / "bailian_qwen_audio_3_0_tts_design.md"
+        if docs_path.exists():
+            return docs_path.read_text(encoding="utf-8")
+        return ""
+
+    def get_docs_for_voice(self, voice: str) -> str:
+        """
+        根据音色 ID 返回对应的文档。
+        声音设计音色格式（包含 -vd-）：qwen-audio-3.0-tts-{model}-vd-{prefix}-{unique}
+        按 '-' 分割后长度为 8，且索引 5 为 'vd'。
+        """
+        if not voice:
+            return self.docs_content
+
+        parts = voice.split('-')
+
+        # 设计音色的 ID 结构为 8 段，且第 6 段（索引 5）固定为 'vd'
+        # 示例：qwen-audio-3.0-tts-plus-vd-natsuqwen-xxx
+        if len(parts) == 8 and parts[5] == 'vd':
+            return self.design_docs_content
+
+        # 其他情况（包括长度 7 的复刻音色，无论 prefix 是否包含 vd）均使用标准文档
+        return self.docs_content
 
     # ---------- 1. 定义工具 Schema ----------
     def get_tool_schema(self) -> FunctionTool:
@@ -386,36 +419,95 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
     # ———————— 音色管理 ————————
 
     async def create_voice(self, params: dict) -> dict:
-        """
-        创建新的音色。
-
-        该方法负责创建一个新的音色，并返回音色的唯一标识符。
-
-        Args:
-            params (dict): 创建音色的参数
-
-        Returns:
-            str: 新音色的唯一标识符，失败时返回空字符串
-        """
+        """根据参数确定是声音克隆还是声音设计"""
         workspace_id = self.entry.get("workspace_id", "")
         api_key = self.entry.get("api_key", "")
-        model = params.get("model") or self.entry.get("model", "flash")
-        target_model = f"qwen-audio-3.0-tts-{model}"
-
         if not workspace_id or not api_key:
             raise ValueError("workspace_id 和 api_key 不能为空")
 
-        audio_url = params.get("audio_url")
+        # 公共参数
+        model = params.get("model") or self.entry.get("model", "flash")
+        target_model = f"qwen-audio-3.0-tts-{model}"
         prefix = params.get("prefix")
-        if not audio_url or not prefix:
-            raise ValueError("audio_url 和 prefix 为必填参数")
-
-        # 可选参数
+        if not prefix:
+            raise ValueError("prefix 为必填参数")
+        if not prefix.isalnum() or len(prefix) > 10:
+            raise ValueError("prefix 必须为字母数字，且长度不超过10")
         language_hints = params.get("language_hints", [])
-        enable_volume_normalization = params.get("enable_volume_normalization", False)
-        enable_preprocess = params.get("enable_preprocess", False)
-        max_prompt_audio_length = params.get("max_prompt_audio_length")
+        if not isinstance(language_hints, list):
+            raise ValueError("language_hints 必须为列表")
+        for hint in language_hints:
+            if hint not in self.VALID_LANGS:
+                raise ValueError("language_hints 包含不支持的语种")
 
+        mode = params.get("mode")
+
+        # 兼容
+        if mode is None:
+            if "voice_prompt" in params and "preview_text" in params:
+                mode = "design"
+            else:
+                mode = "clone"
+        
+        if mode == "design":
+
+            # 声音设计分支
+            voice_prompt = params.get("voice_prompt")
+            if not voice_prompt:
+                raise ValueError("voice_prompt 为必填参数")
+
+            # 声音设计的 language_hints 只支持中英文
+            for hint in language_hints:
+                if hint not in ["zh", "en"]:
+                    raise ValueError("声音设计的 language_hints 只支持中英文")
+            preview_text = params.get("preview_text", "欢迎使用声音设计功能")
+            sample_rate = params.get("sample_rate", 24000)
+            response_format = params.get("response_format", "wav")
+
+            return await self._create_voice_by_design(
+                target_model=target_model,
+                prefix=prefix,
+                language_hints=language_hints,
+                voice_prompt=voice_prompt,
+                preview_text=preview_text,
+                sample_rate=sample_rate,
+                response_format=response_format
+            )
+        elif mode == "clone":
+
+            # 声音克隆分支
+            audio_url = params.get("audio_url")
+            if not audio_url:
+                raise ValueError("audio_url 为必填参数")
+            enable_volume_normalization = params.get("enable_volume_normalization", False)
+            enable_preprocess = params.get("enable_preprocess", False)
+            max_prompt_audio_length = params.get("max_prompt_audio_length")
+
+            return await self._create_voice_by_clone(
+                target_model=target_model,
+                prefix=prefix,
+                language_hints=language_hints,
+                audio_url=audio_url,
+                enable_volume_normalization=enable_volume_normalization,
+                enable_preprocess=enable_preprocess,
+                max_prompt_audio_length=max_prompt_audio_length
+            )
+        else:
+            raise ValueError("未知模式的声音创建请求")
+
+    async def _create_voice_by_clone(
+        self,
+        target_model: str,
+        prefix: str,
+        language_hints: list,
+        audio_url: str,
+        enable_volume_normalization: bool,
+        enable_preprocess: bool,
+        max_prompt_audio_length: float | None
+    ) -> dict:
+        """声音克隆"""
+        workspace_id = self.entry.get("workspace_id", "")
+        api_key = self.entry.get("api_key", "")
         url = f"https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/customization"
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -441,7 +533,7 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:
-                logger.info(f"创建音色请求: {payload}")
+                logger.debug(f"创建音色请求: {payload}")
                 resp = await client.post(url, headers=headers, json=payload)
                 if resp.status_code != 200:
                     try:
@@ -469,6 +561,67 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
         if not voice_id:
             raise RuntimeError(f"创建音色失败: {data}")
         return {"voice_id": voice_id, "extra": data.get("output", {})}
+
+    async def _create_voice_by_design(
+        self,
+        target_model: str,
+        prefix: str,
+        language_hints: list,
+        voice_prompt: str,
+        preview_text: str,
+        sample_rate: int,
+        response_format: str
+    ) -> dict:
+        """声音设计"""
+        workspace_id = self.entry.get("workspace_id")
+        api_key = self.entry.get("api_key")
+
+        url = f"https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/customization"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "voice-enrollment",
+            "input": {
+                "action": "create_voice",
+                "target_model": target_model,
+                "voice_prompt": voice_prompt,
+                "preview_text": preview_text,
+                "prefix": prefix,
+            },
+            "parameters": {
+                "sample_rate": sample_rate,
+                "response_format": response_format
+            }
+        }
+        if language_hints:
+
+            # 语言提示作为 input 下的 language_hints
+            payload["input"]["language_hints"] = language_hints
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            logger.debug(f"创建声音设计音色请求: {payload}")
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code != 200:
+                try:
+                    error_json = resp.json()
+                    error_msg = error_json.get("message") or error_json.get("error") or resp.text
+                except:
+                    error_msg = resp.text
+                raise RuntimeError(f"百炼设计 API 错误 (HTTP {resp.status_code}): {error_msg}")
+            data = resp.json()
+
+        voice_id = data.get("output", {}).get("voice_id")
+        preview_audio = data.get("output", {}).get("preview_audio")
+        if not voice_id:
+            raise RuntimeError(f"创建音色失败，未返回 voice_id: {data}")
+
+        return {
+            "voice_id": voice_id,
+            "preview_audio": preview_audio,   # 包含 data (base64), sample_rate, response_format
+            "extra": data.get("output", {})
+        }
 
     async def list_voice(self, **kwargs) -> dict:
         """查询百炼音色列表"""

@@ -273,3 +273,24 @@ th { background: var(--bg); font-weight: 600; }
     color: var(--text);
     resize: vertical;
 }
+/* 按钮变体 */
+.btn-secondary {
+    background: var(--gray);
+    color: white;
+}
+.btn-secondary:hover {
+    background: #5a6268; /* 深灰色 */
+}
+
+.btn-success {
+    background: var(--success);
+    color: white;
+}
+.btn-success:hover {
+    background: #15803d; /* 深绿色 */
+}
+
+/* 确保 btn 本身有过渡效果 */
+.btn {
+    transition: background-color 0.15s ease;
+}

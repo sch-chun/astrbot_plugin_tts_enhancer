@@ -32,11 +32,13 @@ export default {
         const voiceList = ref([]);
         const loading = ref(false);
         const creating = ref(false);
-        const mode = ref('upload'); // 'upload' | 'url'
+        const mode = ref('upload'); // 'upload' | 'url' | 'design'
 
         const currentForm = computed(() => {
-            return mode.value === 'upload' ? uploadForm : urlForm;
-        })
+            if (mode.value === 'upload') return uploadForm;
+            if (mode.value === 'url') return urlForm;
+            return designForm;
+        });
 
         // ----- 上传模式表单 -----
         const uploadForm = reactive({
@@ -64,8 +66,24 @@ export default {
             model: 'flash',
         });
 
-        // ----- 语言列表 -----
-        const languages = [
+        // ----- 设计模式表单 -----
+        const designForm = reactive({
+            voice_prompt: '',
+            preview_text: '欢迎使用声音设计功能，让我们听听这个音色的效果。',
+            prefix: 'design',
+            language_hint: 'zh',
+            model: 'flash',
+            sample_rate: 24000,
+            response_format: 'wav',
+        });
+        const designing = ref(false);
+
+        // ----- 删除确认模态框 -----
+        const deleteModalVisible = ref(false);
+        const deleteTargetId = ref('');
+
+        // ----- 语言列表（完整） -----
+        const allLanguages = [
             { code: 'zh', label: '中文' },
             { code: 'en', label: '英语' },
             { code: 'fr', label: '法语' },
@@ -84,6 +102,41 @@ export default {
             { code: 'ar', label: '阿拉伯语' },
         ];
 
+        // 根据模式过滤语言列表：设计模式仅支持中英文
+        const languages = computed(() => {
+            if (mode.value === 'design') {
+                return allLanguages.filter(l => l.code === 'zh' || l.code === 'en');
+            }
+            return allLanguages;
+        });
+
+        // ----- 字符数计算函数（汉字按2字符，其他1字符）-----
+        function countChars(text) {
+            let count = 0;
+            for (const char of text) {
+                const code = char.charCodeAt(0);
+                // CJK 统一表意文字范围 0x4E00-0x9FFF
+                if (code >= 0x4E00 && code <= 0x9FFF) {
+                    count += 2;
+                } else {
+                    count += 1;
+                }
+            }
+            return count;
+        }
+
+        // ----- 设计模式字符数校验 -----
+        const voicePromptChars = computed(() => countChars(designForm.voice_prompt));
+        const previewTextChars = computed(() => countChars(designForm.preview_text));
+        const isVoicePromptValid = computed(() => voicePromptChars.value <= 500);
+        const isPreviewTextValid = computed(() => previewTextChars.value <= 200 && previewTextChars.value >= 15);
+        const isPrefixValidForDesign = computed(() => {
+            return /^[a-zA-Z0-9]{1,10}$/.test(designForm.prefix);
+        });
+        const isDesignFormValid = computed(() => {
+            return isPrefixValidForDesign.value && isVoicePromptValid.value && isPreviewTextValid.value;
+        });
+
         // ----- 监听 entry 变化 -----
         watch(() => props.entries, (newVal) => {
             if (newVal && newVal.length > 0) {
@@ -100,6 +153,7 @@ export default {
             if (newEntry) {
                 uploadForm.model = newEntry.model || 'flash';
                 urlForm.model = newEntry.model || 'flash';
+                designForm.model = newEntry.model || 'flash';
             }
         }, { immediate: true });
 
@@ -123,44 +177,29 @@ export default {
 
         // ----- 通用创建音色（调用 /voice/create）-----
         async function callCreateVoice(payload) {
-
-            // 清理 undefined 值
             Object.keys(payload).forEach(key => {
                 if (payload[key] === undefined) delete payload[key];
             });
             try {
                 const result = await props.bridge.apiPost('voice/create', payload);
                 console.log('Create voice response:', result);
-
-                // 成功条件：存在 voice_id 或 voice
                 if (result.voice_id || result.voice) {
-                    showSuccess('音色创建成功！Voice ID: ' + (result.voice_id || result.voice));
-                    await fetchVoices();
-                    return true;
+                    return result;
                 }
-
-                // 错误响应（如 {status:'error', message:'...'}）
                 const errMsg = result.message || result.error || '创建失败，未返回音色 ID';
                 showError('创建音色失败: ' + errMsg);
-                return false;
+                return null;
             } catch (e) {
                 console.error('创建音色异常:', e);
-
-                // 尝试提取详细错误信息
                 let errMsg = e.message || '未知错误';
-
-                // 如果异常对象包含 response，尝试解析响应体
                 if (e.response) {
                     try {
                         const data = await e.response.json();
                         errMsg = data.message || data.error || errMsg;
-                    } catch (_) {
-
-                        // 无法解析 JSON，使用默认信息
-                    }
+                    } catch (_) {}
                 }
                 showError('创建音色失败: ' + errMsg);
-                return false;
+                return null;
             }
         }
 
@@ -181,20 +220,17 @@ export default {
                 showError('请选择音频文件');
                 return;
             }
-            // 校验外部基础 URL
             const baseUrl = uploadForm.external_base_url.trim();
             if (!baseUrl) {
                 showError('请填写外部访问地址（含协议和端口）');
                 return;
             }
-            // 简单校验 URL 格式
             try {
                 new URL(baseUrl);
             } catch (_) {
                 showError('外部访问地址格式不正确，请包含协议（如 https://）');
                 return;
             }
-            // 校验内部端口
             const intPort = parseInt(uploadForm.internal_port);
             if (isNaN(intPort) || intPort < 1024 || intPort > 65535) {
                 showError('内部端口须为 1024-65535');
@@ -203,9 +239,7 @@ export default {
 
             uploading.value = true;
             try {
-                // 1. 上传文件
                 const uploadResult = await props.bridge.upload('upload', uploadForm.file);
-                console.log('Upload response:', uploadResult);
                 if (!uploadResult.file_id) {
                     const errMsg = uploadResult.message || uploadResult.error || '上传失败，未返回 file_id';
                     showError('上传失败: ' + errMsg);
@@ -215,12 +249,10 @@ export default {
                 const fileId = uploadResult.file_id;
                 currentFileId = fileId;
 
-                // 2. 启动文件服务器（内部端口）
                 const startResp = await props.bridge.apiPost('start_file_server', {
                     file_id: fileId,
                     internal_port: intPort,
                 });
-                console.log('Start server response:', startResp);
                 if (startResp.success !== true) {
                     const errMsg = startResp.message || startResp.error || '启动文件服务器失败';
                     showError('启动文件服务器失败: ' + errMsg);
@@ -228,12 +260,10 @@ export default {
                     return;
                 }
 
-                // 3. 构造完整的音频 URL（基础 URL + 文件名）
                 const audioUrl = `${baseUrl.replace(/\/+$/, '')}/${fileId}`;
-
-                // 4. 创建音色
                 const payload = {
                     entry_id: selectedEntryId.value,
+                    mode: 'clone',
                     audio_url: audioUrl,
                     prefix: uploadForm.prefix,
                     language_hints: uploadForm.language_hint ? [uploadForm.language_hint] : [],
@@ -242,8 +272,10 @@ export default {
                     max_prompt_audio_length: uploadForm.enable_preprocess ? uploadForm.max_prompt_audio_length : undefined,
                     model: uploadForm.model,
                 };
-                const success = await callCreateVoice(payload);
-                if (success) {
+                const result = await callCreateVoice(payload);
+                if (result) {
+                    showSuccess('音色创建成功！Voice ID: ' + result.voice_id);
+                    await fetchVoices();
                     uploadForm.file = null;
                     document.getElementById('fileInput').value = '';
                 }
@@ -273,7 +305,6 @@ export default {
                 showError('请填写公网音频 URL');
                 return;
             }
-            // 简单 URL 校验
             try {
                 new URL(urlForm.audio_url);
             } catch (_) {
@@ -285,6 +316,7 @@ export default {
             try {
                 const payload = {
                     entry_id: selectedEntryId.value,
+                    mode: 'clone',
                     audio_url: urlForm.audio_url,
                     prefix: urlForm.prefix,
                     language_hints: urlForm.language_hint ? [urlForm.language_hint] : [],
@@ -293,7 +325,11 @@ export default {
                     max_prompt_audio_length: urlForm.enable_preprocess ? urlForm.max_prompt_audio_length : undefined,
                     model: urlForm.model,
                 };
-                await callCreateVoice(payload);
+                const result = await callCreateVoice(payload);
+                if (result) {
+                    showSuccess('音色创建成功！Voice ID: ' + result.voice_id);
+                    await fetchVoices();
+                }
             } catch (e) {
                 console.error('URL 创建失败:', e);
                 showError('请求失败: ' + e.message);
@@ -302,24 +338,208 @@ export default {
             }
         }
 
-        // ----- 删除音色 -----
-        async function deleteVoice(voiceId) {
-            if (!confirm(`确定要删除音色 ${voiceId} 吗？`)) return;
+        // ----- 设计模式：创建音色并打开预览模态框 -----
+        const previewModalVisible = ref(false);
+        const previewVoiceId = ref('');
+        const previewAudioBase64 = ref('');
+        const previewAudioFormat = ref('wav');
+        const previewText = ref('欢迎使用声音设计功能，让我们听听这个音色的效果。');
+
+        async function createFromDesign() {
             if (selectedEntryId.value === null || selectedEntryId.value === undefined) {
                 showError('请先选择认证配置');
                 return;
             }
+            if (!designForm.voice_prompt.trim()) {
+                showError('请填写声音描述');
+                return;
+            }
+            if (!isVoicePromptValid.value) {
+                showError('声音描述超过 500 字符限制（当前 ' + voicePromptChars.value + ' 字符）');
+                return;
+            }
+            if (!designForm.preview_text.trim()) {
+                showError('请填写预览文本');
+                return;
+            }
+            if (!isPreviewTextValid.value) {
+                showError('预览文本超过 15 ~ 200 字符限制（当前 ' + previewTextChars.value + ' 字符）');
+                return;
+            }
+            if (!isPrefixValidForDesign.value) {
+                showError('prefix 必须为字母数字，长度 1-10');
+                return;
+            }
+
+            designing.value = true;
+            try {
+                const payload = {
+                    entry_id: selectedEntryId.value,
+                    mode: 'design',
+                    voice_prompt: designForm.voice_prompt,
+                    preview_text: designForm.preview_text,
+                    prefix: designForm.prefix,
+                    language_hints: designForm.language_hint ? [designForm.language_hint] : [],
+                    model: designForm.model,
+                    sample_rate: designForm.sample_rate,
+                    response_format: designForm.response_format,
+                };
+                const result = await callCreateVoice(payload);
+                if (result) {
+                    previewVoiceId.value = result.voice_id;
+                    previewAudioBase64.value = result.preview_audio?.data || '';
+                    previewAudioFormat.value = result.preview_audio?.response_format || 'wav';
+                    previewText.value = designForm.preview_text;
+                    previewModalVisible.value = true;
+                }
+            } catch (e) {
+                console.error('设计模式创建失败:', e);
+                showError('创建失败: ' + e.message);
+            } finally {
+                designing.value = false;
+            }
+        }
+
+        // ----- 预览模态框 -----
+        function closePreviewModal() {
+            previewModalVisible.value = false;
+            previewDeleteConfirm.value = false; // 重置确认状态
+            if (window._previewAudioUrl) {
+                URL.revokeObjectURL(window._previewAudioUrl);
+                window._previewAudioUrl = null;
+            }
+        }
+
+        function playPreviewAudio() {
+            if (!previewAudioBase64.value) {
+                showError('没有可播放的音频数据');
+                return;
+            }
+            try {
+                const audioBytes = Uint8Array.from(atob(previewAudioBase64.value), c => c.charCodeAt(0));
+                const mimeType = `audio/${previewAudioFormat.value}`;
+                const blob = new Blob([audioBytes], { type: mimeType });
+                const audioUrl = URL.createObjectURL(blob);
+                if (window._previewAudioUrl) {
+                    URL.revokeObjectURL(window._previewAudioUrl);
+                }
+                window._previewAudioUrl = audioUrl;
+                const audio = new Audio(audioUrl);
+                audio.play();
+            } catch (e) {
+                console.error('播放失败:', e);
+                showError('播放失败: ' + e.message);
+            }
+        }
+
+        async function keepVoice() {
+            showSuccess('音色已保留: ' + previewVoiceId.value);
+            closePreviewModal();
+            await fetchVoices();
+        }
+
+        const previewDeleteConfirm = ref(false);
+
+        async function confirmDeletePreview() {
+            try {
+                await props.bridge.apiPost('voice/delete', {
+                entry_id: selectedEntryId.value,
+                voice_id: previewVoiceId.value,
+            });
+            showSuccess('音色已删除');
+            closePreviewModal(); // 关闭模态框
+            await fetchVoices(); // 刷新列表
+            } catch (e) {
+                console.error('删除音色失败:', e);
+                showError('删除失败: ' + e.message);
+
+                // 失败时重置确认状态，让用户可重试
+                previewDeleteConfirm.value = false;
+            }
+        }
+
+        // ----- 列表预览（音色列表中的预览按钮） -----
+        const listPreviewModalVisible = ref(false);
+        const listPreviewVoiceId = ref('');
+        const listPreviewText = ref('欢迎使用语音合成预览功能。');
+        const listPreviewLoading = ref(false);
+
+        function openListPreviewModal(voiceId) {
+            listPreviewVoiceId.value = voiceId;
+            if (!listPreviewText.value.trim()) {
+                listPreviewText.value = '欢迎使用语音合成预览功能。';
+            }
+            listPreviewModalVisible.value = true;
+        }
+
+        async function doListPreview() {
+            if (!listPreviewText.value.trim()) {
+                showError('请输入预览文本');
+                return;
+            }
+            if (selectedEntryId.value === null || selectedEntryId.value === undefined) {
+                showError('请先选择认证配置');
+                return;
+            }
+            listPreviewLoading.value = true;
+            try {
+                const result = await props.bridge.apiPost('voice/preview', {
+                    entry_id: selectedEntryId.value,
+                    voice_id: listPreviewVoiceId.value,
+                    text: listPreviewText.value.trim()
+                });
+                if (!result.audio_base64) {
+                    showError('预览失败: 未返回音频数据');
+                    return;
+                }
+                const audioBytes = Uint8Array.from(atob(result.audio_base64), c => c.charCodeAt(0));
+                const mimeType = `audio/${result.format || 'mpeg'}`;
+                const blob = new Blob([audioBytes], { type: mimeType });
+                const audioUrl = URL.createObjectURL(blob);
+                const audio = new Audio(audioUrl);
+                audio.play();
+                audio.onended = () => URL.revokeObjectURL(audioUrl);
+            } catch (e) {
+                console.error('预览失败:', e);
+                showError('预览失败: ' + e.message);
+            } finally {
+                listPreviewLoading.value = false;
+            }
+        }
+
+        function closeListPreviewModal() {
+            listPreviewModalVisible.value = false;
+        }
+
+        // ----- 删除音色（使用自定义模态框）-----
+        async function deleteVoice(voiceId) {
+            if (selectedEntryId.value === null || selectedEntryId.value === undefined) {
+                showError('请先选择认证配置');
+                return;
+            }
+            deleteTargetId.value = voiceId;
+            deleteModalVisible.value = true;
+        }
+
+        async function confirmDelete() {
             try {
                 await props.bridge.apiPost('voice/delete', {
                     entry_id: selectedEntryId.value,
-                    voice_id: voiceId,
+                    voice_id: deleteTargetId.value,
                 });
                 showSuccess('删除成功');
+                deleteModalVisible.value = false;
+                deleteTargetId.value = '';
                 await fetchVoices();
             } catch (e) {
                 console.error('删除音色失败:', e);
                 showError('删除失败: ' + e.message);
             }
+        }
+
+        function cancelDelete() {
+            deleteModalVisible.value = false;
+            deleteTargetId.value = '';
         }
 
         // ----- 复制到剪贴板 -----
@@ -349,6 +569,12 @@ export default {
             }
         }
 
+        function copyHelpLink() {
+            const link = 'https://help.aliyun.com/zh/model-studio/voice-design-user-guide';
+            copyToClipboard(link);
+            showSuccess('链接已复制，请手动粘贴到浏览器地址栏访问')
+        }
+
         function getStatusDescription(status) {
             const map = {
                 'DEPLOYING': '审核中/处理中',
@@ -358,113 +584,24 @@ export default {
             return map[status] || status;
         }
 
-        async function previewVoice(voiceId) {
-            if (selectedEntryId.value === null || selectedEntryId.value === undefined) {
-                showError('请先选择认证配置');
-                return;
-            }
-            try {
-                const result = await props.bridge.apiPost('voice/preview', {
-                    entry_id: selectedEntryId.value,
-                    voice_id: voiceId,
-                    text: '欢迎使用语音合成预览功能。'
-                });
-                // 检查响应
-                if (!result.audio_base64) {
-                    showError('预览失败: 未返回音频数据');
-                    return;
-                }
-                // 解码 base64 为字节数组
-                const audioBytes = Uint8Array.from(atob(result.audio_base64), c => c.charCodeAt(0));
-                // 确定 MIME 类型
-                const mimeType = `audio/${result.format || 'mpeg'}`;
-                const blob = new Blob([audioBytes], { type: mimeType });
-                const audioUrl = URL.createObjectURL(blob);
-                const audio = new Audio(audioUrl);
-                audio.play();
-                audio.onended = () => URL.revokeObjectURL(audioUrl);
-            } catch (e) {
-                console.error('预览失败:', e);
-                showError('预览失败: ' + e.message);
-            }
-        }
-
-        // 预览模态框
-        const previewModalVisible = ref(false);
-        const previewVoiceId = ref('');
-        const previewText = ref('欢迎使用语音合成预览功能。');
-        const previewLoading = ref(false);
-
-        function openPreviewModal(voiceId) {
-            previewVoiceId.value = voiceId;
-            if (!previewText.value.trim()) {
-                previewText.value = '欢迎使用语音合成预览功能。';
-            }
-            previewModalVisible.value = true;
-        }
-
-        async function doPreview() {
-            if (!previewText.value.trim()) {
-                showError('请输入预览文本');
-                return;
-            }
-            if (selectedEntryId.value === null || selectedEntryId.value === undefined) {
-                showError('请先选择认证配置');
-                return;
-            }
-            previewLoading.value = true;
-            try {
-                const result = await props.bridge.apiPost('voice/preview', {
-                    entry_id: selectedEntryId.value,
-                    voice_id: previewVoiceId.value,
-                    text: previewText.value.trim()
-                });
-                if (!result.audio_base64) {
-                    showError('预览失败: 未返回音频数据');
-                    return;
-                }
-                const audioBytes = Uint8Array.from(atob(result.audio_base64), c => c.charCodeAt(0));
-                const mimeType = `audio/${result.format || 'mpeg'}`;
-                const blob = new Blob([audioBytes], { type: mimeType });
-                const audioUrl = URL.createObjectURL(blob);
-                const audio = new Audio(audioUrl);
-                audio.play();
-                audio.onended = () => URL.revokeObjectURL(audioUrl);
-            } catch (e) {
-                console.error('预览失败:', e);
-                showError('预览失败: ' + e.message);
-            } finally {
-                previewLoading.value = false;
-            }
-        }
-
-        function closePreviewModal() {
-            previewModalVisible.value = false;
-        }
-
-        // ---- 表单校验 ----
+        // ---- 表单校验（克隆模式） ----
         const isPrefixValid = computed(() => {
             const prefix = currentForm.value.prefix;
             return /^[a-zA-Z0-9]{1,10}$/.test(prefix);
         });
 
         const isMaxLengthValid = computed(() => {
-
-            // 如果预处理未开启，则不校验 max_prompt_audio_length
             if (!currentForm.value.enable_preprocess) return true;
             const val = currentForm.value.max_prompt_audio_length;
             return typeof val === 'number' && val >= 3.0 && val <= 30.0;
         });
 
         const isPortValid = computed(() => {
-
-            // URL 模式不需要端口
             if (mode.value !== 'upload') return true;
             const port = parseInt(uploadForm.internal_port);
-            return !isNaN(port) && port >= 1 && port <= 65535;
+            return !isNaN(port) && port >= 1024 && port <= 65535;
         });
 
-        // 整体表单有效
         const isFormValid = computed(() => {
             const prefixOK = isPrefixValid.value;
             const lengthOK = isMaxLengthValid.value;
@@ -481,6 +618,7 @@ export default {
             voiceList,
             loading,
             creating,
+            designing,
             mode,
             currentForm,
 
@@ -494,10 +632,46 @@ export default {
             urlForm,
             createFromUrl,
 
+            // 设计模式
+            designForm,
+            createFromDesign,
+            voicePromptChars,
+            previewTextChars,
+            isVoicePromptValid,
+            isPreviewTextValid,
+            isPrefixValidForDesign,
+            isDesignFormValid,
+            copyHelpLink,
+            previewDeleteConfirm,
+            confirmDeletePreview,
+
+            // 预览模态框
+            previewModalVisible,
+            previewVoiceId,
+            previewText,
+            playPreviewAudio,
+            keepVoice,
+            closePreviewModal,
+
+            // 列表预览
+            listPreviewModalVisible,
+            listPreviewVoiceId,
+            listPreviewText,
+            listPreviewLoading,
+            openListPreviewModal,
+            doListPreview,
+            closeListPreviewModal,
+
+            // 删除确认模态框
+            deleteModalVisible,
+            deleteTargetId,
+            deleteVoice,
+            confirmDelete,
+            cancelDelete,
+
             // 公共
             languages,
             fetchVoices,
-            deleteVoice,
             copyToClipboard,
             getStatusDescription,
 
@@ -506,16 +680,6 @@ export default {
             isMaxLengthValid,
             isFormValid,
             isPortValid,
-
-            // 预览
-            previewVoice,
-            previewModalVisible,
-            previewVoiceId,
-            previewText,
-            previewLoading,
-            openPreviewModal,
-            doPreview,
-            closePreviewModal,
         };
     },
     template: /*html*/ `
@@ -543,19 +707,19 @@ export default {
                 <legend>创建新音色</legend>
 
                 <!-- 公网 IPv4 确认提示 -->
-                <div style="background:#fef9e7;border-left:4px solid #f0971b;padding:8px 12px;margin-bottom:16px;border-radius:4px;">
+                <div v-if="mode !== 'design'" style="background:rgba(241,151,27,0.15);border-left:4px solid #f0971b;padding:8px 12px;margin-bottom:16px;border-radius:4px;color:var(--text);">
                     <strong>⚠️ 重要：</strong> 请确认服务器拥有公网 IPv4 地址，且防火墙已开放指定端口 (上传模式) 或音频 URL 可被公网 IPv4 访问 (URL 模式)。
                 </div>
 
                 <!-- 选项卡切换 -->
-                <div style="display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid var(--border);">
+                <div style="display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid var(--border);flex-wrap:wrap;">
                     <button 
                         class="tab" 
                         :class="{ active: mode === 'upload' }"
                         @click="mode = 'upload'"
                         style="padding:8px 16px;border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;"
                     >
-                        📁 上传音频文件（需公网IP）
+                        📁 上传音频文件
                     </button>
                     <button 
                         class="tab" 
@@ -563,7 +727,15 @@ export default {
                         @click="mode = 'url'"
                         style="padding:8px 16px;border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;"
                     >
-                        🔗 使用公网音频 URL
+                        🔗 使用音频 URL
+                    </button>
+                    <button 
+                        class="tab" 
+                        :class="{ active: mode === 'design' }"
+                        @click="mode = 'design'"
+                        style="padding:8px 16px;border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;"
+                    >
+                        🎨 声音设计
                     </button>
                 </div>
 
@@ -576,7 +748,7 @@ export default {
                     </div>
 
                     <div class="form-group">
-                        <label>内部监听端口（服务器本地绑定的端口）</label>
+                        <label>内部监听端口</label>
                         <input
                             v-model="uploadForm.internal_port"
                             placeholder="例如：8080（1024-65535）"
@@ -585,19 +757,12 @@ export default {
                         <div v-if="!isPortValid" class="error-hint">
                             ⚠️ 必须是 1024-65535 之间的整数
                         </div>
-                        <div class="hint">
-                            临时文件服务器在本机监听的端口，需确保未被占用
-                        </div>
                     </div>
 
                     <div class="form-group">
                         <label>选择音频文件（wav (16bit), mp3, m4a）</label>
                         <input type="file" id="fileInput" accept=".wav,.mp3,.m4a" @change="handleFileChange" />
-                        <div class="hint">
-                        推荐 10 ~ 20s，最长不超过 60s。文件 ≤ 10MB，采样率 ≥ 16kHz。支持单双声道，双声道音频仅处理首声道。<!--
-                        -->音频必须包含至少 5s 连续清晰的朗读内容 (无背景音)，其余部分仅允许短暂停顿 (≤ 2s)。<!--
-                        -->整段音频应避免出现背景音乐、环境噪音或其他人声。请使用正常语速的说话音频，不要上传歌曲或唱歌录音
-                        </div>
+                        <div class="hint">推荐 10~20s，最长 60s。文件 ≤ 10MB，采样率 ≥ 16kHz。</div>
                     </div>
                 </div>
 
@@ -606,11 +771,44 @@ export default {
                     <div class="form-group">
                         <label>公网音频 URL（wav (16bit), mp3, m4a）</label>
                         <input v-model="urlForm.audio_url" placeholder="例如：https://example.com/voice.wav" />
-                        <div class="hint">
-                        推荐 10 ~ 20s，最长不超过 60s。文件 ≤ 10MB，采样率 ≥ 16kHz。支持单双声道，双声道音频仅处理首声道。<!--
-                        -->音频必须包含至少 5s 连续清晰的朗读内容 (无背景音)，其余部分仅允许短暂停顿 (≤ 2s)。<!--
-                        -->整段音频应避免出现背景音乐、环境噪音或其他人声。请使用正常语速的说话音频，不要上传歌曲或唱歌录音
+                        <div class="hint">推荐 10~20s，最长 60s。文件 ≤ 10MB，采样率 ≥ 16kHz。</div>
+                    </div>
+                </div>
+
+                <!-- 声音设计模式 -->
+                <div v-if="mode === 'design'">
+                    <div class="form-group">
+                        <label>声音描述（自然语言）</label>
+                        <textarea 
+                            v-model="designForm.voice_prompt" 
+                            rows="3" 
+                            placeholder="例如：沉稳的中年男性播音员，音色低沉浑厚，富有磁性，语速平稳..." 
+                            :class="{ 'input-error': !isVoicePromptValid && designForm.voice_prompt }"
+                            style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text);resize:vertical;"
+                        ></textarea>
+                        <div v-if="!isVoicePromptValid && designForm.voice_prompt" class="error-hint">
+                            ⚠️ 声音描述超过 500 字符限制（当前 {{ voicePromptChars }} 字符，汉字按 2 字符计算）
                         </div>
+                        <div class="hint">
+                            用自然语言描述期望的声音特质，支持中文和英文，不超过 500 字符（汉字按 2 字符计算）。详见 
+                            <span style="color:var(--primary);cursor:pointer;text-decoration:underline;" @click="copyHelpLink">声音设计编写指南</span>
+                            （点击复制链接，请手动粘贴到浏览器地址栏打开）
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>预览文本</label>
+                        <textarea 
+                            v-model="designForm.preview_text" 
+                            rows="2" 
+                            placeholder="输入用于试听的文本..." 
+                            :class="{ 'input-error': !isPreviewTextValid && designForm.preview_text }"
+                            style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text);resize:vertical;"
+                        ></textarea>
+                        <div v-if="!isPreviewTextValid && designForm.preview_text" class="error-hint">
+                            ⚠️ 预览文本超过 200 字符限制（当前 {{ previewTextChars }} 字符，汉字按 2 字符计算）
+                        </div>
+                        <div class="hint">最小 15 字符，最大 200 字符（汉字按 2 字符计算）</div>
                     </div>
                 </div>
 
@@ -619,14 +817,15 @@ export default {
                     <label>音色前缀</label>
                     <input
                         v-model="currentForm.prefix"
-                        placeholder="例如：upload"
+                        placeholder="例如：design"
                         :class="{ 'input-error': !isPrefixValid }"
                     />
                     <div v-if="!isPrefixValid" class="error-hint">
                         ⚠️ 仅字母数字，长度 1~10 字符
                     </div>
                     <div class="hint">
-                        仅字母数字，≤ 10 字符。生成的音色名格式：{target_model}-{prefix}-{唯一标识}
+                        <span v-if="mode === 'design'">生成的音色名格式：{target_model}-vd-{prefix}-{唯一标识}</span>
+                        <span v-else>生成的音色名格式：{target_model}-{prefix}-{唯一标识}</span>
                     </div>
                 </div>
 
@@ -638,41 +837,59 @@ export default {
                             {{ lang.label }}
                         </label>
                     </div>
-                    <div class="hint">
-                        辅助模型识别样本音频的语种，从而更准确地提取音色特征，提升复刻效果。<!--
-                        -->若设置的语种与实际音频语种不符，系统将忽略该设置并自动检测语种
-                    </div>
+                    <div class="hint">辅助模型识别语种，提升合成效果。设计模式仅支持中文和英文。</div>
                 </div>
 
-                <div class="form-group checkbox-group">
-                    <input type="checkbox" v-model="currentForm.enable_volume_normalization" id="upload_vol_norm" />
-                    <label for="upload_vol_norm">启用音量归一化</label>
-                    <div class="hint">开启后，使用所创建音色合成的音频，其音量可能与关闭该参数时创建的音色不同。</div>
-                </div>
-
-                <div class="form-group checkbox-group">
-                    <input type="checkbox" v-model="currentForm.enable_preprocess" id="upload_preproc" />
-                    <label for="upload_preproc">启用音频预处理</label>
-                    <div class="hint">是否开启音频预处理 (降噪、音频增强、音量规整)。有背景噪音时建议开启；安静环境建议关闭以最大程度还原音色</div>
-                </div>
-
-                <div class="form-group" v-if="currentForm.enable_preprocess">
-                    <label>最大提示音频时长（s）</label>
-                    <input
-                        type="number"
-                        v-model.number="currentForm.max_prompt_audio_length"
-                        step="0.1"
-                        min="3.0"
-                        max="30.0"
-                        :class="{ 'input-error': !isMaxLengthValid }"
-                    />
-                    <div v-if="!isMaxLengthValid" class="error-hint">
-                        ⚠️ 请输入 3.0 ~ 30.0 之间的数值
+                <!-- 克隆专用参数 -->
+                <template v-if="mode !== 'design'">
+                    <div class="form-group checkbox-group">
+                        <input type="checkbox" v-model="currentForm.enable_volume_normalization" :id="mode + '_vol_norm'" />
+                        <label :for="mode + '_vol_norm'">启用音量归一化</label>
                     </div>
-                    <div class="hint">
-                        音频预处理后用于声音复刻的参考音频最大时长 (s)。取值范围：[3.0, 30.0]。默认值：10.0
+
+                    <div class="form-group checkbox-group">
+                        <input type="checkbox" v-model="currentForm.enable_preprocess" :id="mode + '_preproc'" />
+                        <label :for="mode + '_preproc'">启用音频预处理</label>
+                        <div class="hint">有背景噪音时建议开启</div>
                     </div>
-                </div>
+
+                    <div class="form-group" v-if="currentForm.enable_preprocess">
+                        <label>最大提示音频时长（s）</label>
+                        <input
+                            type="number"
+                            v-model.number="currentForm.max_prompt_audio_length"
+                            step="0.1"
+                            min="3.0"
+                            max="30.0"
+                            :class="{ 'input-error': !isMaxLengthValid }"
+                        />
+                        <div v-if="!isMaxLengthValid" class="error-hint">
+                            ⚠️ 请输入 3.0 ~ 30.0 之间的数值
+                        </div>
+                    </div>
+                </template>
+
+                <!-- 设计专用参数 -->
+                <template v-if="mode === 'design'">
+                    <div class="form-group">
+                        <label>采样率</label>
+                        <select v-model="designForm.sample_rate">
+                            <option value="8000">8000</option>
+                            <option value="16000">16000</option>
+                            <option value="24000" selected>24000</option>
+                            <option value="48000">48000</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>输出格式</label>
+                        <select v-model="designForm.response_format">
+                            <option value="pcm">PCM</option>
+                            <option value="wav" selected>WAV</option>
+                            <option value="mp3">MP3</option>
+                            <option value="opus">Opus</option>
+                        </select>
+                    </div>
+                </template>
 
                 <div class="form-group">
                     <label>模型版本</label>
@@ -682,22 +899,30 @@ export default {
                     </select>
                 </div>
 
-                <!-- 提交按钮（根据模式调用不同方法） -->
+                <!-- 提交按钮 -->
                 <button
                     v-if="mode === 'upload'"
                     class="btn"
                     @click="uploadAndClone"
                     :disabled="!isFormValid || uploading"
                 >
-                    {{ uploading ? '上传并处理中...' : '上传并复刻' }}
+                    {{ uploading ? '上传并处理中...' : '📁 上传并复刻' }}
                 </button>
                 <button
-                    v-else
+                    v-else-if="mode === 'url'"
                     class="btn"
                     @click="createFromUrl"
                     :disabled="!isFormValid || creating"
                 >
-                    {{ creating ? '创建中...' : '创建音色（URL）' }}
+                    {{ creating ? '创建中...' : '🔗 创建音色' }}
+                </button>
+                <button
+                    v-else-if="mode === 'design'"
+                    class="btn"
+                    @click="createFromDesign"
+                    :disabled="!isDesignFormValid || designing"
+                >
+                    {{ designing ? '创建中...' : '🎨 设计音色' }}
                 </button>
             </fieldset>
 
@@ -719,7 +944,10 @@ export default {
                     </thead>
                     <tbody>
                         <tr v-for="v in voiceList" :key="v.voice_id">
-                            <td>{{ v.voice_id }}</td>
+                            <td>
+                                {{ v.voice_id }}
+                                <span v-if="v.voice_id && v.voice_id.includes('-vd-')" style="background:#dbeafe;color:#1e40af;padding:0 6px;border-radius:4px;font-size:0.7rem;margin-left:4px;">设计</span>
+                            </td>
                             <td>{{ v.created_at }}</td>
                             <td>
                                 <span :class="'status-' + v.status.toLowerCase()" :title="getStatusDescription(v.status)">
@@ -727,8 +955,8 @@ export default {
                                 </span>
                             </td>
                             <td>
-                                <button class="btn btn-sm" @click="copyToClipboard(v.voice_id)" title="复制 ID" style="margin-right: 8px;">复制</button>
-                                <button class="btn btn-sm" @click="openPreviewModal(v.voice_id)" :disabled="v.status !== 'OK'" title="预览音色" style="margin-right: 8px;">预览</button>
+                                <button class="btn btn-sm" @click="copyToClipboard(v.voice_id)" title="复制 ID" style="margin-right: 4px;">复制</button>
+                                <button class="btn btn-sm" @click="openListPreviewModal(v.voice_id)" :disabled="v.status !== 'OK'" title="预览音色" style="margin-right: 4px;">预览</button>
                                 <button class="btn btn-danger btn-sm" @click="deleteVoice(v.voice_id)">删除</button>
                             </td>
                         </tr>
@@ -739,20 +967,61 @@ export default {
                 </table>
             </div>
 
-            <!-- 预览模态框 -->
-            <div v-if="previewModalVisible" class="modal-overlay" @mousedown.self="closePreviewModal">
+            <!-- 预览模态框（设计模式专用 - 内嵌删除确认） -->
+            <div v-if="previewModalVisible" class="modal-overlay">
+                <div class="modal-content" style="max-width:500px;width:90%;">
+                    <h3>🎧 音色预览</h3>
+                    <p><strong>Voice ID:</strong> {{ previewVoiceId }}</p>
+                    <p><strong>预览文本:</strong> {{ previewText }}</p>
+                    <div style="display:flex;gap:12px;margin:16px 0;flex-wrap:wrap;">
+                        <button class="btn" @click="playPreviewAudio">▶ 试听</button>
+                    </div>
+                    <div style="border-top:1px solid var(--border);padding-top:16px;">
+
+                        <!-- 正常状态 -->
+                        <div v-if="!previewDeleteConfirm" style="display:flex;gap:12px;justify-content:flex-end;">
+                            <button class="btn btn-success" @click="keepVoice">保留</button>
+                            <button class="btn btn-danger" @click="previewDeleteConfirm = true">删除</button>
+                            <button class="btn btn-sm btn-secondary" @click="closePreviewModal">关闭</button>
+                        </div>
+                        <!-- 删除确认状态 -->
+                        <div v-else style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+                            <div style="color:var(--danger);font-weight:bold;">⚠️ 确定要删除此音色吗？此操作不可恢复。</div>
+                            <div style="display:flex;gap:12px;">
+                                <button class="btn btn-sm btn-secondary" @click="previewDeleteConfirm = false">取消</button>
+                                <button class="btn btn-danger" @click="confirmDeletePreview">确认删除</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 删除确认模态框（用于音色列表） -->
+            <div v-if="deleteModalVisible" class="modal-overlay" @mousedown.self="cancelDelete">
+                <div class="modal-content" style="max-width:400px;width:90%;">
+                    <h3>⚠️ 确认删除</h3>
+                    <p>确定要删除音色 <strong>{{ deleteTargetId }}</strong> 吗？此操作不可恢复。</p>
+                    <div style="display:flex;gap:12px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:16px;">
+                        <button class="btn btn-sm" @click="cancelDelete" style="background:var(--gray);">取消</button>
+                        <button class="btn btn-danger" @click="confirmDelete">确认删除</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 列表预览模态框 -->
+            <div v-if="listPreviewModalVisible" class="modal-overlay" @mousedown.self="closeListPreviewModal">
                 <div class="modal-content">
                     <h3>预览音色</h3>
-                    <p><strong>Voice ID:</strong> {{ previewVoiceId }}</p>
+                    <p><strong>Voice ID:</strong> {{ listPreviewVoiceId }}</p>
                     <div class="form-group">
                         <label>预览文本</label>
-                        <textarea v-model="previewText" rows="3" placeholder="输入要试听的文本"></textarea>
+                        <textarea v-model="listPreviewText" rows="3" placeholder="输入要试听的文本"></textarea>
                     </div>
                     <div style="display:flex; gap:12px; justify-content:flex-end;">
-                        <button class="btn" @click="doPreview" :disabled="previewLoading">
-                            {{ previewLoading ? '合成中...' : '试听' }}
+                        <button class="btn" @click="doListPreview" :disabled="listPreviewLoading">
+                            {{ listPreviewLoading ? '合成中...' : '试听' }}
                         </button>
-                        <button class="btn btn-sm" @click="closePreviewModal" style="background: var(--gray);">关闭</button>
+                        <button class="btn btn-sm btn-secondary" @click="closeListPreviewModal">关闭</button>
                     </div>
                 </div>
             </div>

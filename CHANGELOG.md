@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.1.8] - 2026-08-24
+
+### Added
+
+- 百炼 Qwen Audio 3.0 TTS 支持**声音设计**（Voice Design）功能：
+  - 新增声音设计专用文档 `docs/bailian_qwen_audio_3_0_tts_design.md`，去除方言支持说明（设计音色不支持方言）
+  - `create_voice()` 支持 `mode` 参数，区分 `clone`（声音复刻）与 `design`（声音设计）
+  - 实现 `_create_voice_by_design()` 调用百炼 `voice-enrollment` / `create_voice` API
+  - 音色识别改用精确 split 判断：设计音色 ID 按 `-` 分割后长度为 8 且第 6 段为 `vd`，避免复刻音色 prefix 含 `vd` 时被误判
+- 前端音色管理页新增 **"🎨 声音设计"** 选项卡：
+  - 支持自然语言声音描述（voice_prompt）和预览文本（preview_text）输入
+  - 字符数校验：汉字按 2 字符计算，voice_prompt ≤ 500 字符，preview_text 15~200 字符
+  - 创建成功后弹出预览模态框，支持在线试听、保留或删除
+  - 预览模态框内嵌删除确认流程，避免沙盒环境 `confirm()` 被拦截
+- 声音描述输入框添加帮助链接，点击复制链接到剪贴板
+- 恢复音色列表的独立预览功能（与设计模式预览分离）
+
+### Changed
+
+- `base.py` 新增 `get_docs_for_voice()` 默认方法，供适配器根据音色 ID 动态选择文档
+- `tts_service.py` 在合成时调用 `get_docs_for_voice()` 获取对应文档
+- 前端按钮样式优化：新增 `btn-success` 和 `btn-secondary` 类，悬停有反馈
+- 公网 IPv4 提示框适配深色模式
+- 音色列表中的设计音色显示 "设计" 标签
+
 ## [0.1.7] - 2026-08-24
 
 ### Added
