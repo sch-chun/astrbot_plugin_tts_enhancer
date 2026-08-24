@@ -55,7 +55,7 @@ class TTSProviderAdapter(ABC):
         return ""
 
     @abstractmethod
-    def get_subagent_system_prompt(self, raw_tts_text: str) -> str:
+    def get_subagent_system_prompt(self) -> str:
         """
         生成 SubAgent 的系统提示词
         

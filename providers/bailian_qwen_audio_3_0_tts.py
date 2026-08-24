@@ -81,7 +81,7 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
         )
 
     # ---------- 2. 构建 SubAgent 系统提示 ----------
-    def get_subagent_system_prompt(self, raw_tts_text: str) -> str:
+    def get_subagent_system_prompt(self) -> str:
         """
         构建 SubAgent 的系统提示，用于指导参数优化。
         
@@ -99,7 +99,7 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
 
 {docs}
 
-现在请根据待合成文本「{raw_tts_text}」，调用 `tts_enhance` 工具，提供合适的参数（包括 text 和其他可选参数）。请直接调用工具，不要额外解释。"""
+现在请根据用户提供的文本和上下文，调用 `tts_enhance` 工具，提供合适的参数（包括 text 和其他可选参数）。请直接调用工具，不要额外解释。"""
 
     # ---------- 3. 解析 SubAgent 响应 ----------
     def parse_subagent_response(self, response_data: Any) -> dict[str, Any]:

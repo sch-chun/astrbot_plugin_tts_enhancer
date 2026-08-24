@@ -23,7 +23,7 @@ class TTSSubAgent:
         初始化TTS子代理。
         
         Args:
-            context (Context): 星球上下文对象，用于获取 provider 等资源
+            context (Context): Star 上下文对象，用于获取 provider 等资源
             config (Optional[dict]): 配置字典，包含 enhance_llm_provider 等配置项
         """
         self.context = context
@@ -35,6 +35,7 @@ class TTSSubAgent:
         system_prompt: str,
         user_message: str,
         context_messages: Optional[list[dict[str, str]]] = None,
+        persona: str = "",
         tool_set: Optional[ToolSet] = None,
     ) -> Optional[dict[str, Any]]:
         """
@@ -81,27 +82,33 @@ class TTSSubAgent:
                 logger.error("TTS SubAgent: LLM Provider 不是 Provider 类型")
                 return None
 
-            # 构建上下文列表
-            contexts = []
+            # 构建完整用户提示
+            full_prompt = ""
+            if persona:
+                full_prompt = f"说话人人格：{persona}\n\n"
             if context_messages:
-                summary = "\n".join(
-                    f"[{msg['role']}] {msg['content']}" for msg in context_messages if msg.get("content")
-                )
-                if summary.strip():
-                    contexts.append({
-                        "role": "user",
-                        "content": f"以下是最近的对话上下文，请参考判断合适的语音风格：\n\n{summary}\n\n---"
-                    })
-                    contexts.append({
-                        "role": "assistant",
-                        "content": "我已了解上下文，请提供需要增强的文本。"
-                    })
+
+                # 生成摘要
+                summary_lines = []
+                for msg in context_messages:
+                    role = msg.get("role", "user")
+                    content = msg.get("content", "")
+                    if content:
+                        summary_lines.append(f"[{role}] {content}")
+                if summary_lines:
+                    summary = "\n".join(summary_lines)
+                    full_prompt += (
+                        f"以下是最近的对话上下文，请参考判断合适的语音风格：\n\n"
+                        f"{summary}\n\n"
+                        f"---\n\n"
+                    )
+            full_prompt += f"现在，请为以下文本合成语音（调用 tts_enhance 工具）：\n{user_message}"
+            logger.debug(f"TTS SubAgent: 用户提示：\n{full_prompt}")
 
             # 构建请求
             response = await provider.text_chat(
-                prompt=user_message,
+                prompt=full_prompt,
                 session_id=session_id,
-                contexts=contexts,
                 system_prompt=system_prompt,
                 func_tool=tool_set
             )

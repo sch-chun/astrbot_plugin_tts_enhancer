@@ -7,6 +7,7 @@ from astrbot.api.event import AstrMessageEvent
 from astrbot.api.star import Context
 from astrbot.api.message_components import Record
 from astrbot.core import logger
+from astrbot.core.db.po import Personality
 
 from .config import TTSEnhancerConfig
 from .sub_agent import TTSSubAgent
@@ -53,6 +54,27 @@ class TTSService:
         except Exception as e:
             logger.warning(f"获取上下文消息失败: {e}")
         return messages
+
+    async def get_current_persona(self, event: AstrMessageEvent) -> str:
+        """获取当前会话的人格提示词"""
+        umo = event.unified_msg_origin
+
+        # 拿到当前 conversation 绑定的 persona_id
+        conv_mgr = self.context.conversation_manager
+        conv_id = await conv_mgr.get_curr_conversation_id(umo)
+        conversation = await conv_mgr.get_conversation(umo, conv_id) if conv_id else None
+        conversation_persona_id = conversation.persona_id if conversation else None
+
+        # 解析最终生效的人格
+        (persona_id, persona, _force, _webchat) = await self.context.persona_manager.resolve_selected_persona(
+            umo=umo,
+            conversation_persona_id=conversation_persona_id,
+            platform_name=event.get_platform_name(),
+        )
+
+        if persona:
+            return persona.get("prompt", "")
+        return ""
 
     async def synthesize(
         self,
@@ -119,12 +141,15 @@ class TTSService:
 
             while attempt < max_attempts:
                 try:
-                    sys_prompt = adapter.get_subagent_system_prompt(raw_text)
+                    sys_prompt = adapter.get_subagent_system_prompt()
+                    persona = await self.get_current_persona(event)
+                    logger.debug(f"persona: {persona}")
                     result = await self.sub_agent.call(
                         event,
                         sys_prompt,
                         raw_text,
                         current_context,
+                        persona,
                         tool_set=tool_set
                     )
 
