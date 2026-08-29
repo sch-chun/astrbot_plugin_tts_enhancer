@@ -6,8 +6,7 @@ from astrbot.core import logger
 
 
 class TTSEnhancerConfig:
-    """
-    TTS Enhancer 插件配置管理类。
+    """TTS Enhancer 插件配置管理类。
 
     该类负责加载和管理TTS供应商配置，提供配置访问和供应商管理功能。
     配置数据通过字典形式传入，支持优先级排序和供应商条目命名。
@@ -17,8 +16,7 @@ class TTSEnhancerConfig:
         _providers (list): 已排序的供应商列表，按优先级从低到高排序
     """
     def __init__(self, raw_config: Optional[dict] = None) -> None:
-        """
-        初始化配置管理器。
+        """初始化配置管理器。
 
         Args:
             raw_config (Optional[dict]): 原始配置数据字典，包含 providers 等配置项。
@@ -29,8 +27,7 @@ class TTSEnhancerConfig:
         self._load_providers()
 
     def _load_providers(self) -> None:
-        """
-        加载并排序 providers。
+        """加载并排序 providers。
 
         从 raw_config 中获取 providers 配置，按优先级进行排序。
         如果 providers 为空，会记录警告日志。
@@ -42,8 +39,7 @@ class TTSEnhancerConfig:
         self._providers = sorted(providers_raw, key=lambda x: x.get("priority", 100))
 
     def get_providers(self) -> list:
-        """
-        获取已排序的 providers 列表。
+        """获取已排序的 providers 列表。
 
         Returns:
             list: 返回已按优先级排序的 providers 列表。
@@ -52,8 +48,7 @@ class TTSEnhancerConfig:
         return self._providers if self._providers else []
 
     def get_entry_name(self, entry: dict, index: int = -1) -> str:
-        """
-        获取供应商条目的显示名称。
+        """获取供应商条目的显示名称。
 
         命名规则：
         1. 优先使用用户自定义的 display_name
@@ -80,8 +75,7 @@ class TTSEnhancerConfig:
         return template_key
 
     def get(self, key: str, default=None):
-        """
-        获取配置值。
+        """获取配置值。
 
         Args:
             key (str): 配置项的键名
@@ -93,8 +87,7 @@ class TTSEnhancerConfig:
         return self.raw_config.get(key, default)
 
     def has_providers(self) -> bool:
-        """
-        检查是否有任何供应商配置。
+        """检查是否有任何供应商配置。
 
         Returns:
             bool: 如果有配置的 providers 返回 True，否则返回 False

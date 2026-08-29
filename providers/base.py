@@ -6,8 +6,7 @@ from astrbot.core.agent.tool import FunctionTool
 
 
 class TTSProviderAdapter(ABC):
-    """
-    TTS 供应商适配器抽象基类
+    """TTS 供应商适配器抽象基类
     
     该类定义了所有 TTS 供应商适配器必须实现的接口和基础功能。
     每个具体的 TTS 供应商都需要继承这个基类并实现所有抽象方法。
@@ -27,9 +26,8 @@ class TTSProviderAdapter(ABC):
 
     # ———————— 语音合成 ————————
 
-    def __init__(self, entry: dict):
-        """
-        初始化 TTS 供应商适配器
+    def __init__(self, entry: dict) -> None:
+        """初始化 TTS 供应商适配器
         
         Args:
             entry (dict): 包含 TTS 供应商配置信息的字典，必须包含 __template_key 字段
@@ -40,8 +38,7 @@ class TTSProviderAdapter(ABC):
         self.docs_content = self._load_docs()
 
     def _load_docs(self) -> str:
-        """
-        根据 template_key 加载对应的 Markdown 文档
+        """根据 template_key 加载对应的 Markdown 文档
         
         从 docs 目录下加载与 template_key 同名的 markdown 文档文件。
         如果文档不存在，返回空字符串。
@@ -56,8 +53,7 @@ class TTSProviderAdapter(ABC):
 
     @abstractmethod
     def get_subagent_system_prompt(self) -> str:
-        """
-        生成 SubAgent 的系统提示词
+        """生成 SubAgent 的系统提示词
         
         根据原始 TTS 文本生成适合 SubAgent 使用的系统提示词。
         提示词应该包含必要的上下文信息和指导。
@@ -72,8 +68,7 @@ class TTSProviderAdapter(ABC):
 
     @abstractmethod
     def get_tool_schema(self) -> Optional[FunctionTool]:
-        """
-        返回用于 TTS 参数增强的 Function Tool
+        """返回用于 TTS 参数增强的 Function Tool
         
         返回一个 FunctionTool 实例，用于增强 TTS 参数。
         如果适配器不支持 Function Calling，可以返回 None 或重写此方法。
@@ -85,8 +80,7 @@ class TTSProviderAdapter(ABC):
 
     @abstractmethod
     def parse_subagent_response(self, response_data: Any) -> dict:
-        """
-        解析 SubAgent 返回的数据
+        """解析 SubAgent 返回的数据
         
         将 SubAgent 返回的响应数据解析为标准格式。
         
@@ -100,8 +94,7 @@ class TTSProviderAdapter(ABC):
 
     @abstractmethod
     async def call_api(self, text: str, raw_params: dict, config: dict) -> str:
-        """
-        调用 TTS API
+        """调用 TTS API
         
         调用具体的 TTS 服务 API 进行语音合成。
         这是一个异步方法，需要实现具体的 API 调用逻辑。
@@ -117,8 +110,7 @@ class TTSProviderAdapter(ABC):
         pass
 
     def validate_params(self, params: dict) -> tuple[bool, str]:
-        """
-        验证 TTS 参数是否合法
+        """验证 TTS 参数是否合法
         
         对传入的 TTS 参数进行验证，确保参数符合要求。
         子类可以重写此方法实现具体的参数验证逻辑。
@@ -133,8 +125,7 @@ class TTSProviderAdapter(ABC):
         return True, ""
 
     def sanitize_params(self, params: dict) -> dict:
-        """
-        清洗 TTS 参数
+        """清洗 TTS 参数
         
         对传入的 TTS 参数进行清洗和规范化处理，确保参数符合 API 要求。
         子类可以重写此方法实现具体的参数清洗逻辑。
@@ -152,8 +143,7 @@ class TTSProviderAdapter(ABC):
     # ———————— 音色管理 ————————
 
     async def create_voice(self, params: dict) -> dict:
-        """
-        创建语音
+        """创建语音
 
         调用 TTS API 进行语音合成，并返回合成结果。
 
@@ -166,8 +156,7 @@ class TTSProviderAdapter(ABC):
         raise NotImplementedError
 
     async def list_voice(self, **kwargs) -> dict:
-        """
-        列出语音
+        """列出语音
 
         调用 TTS API 列出已有的语音，并返回结果。
 
@@ -180,8 +169,7 @@ class TTSProviderAdapter(ABC):
         raise NotImplementedError
 
     async def delete_voice(self, **kwargs) -> bool:
-        """
-        删除语音
+        """删除语音
 
         调用 TTS API 删除指定的语音，并返回删除结果。
 

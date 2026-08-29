@@ -18,8 +18,7 @@ LEADING_BOUNDARY_SEPARATOR_PATTERN = re.compile(
 
 
 def _trim_boundary_separators(text: str, *, leading: bool = False) -> str:
-    """
-    移除文本中的边界分隔符。
+    """移除文本中的边界分隔符。
 
     Args:
         text (str): 需要处理的文本。
@@ -34,8 +33,7 @@ def _trim_boundary_separators(text: str, *, leading: bool = False) -> str:
 
 
 def _append_text_segment(segments: list[dict], text: str) -> None:
-    """
-    将文本段添加到分段列表中。
+    """将文本段添加到分段列表中。
 
     会对文本进行去除首尾空白字符处理。如果前一个分段是 TTS 类型，
     则会去除当前文本的前导边界分隔符。随后去除尾部边界分隔符。
@@ -56,8 +54,7 @@ def _append_text_segment(segments: list[dict], text: str) -> None:
 
 
 def split_by_tts_tags(text: str) -> list[dict]:
-    """
-    将包含 <tts>...</tts> 标签的文本分割为文本段和 TTS 段的列表。
+    """将包含 <tts>...</tts> 标签的文本分割为文本段和 TTS 段的列表。
 
     Args:
         text (str): 待解析的原始文本。

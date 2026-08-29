@@ -4,48 +4,65 @@ import httpx
 from datetime import datetime
 from pathlib import Path
 import traceback
-import re
-
-from typing import Any
 
 from astrbot.core import logger
-from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 from astrbot.core.agent.tool import FunctionTool
 
 from .base import TTSProviderAdapter
 
+from typing import Any
+
 
 class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
-    """
-    百炼 Qwen-Audio-TTS 供应商适配器，通过 Tool Calling 接收增强参数。
+    """百炼 Qwen-Audio-TTS 供应商适配器，通过 Tool Calling 接收增强参数。
     
     该适配器实现了阿里云百炼平台的 Qwen Audio 3.0 TTS 服务，支持通过 Function Calling
     方式接收结构化的语音合成参数，包括情感标签、指令、音量、语速和语言提示等。
+    同时支持音色的创建（克隆与设计）、查询与删除等管理功能。
     
     Attributes:
         _API_ENDPOINT (str): 阿里云百炼 TTS API 的端点地址
-        VALID_LANGS (list): 支持的语言代码列表
+        VALID_LANGS (list[str]): 支持的语言代码列表
+        docs_content (str): 标准 TTS 参数使用文档内容
+        design_docs_content (str): 声音设计音色专用文档内容
     """
     _API_ENDPOINT = "https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer"
 
-    def __init__(self, entry: dict):
-        """因为 Qwen Audio 3.0 TTS 声音设计音色不支持方言，所以分出两份文档"""
-        super().__init__(entry)
+    def __init__(self, entry: dict) -> None:
+        """初始化适配器，加载标准文档和声音设计专用文档。
+
+        因为 Qwen Audio 3.0 TTS 声音设计音色不支持方言，所以分出两份文档。
+
+        Args:
+            entry (dict): 供应商配置字典，包含 API 密钥、工作空间 ID 等信息
+        """
+        super().__init__(entry=entry)
         self.docs_content = self._load_docs()
         self.design_docs_content = self._load_design_docs()
 
-    def _load_design_docs(self):
-        """加载声音设计音色专用文档"""
+    def _load_design_docs(self) -> str:
+        """加载声音设计音色专用文档。
+
+        Returns:
+            str: 声音设计专用文档的文本内容，如果文件不存在则返回空字符串
+        """
         docs_path = Path(__file__).parent / "docs" / "bailian_qwen_audio_3_0_tts_design.md"
         if docs_path.exists():
             return docs_path.read_text(encoding="utf-8")
         return ""
 
     def get_docs_for_voice(self, voice: str) -> str:
-        """
-        根据音色 ID 返回对应的文档。
+        """根据音色 ID 返回对应的文档。
+
         声音设计音色格式（包含 -vd-）：qwen-audio-3.0-tts-{model}-vd-{prefix}-{unique}
         按 '-' 分割后长度为 8，且索引 5 为 'vd'。
+        其他情况（包括长度 7 的复刻音色，无论 prefix 是否包含 vd）均使用标准文档。
+
+        Args:
+            voice (str): 音色 ID，如果为空则返回标准文档
+
+        Returns:
+            str: 对应音色类型的参数使用文档内容
         """
         if not voice:
             return self.docs_content
@@ -62,8 +79,7 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
 
     # ---------- 1. 定义工具 Schema ----------
     def get_tool_schema(self) -> FunctionTool:
-        """
-        返回用于 TTS 参数增强的 Function Tool。
+        """返回用于 TTS 参数增强的 Function Tool。
         
         该方法定义了一个名为 "tts_enhance" 的工具，用于接收和结构化语音合成参数。
         参数包括文本内容、情感指令、音量、语速和语言提示等。
@@ -115,8 +131,7 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
 
     # ---------- 2. 构建 SubAgent 系统提示 ----------
     def get_subagent_system_prompt(self) -> str:
-        """
-        构建 SubAgent 的系统提示，用于指导参数优化。
+        """构建 SubAgent 的系统提示，用于指导参数优化。
         
         该方法生成一个系统提示，指导 SubAgent 如何根据待合成文本优化语音合成参数。
         提示中包含了 TTS 模型的参数使用说明和具体的优化要求。
@@ -134,8 +149,7 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
 
     # ---------- 3. 解析 SubAgent 响应 ----------
     def parse_subagent_response(self, response_data: Any) -> dict[str, Any]:
-        """
-        解析 SubAgent 返回的数据，提取语音合成参数。
+        """解析 SubAgent 返回的数据，提取语音合成参数。
         
         该方法处理 SubAgent 的响应数据，将其转换为语音合成所需的参数格式。
         如果响应是字典格式，则直接返回；如果是字符串，则作为文本参数返回。
@@ -144,7 +158,8 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
             response_data (Any): SubAgent 的响应数据，可以是字典或字符串
             
         Returns:
-            dict[str, Any]: 包含语音合成参数的字典，至少包含 text 字段
+            dict[str, Any]: 包含语音合成参数的字典，至少包含 text 字段；
+                           如果响应无效或缺少 text 字段，则返回空字典
         """
         if isinstance(response_data, dict):
 
@@ -166,8 +181,7 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
         raw_params: dict[str, Any],  # 从工具解析出的参数（优先）
         config: dict[str, Any]   # 当前供应商的 entry 配置
     ) -> str:
-        """
-        执行 TTS 合成，调用阿里云百炼 API 并返回音频文件路径。
+        """执行 TTS 合成，调用阿里云百炼 API 并返回音频文件路径。
         
         该方法是 TTS 合成的核心方法，负责：
         1. 提取和合并配置参数
@@ -183,6 +197,7 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
         Returns:
             str: 生成的音频文件路径，失败时返回空字符串
         """
+
         # 提取配置
         api_key = config.get("api_key", "")
         workspace_id = config.get("workspace_id", "")
@@ -298,8 +313,7 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
             return ""
 
     async def _download_audio(self, url: str, fmt: str, config: dict, timeout: int = 60) -> str:
-        """
-        下载音频文件到本地存储。
+        """下载音频文件到本地存储。
         
         该方法负责从指定的 URL 下载音频文件，并将其保存到本地 TTS 增强器目录中。
         文件名包含时间戳以确保唯一性。
@@ -307,6 +321,7 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
         Args:
             url (str): 音频文件的下载 URL
             fmt (str): 音频文件格式（如 "wav"、"mp3" 等）
+            config (dict): 供应商配置字典，需包含 `_data_dir` 以指定保存路径
             timeout (int, optional): 下载超时时间，默认为 60 秒
             
         Returns:
@@ -338,8 +353,7 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
     VALID_LANGS = ["zh", "en", "fr", "de", "ja", "ko", "ru", "pt", "th", "id", "vi", "es", "it", "ms", "fil", "ar"]
 
     def validate_params(self, params: dict) -> tuple[bool, str]:
-        """
-        验证语音合成参数的有效性。
+        """验证语音合成参数的有效性。
         
         该方法检查传入的参数是否符合 Qwen Audio 3.0 TTS API 的要求，
         包括音量范围、语速范围和语言代码的有效性。
@@ -372,8 +386,7 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
         return True, ""
 
     def sanitize_params(self, params: dict) -> dict:
-        """
-        清理和规范化语音合成参数。
+        """清理和规范化语音合成参数。
         
         该方法对输入的参数进行清理，确保所有参数都符合 API 要求：
         - 移除无效的参数值
@@ -417,7 +430,30 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
     # ———————— 音色管理 ————————
 
     async def create_voice(self, params: dict) -> dict:
-        """根据参数确定是声音克隆还是声音设计"""
+        """根据参数确定是声音克隆还是声音设计，并调用对应的创建方法。
+
+        Args:
+            params (dict): 创建音色的参数字典，包含以下键：
+                - model (str, optional): 模型后缀，如 'flash' 或 'plus'
+                - prefix (str): 音色前缀，必填，字母数字且长度不超过10
+                - language_hints (list, optional): 语言提示列表
+                - mode (str, optional): 创建模式，'clone' 或 'design'，若不指定则根据参数自动推断
+                - audio_url (str, optional): 声音克隆时的音频 URL（mode='clone' 时必填）
+                - voice_prompt (str, optional): 声音设计时的提示词（mode='design' 时必填）
+                - preview_text (str, optional): 声音设计时的预览文本
+                - sample_rate (int, optional): 声音设计时的采样率
+                - response_format (str, optional): 声音设计时的响应格式
+                - enable_volume_normalization (bool, optional): 声音克隆时是否启用音量归一化
+                - enable_preprocess (bool, optional): 声音克隆时是否启用预处理
+                - max_prompt_audio_length (float, optional): 声音克隆时的最大提示音频长度
+
+        Returns:
+            dict: 创建结果字典，包含 'voice_id' 和 'extra' 等信息
+
+        Raises:
+            ValueError: 如果缺少必填参数或参数格式不合法
+            RuntimeError: 如果 API 请求失败
+        """
         workspace_id = self.entry.get("workspace_id", "")
         api_key = self.entry.get("api_key", "")
         if not workspace_id or not api_key:
@@ -503,7 +539,23 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
         enable_preprocess: bool,
         max_prompt_audio_length: float | None
     ) -> dict:
-        """声音克隆"""
+        """通过声音克隆方式创建音色。
+
+        Args:
+            target_model (str): 目标模型名称，如 'qwen-audio-3.0-tts-flash'
+            prefix (str): 音色前缀
+            language_hints (list): 语言提示列表
+            audio_url (str): 用于克隆的参考音频 URL
+            enable_volume_normalization (bool): 是否启用音量归一化
+            enable_preprocess (bool): 是否启用音频预处理
+            max_prompt_audio_length (float | None): 最大提示音频长度（秒），为 None 时不限制
+
+        Returns:
+            dict: 创建结果字典，包含 'voice_id' 和 'extra' 等信息
+
+        Raises:
+            RuntimeError: 如果 API 请求失败或未返回 voice_id
+        """
         workspace_id = self.entry.get("workspace_id", "")
         api_key = self.entry.get("api_key", "")
         url = f"https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/customization"
@@ -570,7 +622,23 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
         sample_rate: int,
         response_format: str
     ) -> dict:
-        """声音设计"""
+        """通过声音设计方式创建音色。
+
+        Args:
+            target_model (str): 目标模型名称，如 'qwen-audio-3.0-tts-plus'
+            prefix (str): 音色前缀
+            language_hints (list): 语言提示列表（仅支持 'zh' 和 'en'）
+            voice_prompt (str): 声音设计的提示词
+            preview_text (str): 预览合成的文本
+            sample_rate (int): 采样率
+            response_format (str): 响应音频格式（如 'wav'）
+
+        Returns:
+            dict: 创建结果字典，包含 'voice_id'、'preview_audio' 和 'extra' 等信息
+
+        Raises:
+            RuntimeError: 如果 API 请求失败或未返回 voice_id
+        """
         workspace_id = self.entry.get("workspace_id")
         api_key = self.entry.get("api_key")
 
@@ -622,7 +690,21 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
         }
 
     async def list_voice(self, **kwargs) -> dict:
-        """查询百炼音色列表"""
+        """查询百炼音色列表，仅返回 qwen-audio-3.0-tts 开头的音色。
+
+        Args:
+            **kwargs: 查询参数，支持以下键：
+                - prefix (str, optional): 按前缀过滤音色
+                - page_size (int, optional): 每页数量，默认 20
+                - page_index (int, optional): 页码索引，默认 0
+
+        Returns:
+            dict: 包含 'items'（音色列表）和 'total'（音色总数）的字典
+
+        Raises:
+            ValueError: 如果 workspace_id 或 api_key 未配置
+            httpx.HTTPStatusError: 如果 API 请求返回非 200 状态码
+        """
         workspace_id = self.entry.get("workspace_id", "")
         api_key = self.entry.get("api_key", "")
         if not workspace_id or not api_key:
@@ -669,7 +751,19 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
         return {"items": items, "total": len(items)}
 
     async def delete_voice(self, **kwargs) -> bool:
-        """删除百炼音色"""
+        """删除百炼音色。
+
+        Args:
+            **kwargs: 删除参数，支持以下键：
+                - voice_id (str): 待删除的音色 ID，必填
+
+        Returns:
+            bool: 删除成功返回 True
+
+        Raises:
+            ValueError: 如果 workspace_id、api_key 或 voice_id 为空
+            httpx.HTTPStatusError: 如果 API 请求返回非 200 状态码
+        """
         workspace_id = self.entry.get("workspace_id", "")
         api_key = self.entry.get("api_key", "")
         voice_id = kwargs.get("voice_id")
@@ -697,7 +791,14 @@ class BailianQwenAudio3_0TTSAdapter(TTSProviderAdapter):
 
     @staticmethod
     def _extract_model_from_voice_id(voice_id: str) -> str | None:
-        """从音色 ID 中提取模型版本 (flash/plus)，若无法识别则返回 'flash'"""
+        """从音色 ID 中提取模型版本 (flash/plus)。
+
+        Args:
+            voice_id (str): 音色 ID 字符串
+
+        Returns:
+            str | None: 如果识别到 'flash' 或 'plus' 则返回对应字符串，否则返回 None
+        """
         if not voice_id or not voice_id.startswith("qwen-audio-3.0-tts-"):
             return None
         parts = voice_id.split('-')

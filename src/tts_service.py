@@ -1,21 +1,24 @@
 """TTS 核心服务层 —— 供 Plugin 和 Tool 共同调用"""
 import json
 from pathlib import Path
-from typing import Optional
 
-from astrbot.api.event import AstrMessageEvent
-from astrbot.api.star import Context
 from astrbot.api.message_components import Record
 from astrbot.core import logger
-from astrbot.core.db.po import Personality
 
-from .config import TTSEnhancerConfig
 from .sub_agent import TTSSubAgent
 from ..providers import ProviderFactory
 
+from typing import Optional
+from astrbot.api.event import AstrMessageEvent
+from astrbot.api.star import Context
+from .config import TTSEnhancerConfig
+
 
 class TTSService:
-    """TTS 合成服务"""
+    """TTS 合成服务
+
+    负责管理 TTS 供应商、上下文消息获取、人格解析以及核心的文本转语音合成流程。
+    """
 
     def __init__(
         self,
@@ -23,7 +26,16 @@ class TTSService:
         providers: list,
         config: TTSEnhancerConfig,
         audio_data_dir: Path,
-    ):
+    ) -> None:
+        """
+        初始化 TTS 服务实例。
+
+        Args:
+            context: AstrBot 上下文对象，用于访问会话和人格管理器等。
+            providers: TTS 供应商配置列表。
+            config: TTS 增强配置对象。
+            audio_data_dir: 音频数据存储目录路径。
+        """
         self.context = context
         self.providers = providers
         self.config = config
@@ -31,10 +43,18 @@ class TTSService:
         self.sub_agent = TTSSubAgent(context, config.raw_config)
 
     async def get_context_messages(self, event: AstrMessageEvent) -> list[dict]:
-        """获取上下文消息"""
+        """获取上下文消息（按对话轮次，即 user 消息的条数）
+
+        Args:
+            event: 消息事件对象，用于获取会话标识。
+
+        Returns:
+            包含历史消息字典的列表，每条消息包含 'role' 和 'content' 键。
+        """
         context_window = self.config.get("context_window", 10)
-        if not isinstance(context_window, int) or context_window < 0:
-            context_window = 10
+        if not isinstance(context_window, int) or context_window <= 0:
+            return []
+
         messages = []
         try:
             session_id = event.unified_msg_origin
@@ -45,18 +65,40 @@ class TTSService:
                     conv = await conv_mgr.get_conversation(session_id, conv_id)
                     if conv and conv.history:
                         history = json.loads(conv.history)
-                        recent = history[-context_window * 2:] if context_window > 0 else []
-                        for msg in recent:
+                        collected = []
+                        user_count = 0
+
+                        # 从最近的消息开始向前遍历
+                        for msg in reversed(history):
                             role = msg.get("role", "user")
                             content = msg.get("content", "")
+
+                            # 只保留有内容的消息（避免空消息干扰计数）
                             if content:
-                                messages.append({"role": role, "content": str(content)})
+                                collected.append({"role": role, "content": str(content)})
+                                if role == "user":
+                                    user_count += 1
+
+                                    # 当收集到第 context_window 条 user 消息时停止
+                                    if user_count >= context_window:
+                                        break
+
+                        # 恢复时间顺序（旧的在前，新的在后）
+                        messages = list(reversed(collected))
         except Exception as e:
             logger.warning(f"获取上下文消息失败: {e}")
+
         return messages
 
     async def get_current_persona(self, event: AstrMessageEvent) -> str:
-        """获取当前会话的人格提示词"""
+        """获取当前会话的人格提示词
+
+        Args:
+            event: 消息事件对象，用于获取会话标识和平台名称。
+
+        Returns:
+            当前生效的人格提示词字符串，若未配置则返回空字符串。
+        """
         umo = event.unified_msg_origin
 
         # 拿到当前 conversation 绑定的 persona_id
@@ -82,8 +124,7 @@ class TTSService:
         event: AstrMessageEvent,
         context_messages: list[dict],
     ) -> Optional[Record]:
-        """
-        核心合成方法
+        """核心合成方法
         
         Args:
             raw_text: 待合成文本

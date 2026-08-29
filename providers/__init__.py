@@ -28,7 +28,7 @@ class ProviderFactory:
     _adapters: Optional[dict[str, Type[TTSProviderAdapter]]] = None
 
     @classmethod
-    def _discover_adapters(cls):
+    def _discover_adapters(cls) -> None:
         """扫描当前目录，自动发现所有TTSProviderAdapter子类。
 
         该方法会遍历当前目录下的所有Python文件（排除以'_'开头的文件和base.py），

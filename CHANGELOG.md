@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.1.9] - 2026-08-29
+
+### Changed
+
+- 历史对话改为按照 x 条 user 消息获取，替换原先粗糙地按照 2x 条消息获取
+- 完善 Doc Strings 和类型注解
+- 修改插件名为标准格式
+
 ## [0.1.8] - 2026-08-24
 
 ### Added

@@ -2,11 +2,9 @@ from pathlib import Path
 import base64
 import time
 
-from astrbot.api.event import AstrMessageEvent
-from astrbot.api.star import Context, Star
+from astrbot.api.star import Star
 from astrbot.api.event.filter import on_llm_request, on_decorating_result
 from astrbot.api.message_components import Plain
-from astrbot.core.provider.entities import ProviderRequest
 from astrbot.core import logger
 from astrbot.api.web import request, json_response, error_response
 from astrbot.core.utils.astrbot_path import get_astrbot_data_path
@@ -19,15 +17,36 @@ from .src.tools import SendVoiceTool
 from .providers import ProviderFactory
 
 from typing import Optional
+from fastapi.responses import JSONResponse
+from astrbot.core.provider.entities import ProviderRequest
+from astrbot.api.event import AstrMessageEvent
+from astrbot.api.star import Context
 
 
 class TTSEnhancerPlugin(Star):
-    """
-    TTS Enhancer —— 多供应商智能语音合成插件
+    """TTS Enhancer —— 多供应商智能语音合成插件
 
     架构：主模型输出 <tts> 标签 → SubAgent 增强语音参数 → Provider Adapter 调用 API。
+
+    Args:
+        context (Context): 插件上下文对象，提供与 AstrBot 核心交互的能力。
+        config (Optional[dict]): 插件配置字典，默认为 None。
+
+    Attributes:
+        config (TTSEnhancerConfig): TTS 增强配置对象。
+        providers (list): TTS 供应商配置列表。
+        plugin_data_path (Path): 插件数据存储路径。
+        tts_service (TTSService): TTS 核心服务实例。
     """
-    def __init__(self, context: Context, config: Optional[dict] = None):
+    def __init__(self, context: Context, config: Optional[dict] = None) -> None:
+        """初始化 TTS Enhancer 插件。
+
+        依次完成数据目录初始化、核心服务初始化、LLM Tool 注册和 Web API 路由注册。
+
+        Args:
+            context (Context): 插件上下文对象。
+            config (Optional[dict]): 插件配置字典。
+        """
         super().__init__(context, config)
         self.config = TTSEnhancerConfig(config)
         self.providers = self.config.get_providers()
@@ -58,8 +77,7 @@ class TTSEnhancerPlugin(Star):
         event: AstrMessageEvent,
         context_messages: list[dict],
     ) -> list:
-        """
-        处理包含 TTS 标签的文本，将其转换为消息组件列表。
+        """处理包含 TTS 标签的文本，将其转换为消息组件列表。
 
         Args:
             text (str): 包含 TTS 标签的原始文本。
@@ -67,7 +85,7 @@ class TTSEnhancerPlugin(Star):
             context_messages (list[dict]): 上下文消息列表。
 
         Returns:
-            list: 包含 Plain 文本组件和 Record 音频组件的列表。
+            list: 包含 Plain 文本组件和 Record 音频组件的列表。若 TTS 合成失败，则降级为 Plain 文本组件。
         """
         segments = split_by_tts_tags(text)
         components = []
@@ -88,7 +106,7 @@ class TTSEnhancerPlugin(Star):
     # ———————— 事件钩子 ————————
 
     @on_llm_request()
-    async def on_llm_req(self, event: AstrMessageEvent, request: ProviderRequest):
+    async def on_llm_req(self, event: AstrMessageEvent, request: ProviderRequest) -> None:
         """处理 LLM 请求事件，将配置中的 TTS 提示词追加到系统提示词中。
 
         Args:
@@ -96,7 +114,7 @@ class TTSEnhancerPlugin(Star):
             request (ProviderRequest): 提供者请求对象，包含系统提示词等信息。
 
         Returns:
-            None: 如果未配置 TTS 提供商或提示词则直接返回，否则无显式返回值。
+            None: 若未配置 TTS 提供商或提示词则直接返回，否则将提示词追加至系统提示词后无显式返回。
         """
         if not self.providers:
             logger.warning("未配置 TTS 提供商，跳过 TTS 提示词追加")
@@ -108,14 +126,14 @@ class TTSEnhancerPlugin(Star):
         request.system_prompt += f"\n{tts_prompt}"
 
     @on_decorating_result(priority=13)
-    async def on_decorate(self, event: AstrMessageEvent):
+    async def on_decorate(self, event: AstrMessageEvent) -> None:
         """处理消息结果装饰事件，提取并处理文本中的 TTS 标签。
 
         检查消息链中的纯文本组件是否包含 TTS 标签，若存在则进行
         TTS 处理并替换原文本组件。
 
         Args:
-            event: 消息事件对象，包含待处理的消息结果链。
+            event (AstrMessageEvent): 消息事件对象，包含待处理的消息结果链。
 
         Returns:
             None
@@ -155,9 +173,27 @@ class TTSEnhancerPlugin(Star):
 
     # ————————————————————————
 
-    def _register_routes(self):
-        """注册音色管理相关的 Web API"""
-        async def get_providers():
+    def _register_routes(self) -> None:
+        """注册音色管理相关的 Web API 路由。
+
+        包含以下路由：
+            - GET  /providers: 获取分组后的供应商列表。
+            - POST /voice/create: 创建音色。
+            - POST /voice/list: 查询音色列表。
+            - POST /voice/delete: 删除音色。
+            - POST /upload: 上传音频文件。
+            - POST /start_file_server: 启动临时文件服务器。
+            - POST /stop_file_server: 停止临时文件服务器。
+            - POST /voice/preview: 预览音色。
+        """
+        async def get_providers() -> JSONResponse:
+            """获取分组后的供应商列表。
+
+            将供应商按 template_key 分组，并对 api_key 进行脱敏处理。
+
+            Returns:
+                JSONResponse: 包含分组后供应商列表的 JSON 响应。
+            """
             providers_raw = self.config.get_providers()
             groups = {}
             for idx, entry in enumerate(providers_raw):
@@ -184,8 +220,16 @@ class TTSEnhancerPlugin(Star):
             "获取分组后的供应商列表"
         )
 
-        async def create_voice():
-            """创建音色"""
+        async def create_voice() -> JSONResponse:
+            """创建音色。
+
+            Args (JSON Body):
+                entry_id (int): 供应商配置的索引 ID。
+                **kwargs: 供应商特定的创建参数。
+
+            Returns:
+                JSONResponse: 包含创建结果的 JSON 响应。
+            """
             payload = await request.json(default={})
             if not payload:
                 return error_response("payload required", status_code=400)
@@ -216,8 +260,16 @@ class TTSEnhancerPlugin(Star):
             "创建音色（请求体包含 entry_id 及供应商特定参数）"
         )
 
-        async def list_voices():
-            """列出音色"""
+        async def list_voices() -> JSONResponse:
+            """列出音色。
+
+            Args (JSON Body):
+                entry_id (int): 供应商配置的索引 ID。
+                **kwargs: 供应商特定的查询参数。
+
+            Returns:
+                JSONResponse: 包含音色列表的 JSON 响应。
+            """
             payload = await request.json(default={})
             if not payload:
                 return error_response("payload required", status_code=400)
@@ -248,8 +300,16 @@ class TTSEnhancerPlugin(Star):
             "查询音色列表（请求体包含 entry_id 及供应商特定参数）"
         )
 
-        async def delete_voice():
-            """删除音色"""
+        async def delete_voice() -> JSONResponse:
+            """删除音色。
+
+            Args (JSON Body):
+                entry_id (int): 供应商配置的索引 ID。
+                **kwargs: 供应商特定的标识参数。
+
+            Returns:
+                JSONResponse: 包含删除成功状态的 JSON 响应。
+            """
             payload = await request.json(default={})
             if not payload:
                 return error_response("payload required", status_code=400)
@@ -280,8 +340,17 @@ class TTSEnhancerPlugin(Star):
             "删除音色（请求体包含 entry_id 及供应商特定标识参数）"
         )
 
-        async def upload_file():
-            """上传文件"""
+        async def upload_file() -> JSONResponse:
+            """上传音频文件。
+
+            支持的格式：wav, mp3, m4a。文件将重命名为包含时间戳的唯一文件名并保存。
+
+            Args (Form Data):
+                file: 上传的音频文件对象。
+
+            Returns:
+                JSONResponse: 包含 file_id 和 file_path 的 JSON 响应。
+            """
             try:
                 data = await request.files()
                 file_field = data.get('file')
@@ -324,8 +393,16 @@ class TTSEnhancerPlugin(Star):
             "上传音频文件，返回 file_id"
         )
 
-        async def start_file_server():
-            """启动临时文件服务器，只绑定内部端口，不构造 URL"""
+        async def start_file_server() -> JSONResponse:
+            """启动临时文件服务器，只绑定内部端口，不构造 URL。
+
+            Args (JSON Body):
+                file_id (str): 上传文件的唯一标识符。
+                internal_port (int): 内部绑定的端口号，范围为 1024-65535。
+
+            Returns:
+                JSONResponse: 包含启动成功状态的 JSON 响应。
+            """
             try:
                 payload = await request.json()
                 if not payload:
@@ -364,8 +441,15 @@ class TTSEnhancerPlugin(Star):
             "启动临时文件服务器（由前端拼接公网 URL）"
         )
 
-        async def stop_file_server():
-            """停止文件服务器，并删除临时文件"""
+        async def stop_file_server() -> JSONResponse:
+            """停止文件服务器，并删除临时文件。
+
+            Args (JSON Body):
+                file_id (str): 上传文件的唯一标识符。
+
+            Returns:
+                JSONResponse: 包含停止成功状态的 JSON 响应。
+            """
             try:
                 payload = await request.json()
                 if not payload:
@@ -396,8 +480,17 @@ class TTSEnhancerPlugin(Star):
             "停止文件服务器并删除文件"
         )
 
-        async def preview_voice():
-            """预览音色：合成语音并返回 Base64 编码的音频"""
+        async def preview_voice() -> JSONResponse:
+            """预览音色：合成语音并返回 Base64 编码的音频。
+
+            Args (JSON Body):
+                entry_id (int): 供应商配置的索引 ID。
+                voice_id (str): 待预览的音色 ID。
+                text (str, optional): 预览合成的文本，默认为 "欢迎使用语音合成预览功能。"。
+
+            Returns:
+                JSONResponse: 包含 Base64 编码音频数据 (audio_base64) 和音频格式 (format) 的 JSON 响应。
+            """
             try:
                 payload = await request.json()
                 if not payload:

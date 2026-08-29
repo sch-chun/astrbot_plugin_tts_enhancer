@@ -2,25 +2,23 @@
 
 import traceback
 
-from typing import Any, Optional
+from astrbot.core.provider import Provider
+from astrbot.core import logger
 
+from typing import Any, Optional
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api.star import Context
-from astrbot.core.provider import Provider
 from astrbot.core.agent.tool import ToolSet
-from astrbot.core import logger
 
 
 class TTSSubAgent:
-    """
-    TTS 子代理类，用于生成文本转语音的参数。
+    """TTS 子代理类，用于生成文本转语音的参数。
     
     该类通过调用大语言模型来生成 TTS 所需的参数，支持通过 Function Calling
     输出结构化参数，也支持从普通文本响应中提取参数。
     """
     def __init__(self, context: Context, config: Optional[dict] = None):
-        """
-        初始化TTS子代理。
+        """初始化TTS子代理。
         
         Args:
             context (Context): Star 上下文对象，用于获取 provider 等资源
@@ -38,8 +36,7 @@ class TTSSubAgent:
         persona: str = "",
         tool_set: Optional[ToolSet] = None,
     ) -> Optional[dict[str, Any]]:
-        """
-        调用 LLM 生成 TTS 参数。
+        """调用 LLM 生成 TTS 参数。
 
         Args:
             event (AstrMessageEvent): 消息事件对象，包含会话信息
