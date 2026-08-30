@@ -20,6 +20,7 @@ Qwen-Audio-TTS 是阿里云百炼提供的非实时语音合成服务，支持�
 | `instruction` | string | - | - | 自然语言指令 |
 | `volume` | integer | 0-100 | 50 | 音量大小 |
 | `rate` | float | 0.5-2.0 | 1.0 | 语速倍率 |
+| `pitch` | float | 0.5-2.0 | 1.0 | 音调倍率 |
 | `language_hints` | array | 见下方枚举 | - | 指定语音合成的目标语言。建议与文本语种一致，以提升合成效果 |
 
 ### `language_hints` 枚举值

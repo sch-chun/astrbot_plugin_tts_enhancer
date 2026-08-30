@@ -119,6 +119,88 @@
             "hint": "设置 AIGC 隐性标识中的 PropagateID 字段，用于唯一标识一次具体的传播行为。仅在 AIGC 隐性标识开启时生效。留空则使用默认值：本次语音合成请求 Request ID"
           }
         }
+      },
+      "bailian_cosyvoice_v3_5": {
+        "name": "百炼 CosyVoice 3.5",
+        "hint": "不支持情感标签，支持指令控制",
+        "display_item": "display_name",
+        "items": {
+          "display_name": {
+            "description": "显示名称",
+            "type": "string",
+            "default": "",
+            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+          },
+          "priority": {
+            "description": "优先级（数字越小越优先）",
+            "type": "int",
+            "default": 0
+          },
+          "api_key": {
+            "description": "API Key",
+            "type": "string",
+            "default": ""
+          },
+          "workspace_id": {
+            "description": "Workspace ID",
+            "type": "string",
+            "default": ""
+          },
+          "model": {
+            "description": "模型版本",
+            "type": "string",
+            "options": ["flash", "plus"],
+            "default": "flash"
+          },
+          "voice": {
+            "description": "音色 ID",
+            "type": "string",
+            "default": "",
+            "hint": "CosyVoice v3.5 不支持系统音色，请使用声音复刻或声音设计生成的音色 ID"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "type": "int",
+            "default": 60,
+            "hint": "单位：秒。合成较长文本时可能需要增加此值。调用超时与下载超时共用此值"
+          },
+          "format": {
+            "description": "音频格式",
+            "type": "string",
+            "default": "wav",
+            "options": ["wav", "mp3", "pcm", "opus"]
+          },
+          "sample_rate": {
+            "description": "采样率",
+            "type": "int",
+            "default": 24000,
+            "options": [8000, 16000, 22050, 24000, 44100, 48000]
+          },
+          "seed": {
+            "description": "随机种子",
+            "type": "int",
+            "default": -1,
+            "hint": "若设置为 [0, 65535] 之内的数字，则会固定种子，在模型版本、文本、音色及其他参数均相同的前提下，每次生成的音频都相同；若设置在该范围之外，则会随机生成种子"
+          },
+          "enable_aigc_tag": {
+            "description": "AIGC 隐性标识",
+            "type": "bool",
+            "default": false,
+            "hint": "开启时，会将隐性标识嵌入到支持格式（wav/mp3/opus）的音频中"
+          },
+          "aigc_propagator": {
+            "description": "传播者标识",
+            "type": "string",
+            "default": "",
+            "hint": "设置 AIGC 隐性标识中的 ContentPropagator 字段，用于标识内容的传播者。仅在 AIGC 隐性标识开启时生效。留空则使用默认值：阿里云UID"
+          },
+          "aigc_propagate_id": {
+            "description": "传播行为 ID",
+            "type": "string",
+            "default": "",
+            "hint": "设置 AIGC 隐性标识中的 PropagateID 字段，用于唯一标识一次具体的传播行为。仅在 AIGC 隐性标识开启时生效。留空则使用默认值：本次语音合成请求 Request ID"
+          }
+        }
       }
     }
   }

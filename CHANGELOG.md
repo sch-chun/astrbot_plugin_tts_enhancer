@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.2.0] - 2026-08-31
+
+### Added
+
+- **新增百炼 CosyVoice v3.5 适配器**（`bailian_cosyvoice_v3_5.py`）：
+  - 支持 `cosyvoice-v3.5-flash` 和 `cosyvoice-v3.5-plus` 模型
+  - 支持语言列表（12 种）：zh、en、fr、de、ja、ko、ru、pt、th、id、vi
+  - 适配器仅需设置 `MODEL_NAME = "cosyvoice-v3.5"` 和 `VALID_LANGS`，即可复用基类所有能力
+  - **注意**：CosyVoice v3.5 不支持系统音色，仅支持声音复刻与声音设计生成的定制音色
+
+- **新增百炼 Speech Synthesizer 公共基类**（`_bailian_speech_synthesizer.py`，以下划线前缀防止自动发现注册）：
+  - 抽取 Qwen-Audio-TTS 与 CosyVoice 的公共逻辑，消除重复代码
+  - 通过 `MODEL_NAME` 类属性驱动模型名构造、音色过滤、设计音色判断，子类只需声明模型前缀即可接入
+  - `get_docs_for_voice()` 自动根据 `MODEL_NAME` 分段计算 `vd` 位置，兼容 Qwen（8 段，vd 在索引 5）与 CosyVoice（6 段，vd 在索引 3）的设计音色 ID 格式差异
+  - `_extract_model_from_voice_id()` 从音色 ID 中提取 `flash`/`plus` 后缀，供 `call_api()` 自动匹配模型版本
+  - 统一管理工具 Schema、参数校验、API 调用、音频下载及音色管理（创建/列表/删除）逻辑
+  - 补充缺失的 pitch 参数
+
+- **配置 Schema 新增 `bailian_cosyvoice_v3_5` 模板**（`_conf_schema.json`）：
+  - 新增供应商配置模板，`voice` 字段默认值为空并添加提示："CosyVoice v3.5 不支持系统音色，请使用声音复刻或声音设计生成的音色 ID"
+  - `hint` 标注："不支持情感标签，支持指令控制（仅支持复刻/设计音色）"
+
+- **新增 CosyVoice v3.5 能力文档**（`docs/bailian_cosyvoice_v3_5.md` 与 `docs/bailian_cosyvoice_v3_5_design.md`）：
+  - 标准文档：移除情感标签与富语言标签相关内容，语言列表更新为 12 种，明确 v3.5 不支持系统音色
+  - 设计专用文档：标注"该类音色不支持方言控制"，移除方言相关示例
+  - 两个文档的"你的任务"部分均适配 CosyVoice 能力（仅通过 `instruction` 描述情感/角色，不添加标签）
+
+### Changed
+
+- 重命名 `bailian_speech_synthesizer.py` 为 `_bailian_speech_synthesizer.py`，避免基类被 `ProviderFactory` 自动发现并误注册为独立适配器
+- `bailian_qwen_audio_3_0_tts.py` 改为继承 `BailianSpeechSynthesizerAdapter`，仅声明 `MODEL_NAME = "qwen-audio-3.0-tts"`，移除重复代码
+
 ## [0.1.9] - 2026-08-29
 
 ### Changed
