@@ -41,6 +41,14 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
             entry (dict): 供应商配置字典，包含 API 密钥、工作空间 ID 等信息
         """
         super().__init__(entry=entry)
+        safe_entry = dict(entry)
+        api_key = safe_entry.get("api_key", "")
+        if len(api_key) > 5:
+            safe_entry["api_key"] = "*****" + api_key[-5:]
+        else:
+            safe_entry["api_key"] = "*****"
+    
+        logger.debug(f"Initializing {self.__class__.__name__} with entry: {entry}, MODEL_NAME: {self.MODEL_NAME}")
         self.docs_content = self._load_docs()
         self.design_docs_content = self._load_design_docs()
 

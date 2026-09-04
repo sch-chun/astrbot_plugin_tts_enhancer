@@ -65,6 +65,7 @@ class ProviderFactory:
                     if (
                         issubclass(obj, TTSProviderAdapter)
                         and obj is not TTSProviderAdapter
+                        and obj.__module__ == module.__name__
                     ):
                         
                         # 使用模块名作为映射 key（与 __template_key 一致）

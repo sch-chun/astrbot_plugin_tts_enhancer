@@ -2,6 +2,7 @@ const { createApp, ref, shallowRef, onMounted } = Vue;
 
 // 静态导入所有已知供应商组件
 import BailianQwenAudio3_0 from './components/bailian_qwen_audio_3_0_tts.js';
+import BailianCosyvoiceV3_5 from './components/bailian_cosyvoice_v3_5.js'
 
 const bridge = window.AstrBotPluginPage;
 
@@ -16,6 +17,7 @@ const app = createApp({
         // 组件映射表（template_key → Vue 组件）
         const componentMap = {
             'bailian_qwen_audio_3_0_tts': BailianQwenAudio3_0,
+            'bailian_cosyvoice_v3_5': BailianCosyvoiceV3_5
             // 未来添加新供应商时在此处增加映射
         };
 
@@ -56,7 +58,8 @@ const app = createApp({
 
         function getDisplayName(key) {
             const map = {
-                'bailian_qwen_audio_3_0_tts': '百炼 Qwen-Audio-TTS',
+                'bailian_qwen_audio_3_0_tts': '百炼 Qwen Audio 3.0 TTS',
+                'bailian_cosyvoice_v3_5': '百炼 Cosyvoice-V3.5'
                 // 未来扩展
             };
             return map[key] || key;
