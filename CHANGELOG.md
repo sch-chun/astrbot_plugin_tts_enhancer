@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.2.1] - 2026-09-04
+
+### Added
+
+- **新增百炼 Speech Synthesizer 通用前端组件**（`pages/tts_manager/components/bailian_speech_synthesizer.js`，1070 行）：
+  - 统一支持上传（upload）、公网 URL（url）、声音设计（design）三种音色创建模式
+  - 通过 `providerConfig` prop 适配不同供应商：`displayName` / `supportedLanguages` / `supportsSystemVoices` / `systemVoiceLinks` / `designHelpLink`
+  - 内置 Toast 反馈机制（success / error，3 秒自动消失）
+  - 内置独立预览模态框（与设计模式预览分离），支持自定义文本试听、保留或删除
+  - 完整表单校验：upload 模式字段非空、URL 合法、design 模式字符数（汉字按 2 字符计，voice_prompt ≤ 500、preview_text 15~200）
+  - 内置删除确认模态框，避免沙盒环境 `confirm()` 被拦截
+- **新增 CosyVoice v3.5 前端组件**（`pages/tts_manager/components/bailian_cosyvoice_v3_5.js`）：作为通用组件的薄封装，声明 `displayName`、12 种支持语言、`supportsSystemVoices: false`（v3.5 不支持系统音色）、设计音色帮助链接
+- **前端 app.js 接入 CosyVoice v3.5 选项卡**：组件映射表与显示名映射表新增 `bailian_cosyvoice_v3_5` 条目
+
+### Changed
+
+- **前端重构**：`bailian_qwen_audio_3_0_tts.js` 从 1030 行的内联实现改为 33 行的 `BailianSpeechSynthesizer` 包装层，仅声明 Qwen 特有的 `providerConfig`（16 种支持语言、系统音色列表、帮助链接）
+- **Provider 工厂鲁棒性增强**（`providers/__init__.py`）：新增 `obj.__module__ == module.__name__` 检查，防止基类通过多继承方式被重复发现并注册到错误模块名下
+- **适配器日志安全增强**（`providers/_bailian_speech_synthesizer.py`）：初始化时对 `entry` 字典做 `api_key` 脱敏（仅保留后 5 位，前缀 `*****`），避免 API Key 写入 debug 日志
+
 ## [0.2.0] - 2026-08-31
 
 ### Added
