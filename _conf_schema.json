@@ -27,7 +27,7 @@
   "tts_prompt": {
     "description": "TTS 触发提示词（注入主模型）",
     "type": "text",
-    "default": "当你想要发送语音时，使用 <tts></tts> 标签包裹需要转语音的文本。"
+    "default": "使用标签触发 TTS 相较使用工具触发能减少一轮工具调用，节约对话轮数。工具更适用于在 Agent Loop 中顺手发送语音"
   },
   "log_enhanced_params": {
     "description": "打印增强参数",
