@@ -12,7 +12,7 @@
 
 ## 为什么需要它？
 
-AstrBot 默认只能向 LLM 传递文本，但现代 TTS 服务早已不满足于"读文字"——它们支持情感标签、方言、音色克隆、声音设计……
+AstrBot 默认只能向 LLM 传递文本，但现代 TTS 服务早已不满足于"读文字"——它们支持调整音量、语调语速甚至情感标签、多语种和方言、音色克隆、声音设计……
 
 传统调用方式只能扔进去一个 `text` 参数，这些能力全被浪费了。更麻烦的是，许多供应商只提供 API，没有易用的 UI 来管理音色克隆与设计。
 
@@ -81,8 +81,7 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
    ```
 
 2. **配置供应商**
-   Dashboard → 插件配置 → TTS Enhancer → 添加至少一个供应商（需 API Key 与 Workspace ID）。
-   百炼用户请前往阿里云控制台开通 Speech Synthesizer 服务。
+   插件配置 → 添加至少一个供应商。
 
 3. **让模型输出 `<tts>` 标签**
    主模型在回复中包裹 `<tts>要合成的文本</tts>`，插件将自动处理并发送语音消息。
@@ -96,7 +95,7 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 
 ```yaml
 enable_enhance: true              # 启用 SubAgent 自动增强
-enhance_llm_provider: ""          # 用于增强的模型（留空用当前会话）
+enhance_llm_provider: ""          # 用于增强的模型（为了省钱可以选择能力稍差的便宜甚至免费模型）
 context_window: 10                # 上下文轮次
 dual_output: false                # 同时输出文本和语音
 log_enhanced_params: false        # 打印生成的参数

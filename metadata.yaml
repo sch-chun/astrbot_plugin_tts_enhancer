@@ -5,3 +5,4 @@ version: v0.2.1
 author: sch-chun
 repo: https://github.com/sch-chun/astrbot_plugin_tts_enhancer
 astrbot_version: ">=4.24.0"
+category: 语音
