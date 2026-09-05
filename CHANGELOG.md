@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.2.2] - 2026-09-05
+
+### Added
+
+- **新增 MiniMax Speech 2.8 适配器**（`providers/minimax_speech_2_8.py`）：
+  - 支持 `speech-2.8-hd` 和 `speech-2.8-turbo` 模型
+  - 支持情感标签（`emotion`）、语速（`speed`）、音量（`vol`）、语调（`pitch`）、语言增强（`language_boost`）
+  - 支持 LaTeX 朗读（`latex_read`），自动强制 `language_boost=Chinese`
+  - 支持文本内联语气词标签（`(laughs)`、`(sighs)` 等）和停顿控制（`<#x#>`）
+  - 实现文件管理：`upload_file()`、`list_files()`、`get_file_content()`、`delete_file()`
+  - 实现音色管理：`create_voice()`（克隆/设计）、`list_voice()`、`delete_voice()`
+
+- **新增通用音频工具模块**（`src/audio_utils.py`）：
+  - `get_audio_duration()`：基于 `pydub` 获取音频时长
+  - `validate_audio_duration()`：校验音频时长是否在指定范围内
+  - `trim_audio_to_max()`：超长音频自动裁剪（保留开头部分）
+  - `AudioConstraints`：定义各供应商的时长约束常量
+
+- **新增供应商文件管理路由**（`main.py`）：
+  - `POST /file/upload`：上传文件到供应商，支持 `**kwargs` 透传
+  - `POST /file/list`：列出供应商文件
+  - `POST /file/get`：获取文件内容（Base64 音频）
+  - `POST /file/delete`：删除供应商文件
+
+- **新增通用 KV 存储路由**（`main.py`）：
+  - `POST /kv/set`：存储键值对
+  - `POST /kv/get`：获取键值对
+  - `POST /kv/delete`：删除键值对
+
+- **配置 Schema 新增 `minimax_speech_2_8` 模板**（`_conf_schema.json`）：
+  - 认证配置：`api_key`、`voice_id`
+  - 模型版本：`HD` / `Turbo`
+  - 音频参数：`sample_rate`、`format`、`bitrate`、`channel`
+  - 文本规范化：`text_normalization`（默认开启）
+
+- **新增 MiniMax 能力文档**（`docs/minimax_speech_2_8.md`）：
+  - 支持的参数与枚举值说明
+  - 文本内联控制（语气词标签、停顿标记）
+  - 功能示例与完整调用示例
+  - SubAgent 参数生成指引
+
+### Changed
+
+- **通用上传路由升级**（`main.py /upload`）：
+  - 新增可选的时长校验参数：`min_sec`、`max_sec`、`auto_trim`
+  - 超长音频支持自动裁剪（`auto_trim=true`），保留 `max_sec - 0.5s` 的前段
+
+- **适配器文件管理方法统一为 `**kwargs` 风格**（`minimax_speech_2_8.py`）：
+  - 移除硬编码 `purpose` 参数，统一使用 `**kwargs` 接收扩展参数
+  - 提升可扩展性，支持未来新增文件用途
+
+- **路由参数透传优化**（`main.py`）：
+  - 文件管理路由使用 `{k: v for k, v in data.items() if k not in ['file', 'entry_id']}` 透传所有未知参数
+  - 适配器调用处添加 `# type: ignore` 注释，消除 Pylance 静态检查警告
+
 ## [0.2.1] - 2026-09-04
 
 ### Added

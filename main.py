@@ -344,37 +344,92 @@ class TTSEnhancerPlugin(Star):
             """上传音频文件。
 
             支持的格式：wav, mp3, m4a。文件将重命名为包含时间戳的唯一文件名并保存。
+            支持可选的时长校验与自动裁剪。
 
             Args (Form Data):
                 file: 上传的音频文件对象。
+                min_sec: 可选，音频最小时长（秒）。
+                max_sec: 可选，音频最大时长（秒）。
+                auto_trim: 可选，是否在超长时自动裁剪至 max_sec - 0.5s，默认为 False。
 
             Returns:
                 JSONResponse: 包含 file_id 和 file_path 的 JSON 响应。
             """
             try:
-                data = await request.files()
+
+                # 使用 request.post() 同时获取文件和表单字段
+                data = await request.post()
                 file_field = data.get('file')
                 if not file_field:
                     return error_response("缺少文件", status_code=400)
 
-                # 检查扩展名
-                filename = file_field.filename or "file.bin"
-                ext = Path(filename).suffix.lower()
-                if ext not in ['.wav', '.mp3', '.m4a']:
-                    return error_response("仅支持 wav, mp3, m4a 格式", status_code=400)
+                # 获取可选的校验参数
+                min_sec_str = data.get('min_sec')
+                max_sec_str = data.get('max_sec')
+                auto_trim_str = data.get('auto_trim', 'false')
 
-                upload_dir = self.plugin_data_path / "uploads"
-                upload_dir.mkdir(parents=True, exist_ok=True)
+                min_sec = float(min_sec_str) if min_sec_str else None
+                max_sec = float(max_sec_str) if max_sec_str else None
+                auto_trim = auto_trim_str.lower() == 'true'
 
-                # 生成唯一文件名（时间戳）
+                # 检查扩展名（仅当需要校验时）
                 original_filename = file_field.filename or "file.bin"
                 ext = Path(original_filename).suffix.lower()
+                audio_extensions = {'.wav', '.mp3', '.m4a', '.flac', '.ogg', '.aac'}
+                if (min_sec is not None or max_sec is not None) and ext not in audio_extensions:
+                    return error_response("校验仅支持音频文件 (wav, mp3, m4a, flac, ogg, aac)", status_code=400)
+
+                # 保存文件（先保存再校验，因为需要读取文件内容）
+                upload_dir = self.plugin_data_path / "uploads"
+                upload_dir.mkdir(parents=True, exist_ok=True)
                 timestamp = int(time.time() * 1000)
                 unique_name = f"upload_{timestamp}{ext}"
                 file_path = upload_dir / unique_name
-
                 await file_field.save(file_path)
 
+                # ---------- 音频校验与裁剪 ----------
+                if min_sec is not None or max_sec is not None:
+                    from .src.audio_utils import get_audio_duration, trim_audio_to_max
+
+                    duration = get_audio_duration(str(file_path))
+                    if duration is None:
+                        file_path.unlink(missing_ok=True)
+                        return error_response("无法读取音频时长，请确认文件为有效的音频格式", status_code=400)
+
+                    # 检查过短
+                    if min_sec is not None and duration < min_sec - 0.01:
+                        file_path.unlink(missing_ok=True)
+                        return error_response(f"音频时长 {duration:.1f}s 短于要求的最小值 {min_sec}s", status_code=400)
+
+                    # 检查过长
+                    if max_sec is not None and duration > max_sec + 0.01:
+                        if not auto_trim:
+                            file_path.unlink(missing_ok=True)
+                            return error_response(f"音频时长 {duration:.1f}s 超过允许的最大值 {max_sec}s", status_code=400)
+                        else:
+
+                            # 自动裁剪
+                            try:
+
+                                # 裁剪到 max_sec - 0.5 秒，保留余量
+                                trimmed_path = trim_audio_to_max(
+                                    str(file_path),
+                                    max_sec=max_sec,
+                                    margin=0.5,
+                                    output_dir=str(upload_dir)
+                                )
+
+                                # 用裁剪后的文件替换原文件（保持文件名不变）
+                                trimmed_path_obj = Path(trimmed_path)
+                                if trimmed_path_obj != file_path:
+                                    file_path.unlink()  # 删除原文件
+                                    trimmed_path_obj.rename(file_path)  # 重命名裁剪文件为原文件名
+                                    logger.info(f"音频已自动裁剪并覆盖原文件: {file_path}")
+                            except Exception as e:
+                                file_path.unlink(missing_ok=True)
+                                return error_response(f"音频裁剪失败: {str(e)}", status_code=500)
+
+                # 返回结果
                 return json_response({
                     "code": 0,
                     "data": {
@@ -382,6 +437,7 @@ class TTSEnhancerPlugin(Star):
                         "file_path": str(file_path)
                     }
                 })
+
             except Exception as e:
                 logger.error(f"文件上传失败: {e}")
                 return error_response(str(e), status_code=500)
@@ -549,3 +605,216 @@ class TTSEnhancerPlugin(Star):
             ["POST"],
             "预览音色，返回音频文件"
         )
+
+        # ========== 通用 KV 存储（供前端/供应商存取元数据，如 prompt_text） ==========
+        async def kv_set() -> JSONResponse:
+            """存储键值对（字符串）。"""
+            try:
+                payload = await request.json()
+                if not payload:
+                    return error_response("payload required", status_code=400)
+                key = payload.get("key")
+                value = payload.get("value")
+                if not key or value is None:
+                    return error_response("key 和 value 都是必需的", status_code=400)
+                
+                # 允许存储任何字符串，由前端控制键名规范，如 "minimax_prompt_{file_id}"
+                await self.put_kv_data(key, value)
+                return json_response({"code": 0, "data": {"success": True}})
+            except Exception as e:
+                logger.error(f"KV 存储失败: {e}")
+                return error_response(str(e), status_code=500)
+
+        async def kv_get() -> JSONResponse:
+            """获取键值对。"""
+            try:
+                payload = await request.json()
+                if not payload:
+                    return error_response("payload required", status_code=400)
+                key = payload.get("key")
+                if not key:
+                    return error_response("key 是必需的", status_code=400)
+                value = await self.get_kv_data(key, None)
+                return json_response({"code": 0, "data": {"value": value}})
+            except Exception as e:
+                logger.error(f"KV 获取失败: {e}")
+                return error_response(str(e), status_code=500)
+
+        async def kv_delete() -> JSONResponse:
+            """删除键值对。"""
+            try:
+                payload = await request.json()
+                if not payload:
+                    return error_response("payload required", status_code=400)
+                key = payload.get("key")
+                if not key:
+                    return error_response("key 是必需的", status_code=400)
+                await self.delete_kv_data(key)
+                return json_response({"code": 0, "data": {"success": True}})
+            except Exception as e:
+                logger.error(f"KV 删除失败: {e}")
+                return error_response(str(e), status_code=500)
+
+        # 注册
+        self.context.register_web_api(
+            f"/{self.name}/kv/set",
+            kv_set,
+            ["POST"],
+            "通用 KV 存储"
+        )
+        self.context.register_web_api(
+            f"/{self.name}/kv/get",
+            kv_get,
+            ["POST"],
+            "通用 KV 获取"
+        )
+        self.context.register_web_api(
+            f"/{self.name}/kv/delete",
+            kv_delete,
+            ["POST"],
+            "通用 KV 删除"
+        )
+
+        # ---------- 供应商文件管理（上传、列表、获取、删除） ----------
+        async def file_upload() -> JSONResponse:
+            """上传文件到指定的供应商（适配器需实现 upload_file 方法）。"""
+            try:
+                data = await request.post()
+                file_field = data.get('file')
+                if not file_field:
+                    return error_response("缺少文件", status_code=400)
+
+                entry_id = data.get('entry_id')
+                if entry_id is None:
+                    return error_response("entry_id 是必需的", status_code=400)
+
+                kwargs = {k: v for k, v in data.items() if k not in ['file', 'entry_id']}
+
+                providers_raw = self.config.get_providers()
+                try:
+                    entry_id = int(entry_id)
+                except ValueError:
+                    return error_response("entry_id 必须为整数", status_code=400)
+                if entry_id < 0 or entry_id >= len(providers_raw):
+                    return error_response("entry not found", status_code=404)
+                entry = providers_raw[entry_id]
+                adapter = ProviderFactory.get_adapter(entry)
+                if not adapter or not hasattr(adapter, 'upload_file'):
+                    return error_response("该适配器不支持文件上传", status_code=501)
+
+                # 保存临时文件
+                upload_dir = self.plugin_data_path / "temp_uploads"
+                upload_dir.mkdir(parents=True, exist_ok=True)
+                ext = Path(file_field.filename or "file.bin").suffix
+                temp_path = upload_dir / f"file_{int(time.time()*1000)}{ext}"
+                await file_field.save(temp_path)
+
+                try:
+                    # 调用适配器的 upload_file
+                    result = await adapter.upload_file(  # type: ignore
+                        file_path=str(temp_path),
+                        **kwargs
+                    )
+                    return json_response({
+                        "code": 0,
+                        "data": result  # 包含 file_id 等
+                    })
+                finally:
+                    if temp_path.exists():
+                        temp_path.unlink(missing_ok=True)
+
+            except ValueError as e:
+                return error_response(str(e), status_code=400)
+            except Exception as e:
+                logger.error(f"文件上传失败: {e}")
+                return error_response(str(e), status_code=500)
+
+        async def file_list() -> JSONResponse:
+            """列出供应商的文件（适配器需实现 list_files）。"""
+            try:
+                payload = await request.json()
+                if not payload:
+                    return error_response("payload required", status_code=400)
+                
+                entry_id = payload.get("entry_id")
+                if entry_id is None:
+                    return error_response("entry_id 是必需的", status_code=400)
+
+                kwargs = {k: v for k, v in payload.items() if k != "entry_id"}
+
+                providers_raw = self.config.get_providers()
+                if entry_id < 0 or entry_id >= len(providers_raw):
+                    return error_response("entry not found", status_code=404)
+                entry = providers_raw[entry_id]
+                adapter = ProviderFactory.get_adapter(entry)
+                if not adapter or not hasattr(adapter, 'list_files'):
+                    return error_response("该适配器不支持文件列表", status_code=501)
+
+                result = await adapter.list_files(**kwargs)  # type: ignore
+                return json_response({"code": 0, "data": result})
+            except Exception as e:
+                logger.error(f"文件列表失败: {e}")
+                return error_response(str(e), status_code=500)
+
+        async def file_get() -> JSONResponse:
+            """获取文件内容（适配器需实现 get_file_content）。"""
+            try:
+                payload = await request.json()
+                if not payload:
+                    return error_response("payload required", status_code=400)
+                entry_id = payload.get("entry_id")
+                file_id = payload.get("file_id")
+                if entry_id is None or file_id is None:
+                    return error_response("entry_id 和 file_id 都是必需的", status_code=400)
+
+                providers_raw = self.config.get_providers()
+                if entry_id < 0 or entry_id >= len(providers_raw):
+                    return error_response("entry not found", status_code=404)
+                entry = providers_raw[entry_id]
+                adapter = ProviderFactory.get_adapter(entry)
+                if not adapter or not hasattr(adapter, 'get_file_content'):
+                    return error_response("该适配器不支持文件获取", status_code=501)
+
+                content = await adapter.get_file_content(int(file_id))  # type: ignore
+                audio_base64 = base64.b64encode(content).decode('utf-8')
+                return json_response({
+                    "code": 0,
+                    "data": {
+                        "audio_base64": audio_base64
+                    }
+                })
+            except Exception as e:
+                logger.error(f"获取文件失败: {e}")
+                return error_response(str(e), status_code=500)
+
+        async def file_delete() -> JSONResponse:
+            """删除供应商的文件（适配器需实现 delete_file）。"""
+            try:
+                payload = await request.json()
+                if not payload:
+                    return error_response("payload required", status_code=400)
+                entry_id = payload.get("entry_id")
+                file_id = payload.get("file_id")
+                kwargs = {k: v for k, v in payload.items() if k not in ["entry_id", "file_id"]}
+                if entry_id is None or file_id is None:
+                    return error_response("entry_id 和 file_id 都是必需的", status_code=400)
+
+                providers_raw = self.config.get_providers()
+                if entry_id < 0 or entry_id >= len(providers_raw):
+                    return error_response("entry not found", status_code=404)
+                entry = providers_raw[entry_id]
+                adapter = ProviderFactory.get_adapter(entry)
+                if not adapter or not hasattr(adapter, 'delete_file'):
+                    return error_response("该适配器不支持文件删除", status_code=501)
+                
+                success = await adapter.delete_file(int(file_id), **kwargs)  # type: ignore
+                return json_response({"code": 0, "data": {"success": success}})
+            except Exception as e:
+                logger.error(f"删除文件失败: {e}")
+                return error_response(str(e), status_code=500)
+
+        # 注册
+        self.context.register_web_api(f"/{self.name}/file/upload", file_upload, ["POST"], "上传文件到供应商")
+        self.context.register_web_api(f"/{self.name}/file/list", file_list, ["POST"], "列出供应商的文件")
+        self.context.register_web_api(f"/{self.name}/file/get", file_get, ["POST"], "获取文件内容（Base64）")
+        self.context.register_web_api(f"/{self.name}/file/delete", file_delete, ["POST"], "删除供应商的文件")

@@ -249,7 +249,14 @@ export default {
 
             uploading.value = true;
             try {
-                const uploadResult = await props.bridge.upload('upload', uploadForm.file);
+                const uploadResult = await props.bridge.upload(
+                    'upload',
+                    uploadForm.file,
+                    {
+                        max_sec: 60,
+                        auto_trim: true,
+                    }
+                );
                 if (!uploadResult.file_id) {
                     const errMsg = uploadResult.message || uploadResult.error || '上传失败，未返回 file_id';
                     showError('上传失败: ' + errMsg);
@@ -805,7 +812,7 @@ export default {
                     <div class="form-group">
                         <label>选择音频文件（wav (16bit), mp3, m4a）</label>
                         <input type="file" ref="fileInputRef" accept=".wav,.mp3,.m4a" @change="handleFileChange" />
-                        <div class="hint">推荐 10~20s，最长 60s。文件 ≤ 10MB，采样率 ≥ 16kHz。</div>
+                        <div class="hint">推荐 10~20s，最长 60s。文件 ≤ 10MB，采样率 ≥ 16kHz。大于 60s 的文件将被自动裁剪。</div>
                     </div>
                 </div>
 
