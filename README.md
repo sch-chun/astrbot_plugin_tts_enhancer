@@ -6,7 +6,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v0.2.1-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.2.4-green)](CHANGELOG.md)
 
 ---
 
@@ -28,7 +28,7 @@ AstrBot 默认只能向 LLM 传递文本，但现代 TTS 服务早已不满足�
 
 ### 1️⃣ 多供应商适配器（Provider Adapter）
 
-每个 TTS 供应商只需继承 `TTSProviderAdapter` 抽象类，实现：
+每个 TTS 供应商只需继承 `TTSProviderAdapter` 抽象类（或已有的 `BailianSpeechSynthesizerAdapter` / 自定义公共基类），实现：
 
 - `get_tool_schema()` → 定义 Function Calling 的参数结构
 - `get_subagent_system_prompt()` → 将能力说明书注入 SubAgent
@@ -39,7 +39,7 @@ AstrBot 默认只能向 LLM 传递文本，但现代 TTS 服务早已不满足�
 
 ### 2️⃣ 能力说明书（Capability Docs）
 
-每个供应商附带一份 `{template_key}.md` 文档，详细说明：
+每个供应商附带一份 `providers/docs/{template_key}.md` 文档，详细说明：
 
 - 支持哪些参数（`instruction`, `volume`, `rate`, `pitch`, `language_hints`……）
 - 情感标签列表、方言列表、使用示例
@@ -49,13 +49,13 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 
 ### 3️⃣ 前端 UI：可复用组件 + 按需定制
 
-插件提供了**可复用的前端组件**（`BailianSpeechSynthesizer`），封装了音色管理的标准交互流程（上传/URL/设计三种模式、试听、列表、删除）。
+插件提供了**可复用的前端组件**（`BailianSpeechSynthesizer`），封装了音色管理的标准交互流程（上传/URL/设计三种模式、试听、列表、删除）。同时支持各供应商**自定义交互**（如 MiniMax 的「未激活音色 → 预览 → 决定激活」三段式流程）。
 
-但具体到每个供应商：
+具体到每个供应商：
 
-- **需要前端界面** → 复用通用组件，仅需在 `app.js` 中注册并配置 `providerConfig`（语言列表、帮助链接等）
+- **需要前端界面** → 复用通用组件 + 自定义扩展，仅需在 `app.js` 中注册并配置 `providerConfig`（语言列表、帮助链接等）
 - **已有官方 Web 控制台** → 直接配置外链跳转，无需重复实现
-- **有特殊交互需求** → 可单独编写自定义组件
+- **有特殊交互需求** → 可单独编写自定义组件（如 MiniMax 音频列表、Hex 解码等）
 
 > 这种设计的初衷是：**为那些只有 API、没有 UI 的供应商补齐管理体验**，而非强制统一。
 
@@ -63,12 +63,20 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 
 ## 支持的供应商
 
-| 供应商 | 模型 | 情感控制 | 系统音色 | 复刻 | 设计 | 方言 |
-|---|---|---|---|---|---|---|
-| **百炼 Qwen Audio 3.0 TTS** | flash / plus | 30+ 标签 + 拟声 + 自然语言指令 | ✅ | ✅ | ✅ | 20+ 种 |
-| **百炼 CosyVoice v3.5** | flash / plus | 自然语言指令 | ❌（仅复刻/设计） | ✅ | ✅ | 17+ 种 |
+| 供应商 | 模型 | 情感控制 | 系统音色 | 复刻 | 设计 | 方言 | 独家能力 |
+|---|---|---|---|---|---|---|---|
+| **百炼 Qwen Audio 3.0 TTS** | flash / plus | 30+ 情感标签 + 拟声标签 + 自然语言指令 | ✅ | ✅ | ✅ | 20+ 种 | 拟声标签、方言控制 |
+| **百炼 CosyVoice v3.5** | flash / plus | 自然语言指令 | ❌（仅复刻/设计） | ✅ | ✅ | 17+ 种 | — |
+| **MiniMax Speech 2.8** | HD / Turbo | 8 种情感标签 + 文本内联语气词（19 种） | ✅ | ✅ | ✅ | ❌ | LaTeX 朗读、`<#x#>` 停顿、42 种 `language_boost` |
 
-> 更多供应商（Edge TTS、MiniMax、GPT-SoVITS 等）正在规划中，欢迎社区贡献！
+> **各家擅长的场景：**
+> - 想说**方言**或加**拟声标签** → 选 Qwen Audio 3.0
+> - 想要**自然语言灵活控制** + 高保真 → 选 CosyVoice v3.5
+> - 需要**LaTeX 朗读**、**语气词**、**多语种精调** → 选 MiniMax
+>
+> 三个供应商可以**同时配置并按 priority 回退**。
+
+更多供应商（Edge TTS、GPT-SoVITS 等）正在规划中，欢迎社区贡献！
 
 ---
 
@@ -136,6 +144,9 @@ providers:                        # 供应商列表（支持多个回退）
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ [Provider Adapter]  校验参数 → 调 API → 下载音频            │
+│   - BailianQwenAudio3_0TTSAdapter                            │
+│   - BailianCosyVoiceV3_5Adapter                              │
+│   - MinimaxSpeech2_8Adapter                                  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -150,6 +161,7 @@ providers:                        # 供应商列表（支持多个回退）
 3. **前端接入（按需）**：
    - 需要 UI：在 `pages/tts_manager/components/` 下新建 Vue 组件，引用通用组件并配置 `providerConfig`；在 `app.js` 中注册映射。
    - 已有官方控制台：仅在 `app.js` 中配置外链即可。
+   - 有特殊交互需求（如 MiniMax 的「未激活 → 预览 → 激活」三段式）：独立写自定义组件。
 4. **添加配置模板**：在 `_conf_schema.json` 中补充供应商配置项。
 
 所有新增供应商将自动被工厂发现并加载，无需修改核心代码。
@@ -159,7 +171,10 @@ providers:                        # 供应商列表（支持多个回退）
 ## 文档与更新
 
 - [CHANGELOG.md](CHANGELOG.md) – 完整版本记录
-- 能力说明书样例：`providers/docs/bailian_qwen_audio_3_0_tts.md`
+- 能力说明书样例：
+  - `providers/docs/bailian_qwen_audio_3_0_tts.md`
+  - `providers/docs/bailian_cosyvoice_v3_5.md`
+  - `providers/docs/minimax_speech_2_8.md`
 
 ## 许可
 
