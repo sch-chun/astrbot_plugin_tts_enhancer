@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.2.3] - 2026-09-06
+
+### Added
+
+- **新增 MiniMax Speech 2.8 完整前端管理界面**（`pages/tts_manager/components/minimax_speech_2_8.js`）：
+  - 支持复刻音频（主音频）与示例音频的文件管理：上传（含自定义文件名）、列表展示、播放、删除
+  - 支持音色复刻（克隆）与声音设计两种创建模式，完全遵循 MiniMax API 规范
+  - 集成全局音频播放控制：统一管理播放实例，点击播放/停止切换，音量滑条实时调节
+  - 前端表单校验（汉字按 2 字符，其他按 1 字符）：
+    - Voice ID：长度 8-256，首字母英文字母，仅允许字母/数字/-/_，末位不可为 - 或 _
+    - 试听文本：≤1000 字符
+    - ASR 验证文本：≤200 字符
+    - 声音设计预览文本：≤500 字符
+    - 上传按钮、复刻/设计按钮在条件不满足时自动禁用
+  - 自定义删除确认模态框（替代 `confirm()`，适配 iframe 沙箱）
+  - 音色列表分区展示：自定义音色（克隆/设计）和系统音色，系统音色显示名称与描述且不可删除
+  - 未激活音色管理（`minimax_unactivated_list` KV 存储）：
+    - 复刻/设计成功后提供“删除”（调用 API 删除服务端音色）与“保留”（存入本地 KV）选项
+    - 音色列表新增“未激活音色”分区，显示本地保留的未激活音色
+    - 点击“预览（激活）”调用语音合成接口激活音色，激活后自动从本地移除并刷新服务端列表
+    - 仅在存在未激活音色时显示提示横幅
+  - 重要通知横幅：补充临时音色说明、预览扣费提示、定价文档复制链接
+  - 文件上传流程重构：先调用 `/upload` 上传到本地，再调用 `/file/upload` 透传给适配器，适配器处理校验与裁剪
+
+- **前端组件注册**（`pages/tts_manager/app.js`）：
+  - 将 `MinimaxSpeech2_8` 组件映射到 `minimax_speech_2_8` 模板键
+
+- **通用路由增强**（`main.py`）：
+  - `/file/upload` 改为纯透传：仅提取 `entry_id` 和 `file_id`，其余参数（含 `purpose`、`filename` 等）全部透传给适配器
+  - `/upload` 简化为仅保存文件，不再包含校验逻辑，保持单一职责
+
+### Changed
+
+- **适配器文件上传增强**（`minimax_speech_2_8.py`）：
+  - `upload_file()` 支持 `filename` 参数，允许用户自定义上传文件名（自动补全扩展名）
+  - 文件大小限制由 15MB 恢复为 20MB（与 MiniMax 官方一致）
+
+- **前端交互优化**：
+  - 示例音频上传：文件选择、自定义文件名、源文本输入、上传按钮布局调整（源文本与上传按钮同排）
+  - 音色列表列调整：自定义音色新增“描述”列，系统音色新增“名称”和“描述”列
+  - 播放按钮动态样式：播放时变为红色（`btn-danger`），停止时恢复默认
+  - 表格内操作按钮增加间距（CSS 全局规则 `td .btn-sm { margin-right: 6px; }`）
+  - 试听模型版本与语言增强选项仅在试听文本非空时显示
+
+- **未激活音色删除逻辑**：
+  - 删除未激活音色时同步调用 MiniMax API 删除服务端音色（`/voice/delete`），确保两端一致
+
 ## [0.2.2] - 2026-09-05
 
 ### Added

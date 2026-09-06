@@ -81,6 +81,15 @@ h1 { font-size: 1.8rem; margin-top: 0; }
 .btn-danger { background: var(--danger); }
 .btn-danger:hover { background: #b91c1c; }
 .btn-sm { padding: 4px 10px; font-size: 0.8rem; }
+
+/* 表格操作按钮间距 */
+td .btn-sm {
+    margin-right: 6px;
+}
+td .btn-sm:last-child {
+    margin-right: 0;
+}
+
 .btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;

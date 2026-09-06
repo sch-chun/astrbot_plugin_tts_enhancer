@@ -251,11 +251,7 @@ export default {
             try {
                 const uploadResult = await props.bridge.upload(
                     'upload',
-                    uploadForm.file,
-                    {
-                        max_sec: 60,
-                        auto_trim: true,
-                    }
+                    uploadForm.file
                 );
                 if (!uploadResult.file_id) {
                     const errMsg = uploadResult.message || uploadResult.error || '上传失败，未返回 file_id';
@@ -735,15 +731,18 @@ export default {
                 <legend>创建新音色</legend>
 
                 <!-- 公网 IPv4 确认提示 -->
-                <div v-if="mode !== 'design'" style="background:rgba(241,151,27,0.15);border-left:4px solid #f0971b;padding:8px 12px;margin-bottom:16px;border-radius:4px;color:var(--text);">
-                    <strong>⚠️ 重要：</strong> 请确认服务器拥有公网 IPv4 地址，且防火墙已开放指定端口 (上传模式) 或音频 URL 可被公网 IPv4 访问 (URL 模式)。
+                <div v-if="mode !== 'design'"
+                    style="background:rgba(241,151,27,0.15);border-left:4px solid #f0971b;padding:8px 12px;margin-bottom:16px;border-radius:4px;color:var(--text);"
+                >
+                    <strong>⚠️ 重要：</strong>请确认服务器拥有公网 IPv4 地址，且防火墙已开放指定端口 (上传模式) 或音频 URL 可被公网 IPv4 访问 (URL 模式)。
                 </div>
 
                 <!-- 系统音色提示（仅当供应商支持系统音色且非设计模式） -->
                 <div v-if="providerConfig.supportsSystemVoices && mode !== 'design'" 
-                    style="background:rgba(37,99,235,0.1);border-left:4px solid var(--primary);padding:8px 12px;margin-bottom:16px;border-radius:4px;color:var(--text);">
-                    💡 系统音色列表请参考 
-                    <template v-if="providerConfig.systemVoiceLinks && providerConfig.systemVoiceLinks.length">
+                    style="background:rgba(37,99,235,0.1);border-left:4px solid var(--primary);padding:8px 12px;margin-bottom:16px;border-radius:4px;color:var(--text);"
+                >
+                    💡 系统音色列表请参考<!--
+                    --><template v-if="providerConfig.systemVoiceLinks && providerConfig.systemVoiceLinks.length">
                         <span v-for="(link, idx) in providerConfig.systemVoiceLinks" :key="idx">
                             <span class="link-copy" @click="copyToClipboard(link.url)" 
                                 style="color:var(--primary);cursor:pointer;text-decoration:underline;margin:0 4px;">
@@ -757,8 +756,8 @@ export default {
                             style="color:var(--primary);cursor:pointer;text-decoration:underline;">
                             帮助文档
                         </span>
-                    </template>
-                    （点击复制链接）
+                    </template><!--
+                    -->（点击复制链接）
                 </div>
 
                 <!-- 选项卡切换 -->
@@ -996,7 +995,9 @@ export default {
                         <tr v-for="v in voiceList" :key="v.voice_id">
                             <td>
                                 {{ v.voice_id }}
-                                <span v-if="v.voice_id && v.voice_id.includes('-vd-')" style="background:#dbeafe;color:#1e40af;padding:0 6px;border-radius:4px;font-size:0.7rem;margin-left:4px;">设计</span>
+                                <span v-if="v.voice_id && v.voice_id.includes('-vd-')"
+                                    style="background:#dbeafe;color:#1e40af;padding:0 6px;border-radius:4px;font-size:0.7rem;margin-left:4px;"
+                                >设计</span>
                             </td>
                             <td>{{ v.created_at }}</td>
                             <td>

@@ -38,6 +38,8 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
     def __init__(self, entry: dict) -> None:
         super().__init__(entry)   # 基类会加载 docs/minimax_speech_2_8.md 到 self.docs_content
 
+        logger.debug(f"Initialized MinimaxSpeech2_8Adapter with template_key={self.template_key}")
+
     # ---------- 工具 Schema ----------
     def get_tool_schema(self) -> FunctionTool:
         return FunctionTool(
@@ -343,7 +345,18 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
 
             async with httpx.AsyncClient(timeout=60) as client:
                 with open(file_path, "rb") as f:
-                    files = {"file": (Path(file_path).name, f, "audio/mpeg")}
+                    custom_filename = kwargs.get("filename")
+                    if custom_filename:
+
+                        # 确保有扩展名，如果没有则从原文件扩展名补全
+                        original_ext = Path(file_path).suffix
+                        if not Path(custom_filename).suffix:
+                            custom_filename += original_ext
+                        upload_filename = custom_filename
+                    else:
+                        upload_filename = Path(file_path).name
+
+                    files = {"file": (upload_filename, f, "audio/mpeg")}
                     data = {"purpose": purpose}
                     resp = await client.post(url, headers=headers, data=data, files=files)
                     resp.raise_for_status()
