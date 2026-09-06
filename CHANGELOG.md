@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.2.4] - 2026-09-06
+
+### Added
+
+- 添加 logo.png
+
+### Changed
+
+- 更新 README.md
+
 ## [0.2.3] - 2026-09-06
 
 ### Added
