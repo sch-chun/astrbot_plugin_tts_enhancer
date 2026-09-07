@@ -52,6 +52,8 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
         self.docs_content = self._load_docs()
         self.design_docs_content = self._load_design_docs()
 
+    # ———————— 语音合成 ————————
+
     def _load_design_docs(self) -> str:
         """加载声音设计音色专用文档。
 
@@ -372,6 +374,10 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
             logger.error(f"下载音频失败: {e}")
             return ""
 
+    # ————————————————————————
+
+    # ———————— 参数验证 ————————
+
     def validate_params(self, params: dict) -> tuple[bool, str]:
         """验证语音合成参数的有效性。
         
@@ -458,6 +464,8 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
                     logger.warning(f"丢弃非法的 language_hints 参数: {hints}")
 
         return sanitized
+
+    # ————————————————————————
 
     # ———————— 音色管理 ————————
 
@@ -611,7 +619,12 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
         if enable_preprocess:
             payload["input"]["enable_preprocess"] = True
         if max_prompt_audio_length is not None:
-            payload["input"]["max_prompt_audio_length"] = float(max_prompt_audio_length)
+            if not isinstance(max_prompt_audio_length, (int, float)):
+                raise ValueError("max_prompt_audio_length 必须为数字")
+            if 3.0 <= max_prompt_audio_length <= 30.0:
+                payload["input"]["max_prompt_audio_length"] = float(max_prompt_audio_length)
+            else:
+                raise ValueError("max_prompt_audio_length 必须在 3.0 到 30.0 之间")
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:
@@ -679,6 +692,8 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
+
+        self.validate_text_length(text=voice_prompt, max_len=500, field_name="voice_prompt")
         payload = {
             "model": "voice-enrollment",
             "input": {

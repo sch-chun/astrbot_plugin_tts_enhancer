@@ -441,6 +441,7 @@ export default {
                 const mimeType = `audio/${previewAudioFormat.value}`;
                 const blob = new Blob([audioBytes], { type: mimeType });
                 const audioUrl = URL.createObjectURL(blob);
+                
                 // 释放旧的 URL
                 if (previewAudioUrl.value) {
                     URL.revokeObjectURL(previewAudioUrl.value);

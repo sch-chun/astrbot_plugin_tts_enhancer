@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
+import re
 
 from typing import Any, Optional
 from astrbot.core.agent.tool import FunctionTool
@@ -109,6 +110,10 @@ class TTSProviderAdapter(ABC):
         """
         pass
 
+    # ————————————————————————
+
+    # ———————— 参数验证 ————————
+
     def validate_params(self, params: dict) -> tuple[bool, str]:
         """验证 TTS 参数是否合法
         
@@ -182,3 +187,76 @@ class TTSProviderAdapter(ABC):
         raise NotImplementedError
 
     # ————————————————————————
+
+    # ———————— 通用校验工具 ————————
+
+    @staticmethod
+    def validate_voice_id(
+        voice_id: str,
+        min_len: int = 8,
+        max_len: int = 256,
+        pattern: str = r'^[A-Za-z][A-Za-z0-9\-_]*[A-Za-z0-9]$'
+    ) -> None:
+        """校验 voice_id 格式
+        
+        默认：8-256个字符，以字母开头，只允许字母、数字、连字符和下划线，以字母或数字结尾。
+        可通过参数自定义规则。
+
+        Args:
+            voice_id (str): 需要校验的 voice_id
+            min_len (int): voice_id 最小长度，默认 8
+            max_len (int): voice_id 最大长度，默认 256
+            pattern (str): voice_id 正则表达式模式
+        """
+        if not voice_id:
+            return  # 允许空值，由调用方决定是否必填
+        if not (min_len <= len(voice_id) <= max_len):
+            raise ValueError(f"voice_id 长度必须为 {min_len} ~ {max_len}，当前 {len(voice_id)}")
+        if not re.match(pattern, voice_id):
+            raise ValueError(f"voice_id 格式不合法，必须匹配正则表达式：{pattern}")
+
+    def _count_text_chars(self, text: str) -> int:
+        """计算文本字符数。
+        
+        默认 CJK 统一汉字（0x4E00-0x9FFF）按2字符。
+        子类可覆盖此方法以实现不同的计数规则。
+
+        Args:
+            text (str): 需要计算的文本内容
+
+        Returns:
+            int: 文本字符数
+        """
+        if not text:
+            return 0
+        count = 0
+        for ch in text:
+
+            # CJK 统一汉字范围
+            if 0x4E00 <= ord(ch) <= 0x9FFF:
+                count += 2
+            else:
+                count += 1
+        return count
+
+    def validate_text_length(
+        self,
+        text: Optional[str],
+        min_len: int = 0,
+        max_len: int = 200,
+        field_name: str = "文本"
+    ) -> None:
+        """校验文本长度（使用 _count_text_chars 方法计算）
+        
+        Args:
+            text (Optional[str]): 需要校验的文本内容
+            min_len (int): 文本最小长度，默认 0
+            max_len (int): 文本最大长度，默认 200
+            field_name (str): 字段名称，用于错误提示，默认 "文本"
+        """
+        if not text:
+            return
+
+        char_count = self._count_text_chars(text)
+        if not (min_len <= char_count <= max_len):
+            raise ValueError(f"{field_name} 长度必须为 {min_len} ~ {max_len}，当前 {char_count}")
