@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.2.6] - 2026-09-18
+
+### Changed
+
+- 删除职责被拆分完全的 parse_subagent_response 函数
+- 百炼现在会将 MODEL_NAME 拼接进 get_subagent_system_prompt
+- **抽取供应商后端公共逻辑到 `providers/utils/`**：
+  - 新增 `providers/utils/http.py`：
+    - `bearer_headers()`：统一构造 Bearer 认证请求头，支持可选 `Content-Type: application/json`
+    - `extract_error_message()`：统一从响应 JSON 提取错误信息（`message` → `error` → `detail` → 回退文本）
+  - `providers/utils/audio.py` 新增 `save_audio_bytes()`：统一音频字节落盘逻辑（校验 `_data_dir`、创建目录、时间戳命名、写入文件）
+  - 百炼适配器：5 处请求头构造、3 处错误信息提取、`_download_audio()` 落盘逻辑改为复用上述工具
+  - MiniMax 适配器：9 处请求头构造、`call_api()` 落盘逻辑改为复用上述工具
+  - MiniMax 适配器新增 `_check_base_resp()` 私有方法，收敛 8 处重复的 `base_resp.status_code` 状态检查，各调用点保留原有失败处理语义（抛异常 / 记录日志并返回）
+
 ## [0.2.5] - 2026-09-07
 
 ### Added

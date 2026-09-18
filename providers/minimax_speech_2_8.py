@@ -1,3 +1,8 @@
+"""MiniMax Speech 2.8 TTS 适配器模块。
+
+提供 MinimaxSpeech2_8Adapter 类，支持 HD 和 Turbo 两种模型，
+实现语音合成、参数校验、音色克隆与设计、以及音色和音频文件的增删查等完整功能。
+"""
 import httpx
 from pathlib import Path
 from datetime import datetime
@@ -7,7 +12,8 @@ from astrbot.core import logger
 from astrbot.core.agent.tool import FunctionTool
 
 from .base import TTSProviderAdapter
-from ..src.audio_utils import get_audio_duration, trim_audio_to_max, AudioConstraints
+from .utils import http
+from .utils.audio import get_audio_duration, trim_audio_to_max, AudioConstraints, save_audio_bytes
 
 
 class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
@@ -43,6 +49,20 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
         super().__init__(entry)   # 基类会加载 docs/minimax_speech_2_8.md 到 self.docs_content
 
         logger.debug(f"Initialized MinimaxSpeech2_8Adapter with template_key={self.template_key}")
+
+    def _check_base_resp(self, base_resp: dict, action: str) -> str | None:
+        """检查 MiniMax 响应的 base_resp 状态。
+
+        Args:
+            base_resp: 响应中的 base_resp 字典。
+            action: 当前动作描述，用于组装错误消息。
+
+        Returns:
+            错误消息字符串，成功（status_code == 0）时返回 None。
+        """
+        if base_resp.get("status_code") != 0:
+            return f"{action}: {base_resp.get('status_msg')}"
+        return None
 
     # ———————— 语音合成 ————————
 
@@ -113,25 +133,6 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
 {self.docs_content}
 
 请根据用户提供的文本和上下文，调用 `tts_enhance` 工具提供合适的参数（text 必填，其他可选）。直接调用工具，不要额外解释。"""
-
-    # ---------- 解析 SubAgent 响应 ----------
-    def parse_subagent_response(self, response_data: Any) -> dict[str, Any]:
-        """解析 SubAgent 返回的工具调用响应。
-
-        Args:
-            response_data: SubAgent 的响应数据，预期为 dict 或 str。
-
-        Returns:
-            dict[str, Any]: 解析后的参数字典。若响应不合法则返回空字典。
-        """
-        if isinstance(response_data, dict):
-            if "text" not in response_data:
-                logger.warning("工具调用缺少 'text' 字段，使用原始文本")
-                return {}
-            return response_data
-        if isinstance(response_data, str) and response_data.strip():
-            return {"text": response_data.strip()}
-        return {}
 
     # ---------- 调用 API ----------
     async def call_api(
@@ -223,10 +224,7 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
         if latex_read:
             payload["latex_read"] = True
 
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = http.bearer_headers(api_key)
         url = "https://api.minimax.cn/v1/t2a_v2"
         timeout = config.get("timeout", 60)
 
@@ -237,8 +235,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
                 data = resp.json()
 
             base_resp = data.get("base_resp", {})
-            if base_resp.get("status_code") != 0:
-                logger.error(f"MiniMax API 错误: {base_resp.get('status_msg')}")
+            error_msg = self._check_base_resp(base_resp, "MiniMax API 错误")
+            if error_msg:
+                logger.error(error_msg)
                 return ""
 
             audio_hex = data.get("data", {}).get("audio")
@@ -248,18 +247,8 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
 
             audio_bytes = bytes.fromhex(audio_hex)
             audio_format = audio_setting.get("format", "mp3")
-            data_dir = config.get("_data_dir")
-            if not data_dir:
-                logger.error("未找到 _data_dir，无法保存音频")
-                return ""
-            data_dir = Path(data_dir)
-            data_dir.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            filename = f"tts_{timestamp}.{audio_format}"
-            filepath = data_dir / filename
-            filepath.write_bytes(audio_bytes)
-            logger.debug(f"TTS 音频已保存: {filepath}")
-            return str(filepath)
+
+            return save_audio_bytes(config.get("_data_dir", ""), audio_bytes, audio_format)
 
         except httpx.TimeoutException:
             logger.error(f"MiniMax API 超时 (timeout={timeout}s)")
@@ -396,7 +385,7 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
 
             # 5. 调用 MiniMax API
             url = "https://api.minimax.cn/v1/files/upload"
-            headers = {"Authorization": f"Bearer {api_key}"}
+            headers = http.bearer_headers(api_key, with_json=False)
 
             async with httpx.AsyncClient(timeout=60) as client:
                 with open(file_path, "rb") as f:
@@ -418,8 +407,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
                     result = resp.json()
 
             base_resp = result.get("base_resp", {})
-            if base_resp.get("status_code") != 0:
-                raise RuntimeError(f"上传失败: {base_resp.get('status_msg')}")
+            error_msg = self._check_base_resp(base_resp, "上传失败")
+            if error_msg:
+                raise RuntimeError(error_msg)
 
             file_obj = result.get("file", {})
             if not file_obj.get("file_id"):
@@ -455,7 +445,7 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
             raise ValueError(f"不支持的 purpose: {purpose}")
 
         url = f"https://api.minimax.cn/v1/files/list?purpose={purpose}"
-        headers = {"Authorization": f"Bearer {api_key}"}
+        headers = http.bearer_headers(api_key, with_json=False)
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:
@@ -464,8 +454,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
                 result = resp.json()
 
             base_resp = result.get("base_resp", {})
-            if base_resp.get("status_code") != 0:
-                raise RuntimeError(f"查询文件列表失败: {base_resp.get('status_msg')}")
+            error_msg = self._check_base_resp(base_resp, "查询文件列表失败")
+            if error_msg:
+                raise RuntimeError(error_msg)
 
             return {
                 "files": result.get("files", []),
@@ -492,7 +483,7 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
             raise ValueError("API Key 未配置")
 
         url = f"https://api.minimax.cn/v1/files/retrieve_content?file_id={file_id}"
-        headers = {"Authorization": f"Bearer {api_key}"}
+        headers = http.bearer_headers(api_key, with_json=False)
 
         try:
             async with httpx.AsyncClient(timeout=60) as client:
@@ -526,10 +517,7 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
 
         payload = {"file_id": file_id, "purpose": purpose}
         url = "https://api.minimax.cn/v1/files/delete"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = http.bearer_headers(api_key)
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:
@@ -538,8 +526,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
                 result = resp.json()
 
             base_resp = result.get("base_resp", {})
-            if base_resp.get("status_code") != 0:
-                logger.error(f"删除文件失败: {base_resp.get('status_msg')}")
+            error_msg = self._check_base_resp(base_resp, "删除文件失败")
+            if error_msg:
+                logger.error(error_msg)
                 return False
 
             logger.debug(f"文件删除成功: file_id={file_id}")
@@ -682,10 +671,7 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
             payload["aigc_watermark"] = True
 
         url = "https://api.minimax.cn/v1/voice_clone"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = http.bearer_headers(api_key)
 
         try:
             async with httpx.AsyncClient(timeout=120) as client:
@@ -694,8 +680,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
                 result = resp.json()
 
             base_resp = result.get("base_resp", {})
-            if base_resp.get("status_code") != 0:
-                raise RuntimeError(f"克隆失败: {base_resp.get('status_msg')}")
+            error_msg = self._check_base_resp(base_resp, "克隆失败")
+            if error_msg:
+                raise RuntimeError(error_msg)
 
             response = {"voice_id": voice_id}
             if result.get("demo_audio"):
@@ -744,10 +731,7 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
             payload["aigc_watermark"] = True
 
         url = "https://api.minimax.cn/v1/voice_design"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = http.bearer_headers(api_key)
 
         try:
             async with httpx.AsyncClient(timeout=120) as client:
@@ -756,8 +740,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
                 result = resp.json()
 
             base_resp = result.get("base_resp", {})
-            if base_resp.get("status_code") != 0:
-                raise RuntimeError(f"音色设计失败: {base_resp.get('status_msg')}")
+            error_msg = self._check_base_resp(base_resp, "音色设计失败")
+            if error_msg:
+                raise RuntimeError(error_msg)
 
             voice_id = result.get("voice_id")
             if not voice_id:
@@ -799,10 +784,7 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
 
         payload = {"voice_type": voice_type}
         url = "https://api.minimax.cn/v1/get_voice"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = http.bearer_headers(api_key)
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:
@@ -811,8 +793,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
                 result = resp.json()
 
             base_resp = result.get("base_resp", {})
-            if base_resp.get("status_code") != 0:
-                raise RuntimeError(f"查询音色失败: {base_resp.get('status_msg')}")
+            error_msg = self._check_base_resp(base_resp, "查询音色失败")
+            if error_msg:
+                raise RuntimeError(error_msg)
 
             # 格式化返回结果
             response = {"items": [], "total": 0}
@@ -883,10 +866,7 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
             "voice_type": voice_type,
         }
         url = "https://api.minimax.cn/v1/delete_voice"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = http.bearer_headers(api_key)
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:
@@ -895,8 +875,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
                 result = resp.json()
 
             base_resp = result.get("base_resp", {})
-            if base_resp.get("status_code") != 0:
-                logger.error(f"删除音色失败: {base_resp.get('status_msg')}")
+            error_msg = self._check_base_resp(base_resp, "删除音色失败")
+            if error_msg:
+                logger.error(error_msg)
                 return False
 
             logger.info(f"音色删除成功: voice_id={voice_id}")
@@ -908,4 +889,3 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
             raise RuntimeError(f"删除音色异常: {e}")
 
     # ————————————————————————
-    

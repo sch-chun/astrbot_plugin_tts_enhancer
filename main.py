@@ -1,3 +1,7 @@
+"""astrbot_plugin_tts_enhancer - 多供应商智能语音合成插件
+
+本模块为 AstrBot 提供 TTS（Text-to-Speech）增强功能，支持多供应商智能语音合成。
+"""
 from pathlib import Path
 import base64
 import time
@@ -747,3 +751,4 @@ class TTSEnhancerPlugin(Star):
         self.context.register_web_api(f"/{self.name}/file/list", file_list, ["POST"], "列出供应商的文件")
         self.context.register_web_api(f"/{self.name}/file/get", file_get, ["POST"], "获取文件内容（Base64）")
         self.context.register_web_api(f"/{self.name}/file/delete", file_delete, ["POST"], "删除供应商的文件")
+

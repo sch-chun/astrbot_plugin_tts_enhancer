@@ -195,21 +195,20 @@ class TTSService:
                     )
 
                     if result and isinstance(result, dict):
-                        temp_params = adapter.parse_subagent_response(result)
-                        is_valid, err_msg = adapter.validate_params(temp_params)
+                        is_valid, err_msg = adapter.validate_params(result)
 
                         if is_valid:
-                            api_params = temp_params
+                            api_params = result
                             break
                         else:
                             if attempt == max_attempts - 1:
                                 logger.warning(f"清理非法参数: {err_msg}")
-                                api_params = adapter.sanitize_params(temp_params)
+                                api_params = adapter.sanitize_params(result)
                                 break
                             else:
                                 current_context.append({
                                     "role": "assistant",
-                                    "content": f"我尝试调用 tts_enhance，参数为：{json.dumps(temp_params, ensure_ascii=False)}"
+                                    "content": f"我尝试调用 tts_enhance，参数为：{json.dumps(result, ensure_ascii=False)}"
                                 })
                                 current_context.append({
                                     "role": "user",

@@ -1,3 +1,8 @@
+"""临时文件服务器模块。
+
+提供基于 aiohttp 的临时文件 HTTP 服务，用于在指定端口上提供单个文件的访问。
+包含 TempFileServer 类以及全局服务器管理相关的辅助函数。
+"""
 import logging
 from pathlib import Path
 from aiohttp import web
@@ -88,11 +93,11 @@ _servers = {}
 def get_server(file_id: str) -> Optional[TempFileServer]:
     """根据文件 ID 获取对应的临时文件服务器实例。
 
-    Args:
-        file_id (str): 文件的唯一标识符。
+        Args:
+            file_id (str): 文件的唯一标识符。
 
-    Returns:
-        Optional[TempFileServer]: 对应的服务器实例，如果不存在则返回 None。
+        Returns:
+            Optional[TempFileServer]: 对应的服务器实例，如果不存在则返回 None。
     """
     return _servers.get(file_id)
 

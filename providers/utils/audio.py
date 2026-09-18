@@ -1,4 +1,10 @@
+"""音频处理工具模块。
+
+提供音频时长获取、校验与裁剪功能，并定义各 TTS 模型/用途的预设约束常量。
+依赖 pydub 库进行音频处理，若未安装则相关功能将降级或失效。
+"""
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -14,7 +20,14 @@ except ImportError:
 
 
 def get_audio_duration(file_path: str) -> Optional[float]:
-    """获取音频时长（秒）。"""
+    """获取音频时长（秒）。
+
+    Args:
+        file_path: 音频文件路径
+
+    Returns:
+        音频时长（秒），若 pydub 不可用或读取失败则返回 None
+    """
     if mediainfo is None:
         return None
     try:
@@ -32,7 +45,16 @@ def validate_audio_duration(
     min_sec: Optional[float] = None,
     max_sec: Optional[float] = None,
 ) -> Tuple[bool, str]:
-    """校验音频时长是否在指定范围内。"""
+    """校验音频时长是否在指定范围内。
+
+    Args:
+        file_path: 音频文件路径
+        min_sec: 允许的最小时长（秒），为 None 则不检查下限
+        max_sec: 允许的最大时长（秒），为 None 则不检查上限
+
+    Returns:
+        元组 (是否合法, 错误提示信息)，合法时信息为空字符串
+    """
     duration = get_audio_duration(file_path)
     if duration is None:
         return False, "无法获取音频时长，请确认文件为有效的音频格式（mp3/m4a/wav）"
@@ -78,11 +100,13 @@ def trim_audio_to_max(
         raise ValueError(f"max_sec ({max_sec}) 太小，无法裁剪")
 
     try:
+
         # 加载音频
         audio = AudioSegment.from_file(str(src_path))
         original_duration_ms = len(audio)
 
         if original_duration_ms <= target_ms:
+
             # 实际上不需要裁剪（保护逻辑，但调用前应已判断）
             return str(src_path)
 
@@ -96,6 +120,7 @@ def trim_audio_to_max(
             out_dir = src_path.parent
 
         out_dir.mkdir(parents=True, exist_ok=True)
+
         # 生成文件名：原文件名_trimmed.{ext}
         stem = src_path.stem
         ext = src_path.suffix
@@ -111,10 +136,43 @@ def trim_audio_to_max(
         raise RuntimeError(f"音频裁剪失败: {e}")
 
 
+def save_audio_bytes(data_dir: str, content: bytes, fmt: str = "mp3") -> str:
+    """将音频字节写入本地文件并返回路径。
+
+    Args:
+        data_dir: 音频保存目录，为空时返回空字符串。
+        content: 音频二进制内容。
+        fmt: 音频文件扩展名（如 "wav"、"mp3"），默认 "mp3"。
+
+    Returns:
+        保存后的音频文件路径，失败时返回空字符串。
+    """
+    if not data_dir:
+        logger.error("未找到 _data_dir")
+        return ""
+
+    try:
+        dir_path = Path(data_dir)
+        dir_path.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        filepath = dir_path / f"tts_{timestamp}.{fmt}"
+        filepath.write_bytes(content)
+    except Exception as e:
+        logger.error(f"保存音频失败: {e}")
+        return ""
+
+    logger.debug(f"TTS 音频已保存: {filepath}")
+    return str(filepath)
+
+
 # ========== 各模型/用途的预设约束常量 ==========
 
 class AudioConstraints:
-    """音频时长约束常量，供各适配器复用"""
+    """音频时长约束常量，供各适配器复用。
+
+    包含 MiniMax、百炼（Qwen-Audio-TTS / CosyVoice / Qwen-TTS）等
+    模型的音频克隆与示例音频时长限制。
+    """
 
     # MiniMax
     MINIMAX_CLONE_MIN = 10.0       # 主音频最短 10 秒
@@ -124,3 +182,4 @@ class AudioConstraints:
     # 百炼（Qwen-Audio-TTS / CosyVoice / Qwen-TTS）
     BAILIAN_CLONE_MIN = 10.0       # 推荐 10~20 秒，强制至少 10 秒
     BAILIAN_CLONE_MAX = 60.0       # 最长不超过 60 秒
+    

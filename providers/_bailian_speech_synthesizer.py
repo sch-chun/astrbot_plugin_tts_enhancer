@@ -1,7 +1,6 @@
 """百炼 Speech Synthesizer 适配器"""
 
 import httpx
-from datetime import datetime
 from pathlib import Path
 import traceback
 
@@ -9,6 +8,8 @@ from astrbot.core import logger
 from astrbot.core.agent.tool import FunctionTool
 
 from .base import TTSProviderAdapter
+from .utils import http
+from .utils.audio import save_audio_bytes
 
 from typing import Any
 
@@ -160,40 +161,13 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
         """
         voice = self.entry.get("voice", "")
         docs = self.get_docs_for_voice(voice)
-        return f"""你是语音合成参数优化助手，负责为 TTS 模型准备合成参数。以下是 TTS 模型的参数使用说明：
+        return f"""你是语音合成参数优化助手，负责为 {self.MODEL_NAME} 模型准备合成参数。以下是 {self.MODEL_NAME} 模型的参数使用说明：
 
 {docs}
 
 现在请根据用户提供的文本和上下文，调用 `tts_enhance` 工具，提供合适的参数（包括 text 和其他可选参数）。请直接调用工具，不要额外解释。"""
 
-    # ---------- 3. 解析 SubAgent 响应 ----------
-    def parse_subagent_response(self, response_data: Any) -> dict[str, Any]:
-        """解析 SubAgent 返回的数据，提取语音合成参数。
-        
-        该方法处理 SubAgent 的响应数据，将其转换为语音合成所需的参数格式。
-        如果响应是字典格式，则直接返回；如果是字符串，则作为文本参数返回。
-        
-        Args:
-            response_data (Any): SubAgent 的响应数据，可以是字典或字符串
-            
-        Returns:
-            dict[str, Any]: 包含语音合成参数的字典，至少包含 text 字段；
-                           如果响应无效或缺少 text 字段，则返回空字典
-        """
-        if isinstance(response_data, dict):
-
-            # 确保 text 存在
-            if "text" not in response_data:
-                logger.warning("工具调用缺少 'text' 字段，使用原始文本")
-                return {}
-            return response_data
-        
-        # 降级：纯文本
-        if isinstance(response_data, str) and response_data.strip():
-            return {"text": response_data.strip()}
-        return {}
-
-    # ---------- 4. 调用 TTS API ----------
+    # ---------- 3. 调用 TTS API ----------
     async def call_api(
         self,
         text: str,               # 原始文本（备用）
@@ -311,10 +285,7 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
             return ""
 
         url = self._API_ENDPOINT.format(workspace_id=workspace_id)
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = http.bearer_headers(api_key)
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
@@ -352,23 +323,11 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
             str: 下载后的音频文件路径，失败时返回空字符串
         """
         try:
-            data_dir = config.get("_data_dir")
-            if not data_dir:
-                logger.error("未找到 _data_dir")
-                return ""
-            data_dir = Path(data_dir)
-            data_dir.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            filename = f"tts_{timestamp}.{fmt}"
-            filepath = data_dir / filename
-
             async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
-                filepath.write_bytes(resp.content)
 
-            logger.debug(f"TTS 音频已保存: {filepath}")
-            return str(filepath)
+            return save_audio_bytes(config.get("_data_dir", ""), resp.content, fmt)
 
         except Exception as e:
             logger.error(f"下载音频失败: {e}")
@@ -599,11 +558,7 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
         workspace_id = self.entry.get("workspace_id", "")
         api_key = self.entry.get("api_key", "")
         url = f"https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/customization"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-
-        }
+        headers = http.bearer_headers(api_key)
         payload = {
             "model": "voice-enrollment",
             "input": {
@@ -632,11 +587,8 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
                 resp = await client.post(url, headers=headers, json=payload)
                 if resp.status_code != 200:
                     try:
-                        error_json = resp.json()
-                        
-                        # 常见错误字段：message、error、detail 等
-                        error_msg = error_json.get("message") or error_json.get("error") or error_json.get("detail") or resp.text
-                    except:
+                        error_msg = http.extract_error_message(resp.json(), fallback_text=resp.text)
+                    except Exception:
                         error_msg = resp.text
                     raise RuntimeError(f"百炼 API 错误 (HTTP {resp.status_code}): {error_msg}")
                 data = resp.json()
@@ -644,9 +596,8 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
 
             # 捕获 httpx 抛出的 HTTPStatusError
             try:
-                error_json = e.response.json()
-                error_msg = error_json.get("message") or error_json.get("error") or error_json.get("detail") or e.response.text
-            except:
+                error_msg = http.extract_error_message(e.response.json(), fallback_text=e.response.text)
+            except Exception:
                 error_msg = e.response.text
             raise RuntimeError(f"请求失败: {error_msg}")
         except Exception as e:
@@ -684,14 +635,11 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
         Raises:
             RuntimeError: 如果 API 请求失败或未返回 voice_id
         """
-        workspace_id = self.entry.get("workspace_id")
-        api_key = self.entry.get("api_key")
+        workspace_id = self.entry.get("workspace_id", "")
+        api_key = self.entry.get("api_key", "")
 
         url = f"https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/customization"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
+        headers = http.bearer_headers(api_key)
 
         self.validate_text_length(text=voice_prompt, max_len=500, field_name="voice_prompt")
         payload = {
@@ -718,9 +666,8 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
             resp = await client.post(url, headers=headers, json=payload)
             if resp.status_code != 200:
                 try:
-                    error_json = resp.json()
-                    error_msg = error_json.get("message") or error_json.get("error") or resp.text
-                except:
+                    error_msg = http.extract_error_message(resp.json(), fallback_text=resp.text)
+                except Exception:
                     error_msg = resp.text
                 raise RuntimeError(f"百炼设计 API 错误 (HTTP {resp.status_code}): {error_msg}")
             data = resp.json()
@@ -762,10 +709,7 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
         page_index = kwargs.get("page_index", 0)
 
         url = f"https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/customization"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
+        headers = http.bearer_headers(api_key)
         payload = {
             "model": "voice-enrollment",
             "input": {
@@ -818,10 +762,7 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
             raise ValueError("workspace_id, api_key, voice_id 不能为空")
 
         url = f"https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/customization"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
+        headers = http.bearer_headers(api_key)
         payload = {
             "model": "voice-enrollment",
             "input": {

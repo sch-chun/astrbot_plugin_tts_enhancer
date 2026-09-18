@@ -8,3 +8,4 @@ class BailianCosyVoiceV3_5Adapter(BailianSpeechSynthesizerAdapter):
 
     MODEL_NAME = "cosyvoice-v3.5"
     VALID_LANGS = ["zh", "en", "fr", "de", "ja", "ko", "ru", "pt", "th", "id", "vi"]
+    

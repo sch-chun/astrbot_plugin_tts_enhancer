@@ -80,20 +80,6 @@ class TTSProviderAdapter(ABC):
         pass
 
     @abstractmethod
-    def parse_subagent_response(self, response_data: Any) -> dict:
-        """解析 SubAgent 返回的数据
-        
-        将 SubAgent 返回的响应数据解析为标准格式。
-        
-        Args:
-            response_data (Any): SubAgent 返回的原始响应数据
-            
-        Returns:
-            dict: 解析后的数据字典，包含处理后的 TTS 参数
-        """
-        pass
-
-    @abstractmethod
     async def call_api(self, text: str, raw_params: dict, config: dict) -> str:
         """调用 TTS API
         
