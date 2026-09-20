@@ -1,8 +1,7 @@
 """TTS Enhancer 插件配置管理模块。"""
-
 from typing import Optional
 
-from astrbot.core import logger
+from astrbot.api import logger
 
 
 class TTSEnhancerConfig:
@@ -35,7 +34,9 @@ class TTSEnhancerConfig:
         """
         providers_raw = self.raw_config.get("providers", [])
         if not providers_raw:
-            logger.warning("TTS Enhancer: 配置中未找到任何 TTS 供应商（providers 为空），请检查插件配置。")
+            logger.warning(
+                "TTS Enhancer: 配置中未找到任何 TTS 供应商（providers 为空），请检查插件配置。"
+            )
         self._providers = sorted(providers_raw, key=lambda x: x.get("priority", 100))
 
     def get_providers(self) -> list:

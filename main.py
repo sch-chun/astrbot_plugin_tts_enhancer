@@ -5,11 +5,12 @@
 from pathlib import Path
 import base64
 import time
+import re
 
 from astrbot.api.star import Star
 from astrbot.api.event.filter import on_llm_request, on_decorating_result
 from astrbot.api.message_components import Plain
-from astrbot.core import logger
+from astrbot.api import logger
 from astrbot.api.web import request, json_response, error_response
 from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 
@@ -25,6 +26,26 @@ from fastapi.responses import JSONResponse
 from astrbot.core.provider.entities import ProviderRequest
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api.star import Context
+
+
+_SAFE_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,128}$")
+
+
+def _validate_file_id(file_id: str) -> str:
+    """校验 file_id 是否为安全文件名片段。
+
+    Args:
+        file_id: 调用方传入的文件标识符。
+
+    Returns:
+        校验通过的 file_id（原样返回）。
+
+    Raises:
+        ValueError: file_id 为空、非字符串或不匹配白名单时。
+    """
+    if not isinstance(file_id, str) or not _SAFE_FILE_ID_RE.match(file_id):
+        raise ValueError(f"非法 file_id: {file_id!r}")
+    return file_id
 
 
 class TTSEnhancerPlugin(Star):
@@ -75,6 +96,27 @@ class TTSEnhancerPlugin(Star):
         # 注册路由
         self._register_routes()
 
+    def _resolve_uploads_path(self, file_id: str) -> Path:
+        """将 file_id 解析为 uploads 目录下的绝对路径，并二次确认未越权。
+
+        即使 _validate_file_id 已过滤掉绝大多数危险字符，这里仍做 resolve() 后
+        的父目录比较，作为防御性编程。
+
+        Args:
+            file_id: 已通过 _validate_file_id 校验的文件标识符。
+
+        Returns:
+            uploads 目录下的目标绝对路径。
+
+        Raises:
+            ValueError: 解析后的路径逃逸出 uploads 目录。
+        """
+        uploads_dir = (self.plugin_data_path / "uploads").resolve()
+        target = (uploads_dir / file_id).resolve()
+        if uploads_dir != target.parent:
+            raise ValueError(f"file_id 越权访问: {file_id!r}")
+        return target
+
     async def _process_tts_text(
         self,
         text: str,
@@ -98,7 +140,9 @@ class TTSEnhancerPlugin(Star):
             if seg["type"] == "text":
                 components.append(Plain(seg["content"]))
             elif seg["type"] == "tts":
-                audio_component = await self.tts_service.synthesize(seg["content"], event, context_messages)
+                audio_component = await self.tts_service.synthesize(
+                    seg["content"], event, context_messages
+                )
                 if audio_component:
                     components.append(audio_component)
                     if self.config.get("dual_output", False):
@@ -367,6 +411,13 @@ class TTSEnhancerPlugin(Star):
                 upload_dir.mkdir(parents=True, exist_ok=True)
                 original_filename = file_field.filename or "file.bin"
                 ext = Path(original_filename).suffix.lower()
+                
+                # 白名单化扩展名，防止 .php / .sh 等异常后缀被写入 uploads 目录
+                if ext not in {".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac"}:
+                    return error_response(
+                        f"不支持的文件格式: {ext or '(无扩展名)'}，仅允许 wav/mp3/m4a/aac/ogg/flac",
+                        status_code=400,
+                    )
                 timestamp = int(time.time() * 1000)
                 unique_name = f"upload_{timestamp}{ext}"
                 file_path = upload_dir / unique_name
@@ -418,8 +469,12 @@ class TTSEnhancerPlugin(Star):
                 except ValueError:
                     return error_response("内部端口必须为 1024-65535 的整数", status_code=400)
 
-                file_path = self.plugin_data_path / "uploads" / file_id
-                if not file_path.exists():
+                try:
+                    file_id = _validate_file_id(file_id)
+                    file_path = self._resolve_uploads_path(file_id)
+                except ValueError as e:
+                    return error_response(str(e), status_code=400)
+                if not file_path.is_file():
                     return error_response("文件不存在", status_code=404)
 
                 if get_server(file_id):
@@ -463,8 +518,12 @@ class TTSEnhancerPlugin(Star):
                     remove_server(file_id)
 
                 # 删除临时文件
-                file_path = self.plugin_data_path / "uploads" / file_id
-                if file_path.exists():
+                try:
+                    file_id = _validate_file_id(file_id)
+                    file_path = self._resolve_uploads_path(file_id)
+                except ValueError as e:
+                    return error_response(str(e), status_code=400)
+                if file_path.is_file():
                     file_path.unlink()
 
                 return json_response({"code": 0, "data": {"success": True}})
@@ -514,8 +573,9 @@ class TTSEnhancerPlugin(Star):
 
                 audio_path = await adapter.call_api(
                     text=text,
-                    raw_params={"voice": voice_id, "_suppress_model_warning": True},
-                    config=entry_with_data_dir
+                    raw_params={},
+                    config=entry_with_data_dir,
+                    voice_id=voice_id,
                 )
                 if not audio_path:
                     return error_response("合成失败", status_code=500)
@@ -632,9 +692,12 @@ class TTSEnhancerPlugin(Star):
                     return error_response("entry_id 和 file_id 都是必需的", status_code=400)
 
                 # 查找本地文件
-                upload_dir = self.plugin_data_path / "uploads"
-                file_path = upload_dir / file_id
-                if not file_path.exists():
+                try:
+                    file_id = _validate_file_id(file_id)
+                    file_path = self._resolve_uploads_path(file_id)
+                except ValueError as e:
+                    return error_response(str(e), status_code=400)
+                if not file_path.is_file():
                     return error_response("本地文件不存在", status_code=404)
 
                 # 获取适配器
@@ -747,8 +810,15 @@ class TTSEnhancerPlugin(Star):
                 return error_response(str(e), status_code=500)
 
         # 注册
-        self.context.register_web_api(f"/{self.name}/file/upload", file_upload, ["POST"], "上传文件到供应商")
-        self.context.register_web_api(f"/{self.name}/file/list", file_list, ["POST"], "列出供应商的文件")
-        self.context.register_web_api(f"/{self.name}/file/get", file_get, ["POST"], "获取文件内容（Base64）")
-        self.context.register_web_api(f"/{self.name}/file/delete", file_delete, ["POST"], "删除供应商的文件")
-
+        self.context.register_web_api(
+            f"/{self.name}/file/upload", file_upload, ["POST"], "上传文件到供应商"
+        )
+        self.context.register_web_api(
+            f"/{self.name}/file/list", file_list, ["POST"], "列出供应商的文件"
+        )
+        self.context.register_web_api(
+            f"/{self.name}/file/get", file_get, ["POST"], "获取文件内容（Base64）"
+        )
+        self.context.register_web_api(
+            f"/{self.name}/file/delete", file_delete, ["POST"], "删除供应商的文件"
+        )

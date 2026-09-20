@@ -3,12 +3,12 @@
 提供音频时长获取、校验与裁剪功能，并定义各 TTS 模型/用途的预设约束常量。
 依赖 pydub 库进行音频处理，若未安装则相关功能将降级或失效。
 """
-import logging
 from datetime import datetime
 from pathlib import Path
+
 from typing import Optional, Tuple
 
-logger = logging.getLogger(__name__)
+from astrbot.api import logger
 
 try:
     from pydub import AudioSegment
@@ -129,7 +129,9 @@ def trim_audio_to_max(
         # 导出（保持原格式）
         trimmed.export(str(new_path), format=src_path.suffix.lstrip('.'))
 
-        logger.info(f"音频已裁剪: {original_duration_ms/1000:.1f}s -> {target_ms/1000:.1f}s, 保存至 {new_path}")
+        logger.info(
+            f"音频已裁剪: {original_duration_ms/1000:.1f}s -> {target_ms/1000:.1f}s, 保存至 {new_path}"
+        )
         return str(new_path)
 
     except Exception as e:

@@ -8,6 +8,21 @@
 </head>
 <body>
     <div id="app">
+        <!-- 全局音频音量条（所有音色预览/试听共享） -->
+        <div class="global-volume-bar">
+            <span class="global-volume-icon">🔊</span>
+            <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                v-model="volume"
+                class="global-volume-slider"
+                title="全局音量"
+            />
+            <span class="global-volume-value">{{ Math.round(volume * 100) }}%</span>
+        </div>
+
         <h1>TTS 音色管理</h1>
 
          <!-- 加载中 -->

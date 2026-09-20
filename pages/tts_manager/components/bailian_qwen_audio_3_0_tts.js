@@ -1,4 +1,4 @@
-import BailianSpeechSynthesizer from './bailian_speech_synthesizer.js';
+import BailianSpeechSynthesizer from './common/bailian_speech_synthesizer.js';
 
 export default {
     name: 'BailianQwenAudio3_0',
@@ -16,7 +16,10 @@ export default {
             
             // 系统音色相关链接列表（用于显示多个链接）
             systemVoiceLinks: [
-                { label: '系统音色列表', url: 'https://help.aliyun.com/zh/model-studio/qwen-audio-tts-voice-list' },
+                {
+                    label: '系统音色列表',
+                    url: 'https://help.aliyun.com/zh/model-studio/qwen-audio-tts-voice-list'
+                },
                 { label: '基础音色参考库', url: 'https://qwenaudio.tairitsu.work' }
             ]
         };

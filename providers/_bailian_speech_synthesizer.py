@@ -4,14 +4,14 @@ import httpx
 from pathlib import Path
 import traceback
 
-from astrbot.core import logger
+from astrbot.api import logger
 from astrbot.core.agent.tool import FunctionTool
 
 from .base import TTSProviderAdapter
 from .utils import http
 from .utils.audio import save_audio_bytes
 
-from typing import Any
+from typing import Any, Optional
 
 
 class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
@@ -30,7 +30,10 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
     _API_ENDPOINT = "https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer"
 
     # 可被覆盖
-    VALID_LANGS = ["zh", "en", "fr", "de", "ja", "ko", "ru", "pt", "th", "id", "vi", "es", "it", "ms", "fil", "ar"]
+    VALID_LANGS = [
+        "zh", "en", "fr", "de", "ja", "ko", "ru", "pt",
+        "th", "id", "vi", "es", "it", "ms", "fil", "ar"
+    ]
     MODEL_NAME = ""
 
     def __init__(self, entry: dict) -> None:
@@ -49,9 +52,21 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
         else:
             safe_entry["api_key"] = "*****"
     
-        logger.debug(f"Initializing {self.__class__.__name__} with entry: {entry}, MODEL_NAME: {self.MODEL_NAME}")
+        logger.debug(
+            f"Initializing {self.__class__.__name__} with entry: {entry}, MODEL_NAME: {self.MODEL_NAME}"
+        )
         self.docs_content = self._load_docs()
         self.design_docs_content = self._load_design_docs()
+
+         # 配置一致性检查：voice 解析出的 model 与显式配置的 model 是否冲突
+        voice = entry.get("voice", "")
+        config_model = entry.get("model")
+        parsed_model = self._extract_model_from_voice_id(voice)
+        if parsed_model is not None and config_model and config_model != parsed_model:
+            logger.warning(
+                f"[{self.template_key}] 配置中的 model='{config_model}' 与音色 ID 解析出的 "
+                f"model='{parsed_model}' 不一致，合成时将使用解析值。请检查配置。"
+            )
 
     # ———————— 语音合成 ————————
 
@@ -71,7 +86,8 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
         """根据音色 ID 返回对应的文档。
 
         声音设计音色格式（包含 -vd-）：{MODEL_NAME}-{model}-vd-{prefix}-{unique}
-        按 '-' 分割后长度为 len(MODEL_NAME.split('-')) + 4，且索引 len(MODEL_NAME.split('-')) + 1 为 'vd'。
+        按 '-' 分割后长度为 len(MODEL_NAME.split('-')) + 4，
+        且索引 len(MODEL_NAME.split('-')) + 1 为 'vd'。
         其他情况均使用标准文档。
 
         Args:
@@ -172,7 +188,8 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
         self,
         text: str,               # 原始文本（备用）
         raw_params: dict[str, Any],  # 从工具解析出的参数（优先）
-        config: dict[str, Any]   # 当前供应商的 entry 配置
+        config: dict[str, Any],   # 当前供应商的 entry 配置
+        voice_id: Optional[str] = None
     ) -> str:
         """执行 TTS 合成，调用阿里云百炼 API 并返回音频文件路径。
         
@@ -196,27 +213,15 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
         workspace_id = config.get("workspace_id", "")
 
         # 确定使用的 voice
-        voice = raw_params.get("voice") or config.get("voice")
+        voice = voice_id or config.get("voice")
         if not voice:
             raise ValueError("未提供音色 ID，无法合成语音")
 
         # 从 voice 解析模型（仅对复刻音色）
         parsed_model = self._extract_model_from_voice_id(voice)
         if parsed_model is not None:
-
-            # 复刻音色：使用解析出的模型
             model_suffix = parsed_model
-            config_model = config.get("model")
-
-            # 如果配置中有 model 且不一致，发出警告（除非抑制）
-            if config_model and config_model != model_suffix and not raw_params.get("_suppress_model_warning", False):
-                logger.warning(
-                    f"配置中的 model 参数 '{config_model}' 与音色 ID 解析的模型 '{model_suffix}' 不一致，"
-                    f"将使用解析出的模型。请检查配置。"
-                )
         else:
-
-            # 非复刻音色：使用配置中的 model
             model_suffix = config.get("model")
             if model_suffix not in ("flash", "plus"):
                 logger.warning("无法确定 model 参数，将使用默认模型 'flash'")
@@ -596,7 +601,9 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
 
             # 捕获 httpx 抛出的 HTTPStatusError
             try:
-                error_msg = http.extract_error_message(e.response.json(), fallback_text=e.response.text)
+                error_msg = http.extract_error_message(
+                    e.response.json(), fallback_text=e.response.text
+                )
             except Exception:
                 error_msg = e.response.text
             raise RuntimeError(f"请求失败: {error_msg}")

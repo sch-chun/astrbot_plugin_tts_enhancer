@@ -28,6 +28,59 @@ body {
     margin: 0;
 }
 h1 { font-size: 1.8rem; margin-top: 0; }
+
+/* 全局音量条（页面顶部 sticky，仅音量，无停止按钮） */
+.global-volume-bar {
+    position: sticky;
+    top: 0;
+    z-index: 1001;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    margin: -20px -20px 16px -20px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow);
+}
+.global-volume-icon { font-size: 1.1rem; }
+.global-volume-slider {
+    flex: 1;
+    max-width: 220px;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--primary);
+    border-radius: 2px;
+    outline: none;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+}
+.global-volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+}
+.global-volume-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+    border: none;
+}
+.global-volume-value {
+    font-size: 0.85rem;
+    min-width: 36px;
+    text-align: center;
+    color: var(--gray);
+}
+
 .tabs {
     display: flex;
     gap: 4px;
@@ -302,4 +355,17 @@ th { background: var(--bg); font-weight: 600; }
 /* 确保 btn 本身有过渡效果 */
 .btn {
     transition: background-color 0.15s ease;
+}
+
+/* 删除确认模态框内部布局 */
+.delete-confirm-body {
+    margin: 8px 0 4px 0;
+}
+.delete-confirm-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    margin-top: 16px;
 }

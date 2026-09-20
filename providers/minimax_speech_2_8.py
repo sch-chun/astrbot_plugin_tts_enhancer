@@ -6,9 +6,10 @@
 import httpx
 from pathlib import Path
 from datetime import datetime
-from typing import Any
 
-from astrbot.core import logger
+from typing import Any, Optional
+
+from astrbot.api import logger
 from astrbot.core.agent.tool import FunctionTool
 
 from .base import TTSProviderAdapter
@@ -139,7 +140,8 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
         self,
         text: str,
         raw_params: dict[str, Any],
-        config: dict[str, Any]
+        config: dict[str, Any],
+        voice_id: Optional[str] = None
     ) -> str:
         """调用 MiniMax TTS API 进行语音合成并保存为本地文件。
 
@@ -163,10 +165,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
 
         model_id = f"speech-2.8-{model.lower()}"
 
-        voice_id = config.get("voice_id")
+        voice_id = voice_id or config.get("voice_id")
         if not voice_id:
-            logger.error("未配置 voice_id")
-            return ""
+            raise ValueError("未提供音色 ID，无法合成语音")
 
         # 音频设置
         audio_setting = {
@@ -208,7 +209,7 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
             language_boost = "Chinese"
             if "language_boost" in raw_params and raw_params["language_boost"] != "Chinese":
                 logger.warning("latex_read 为 True，强制将 language_boost 设置为 'Chinese'")
-
+        
         payload = {
             "model": model_id,
             "text": final_text,
@@ -217,6 +218,7 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
             "audio_setting": audio_setting,
             "output_format": "hex",
         }
+        logger.debug(f"MiniMax API 请求参数: {payload}")
 
         if language_boost:
             payload["language_boost"] = language_boost
@@ -355,7 +357,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
         try:
             if purpose == "voice_clone":
                 if duration < AudioConstraints.MINIMAX_CLONE_MIN - 0.01:
-                    raise ValueError(f"音频时长 {duration:.1f}s 不足 {AudioConstraints.MINIMAX_CLONE_MIN}s")
+                    raise ValueError(
+                        f"音频时长 {duration:.1f}s 不足 {AudioConstraints.MINIMAX_CLONE_MIN}s"
+                    )
                 if duration > AudioConstraints.MINIMAX_CLONE_MAX + 0.01:
                     logger.warning(
                         f"音频时长 {duration:.1f}s 超过限制 {AudioConstraints.MINIMAX_CLONE_MAX}s，"
@@ -634,7 +638,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
         if prompt_file_id:
             prompt_text = params.get("prompt_text")
             if not prompt_text or not prompt_text.strip():
-                raise ValueError("提供 prompt_file_id 时必须同时提供非空的 prompt_text（音频对应的文本内容）")
+                raise ValueError(
+                    "提供 prompt_file_id 时必须同时提供非空的 prompt_text（音频对应的文本内容）"
+                )
             payload["clone_prompt"] = {
                 "prompt_audio": int(prompt_file_id),
                 "prompt_text": prompt_text,
@@ -859,7 +865,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
         if not voice_type:
             raise ValueError("voice_type 为必填参数（voice_cloning 或 voice_generation）")
         if voice_type not in ["voice_cloning", "voice_generation"]:
-            raise ValueError(f"不支持的 voice_type: {voice_type}，仅支持 voice_cloning 或 voice_generation")
+            raise ValueError(
+                f"不支持的 voice_type: {voice_type}，仅支持 voice_cloning 或 voice_generation"
+            )
 
         payload = {
             "voice_id": voice_id,

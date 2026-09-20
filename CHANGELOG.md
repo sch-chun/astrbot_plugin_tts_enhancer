@@ -5,6 +5,99 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.2.7] - 2026-09-20
+
+### Changed
+
+- 前端重复复制逻辑抽提为 `pages/tts_manager/composables/useClipboard.js`，通知框抽提为 `pages/tts_manager/composables/useToast.js`
+
+- **统一音频播放管理**：所有供应商组件（百炼、MiniMax）接入 `useAudioManager` 单例，实现跨组件共享播放状态与音量控制
+  - 页面顶部新增 sticky 全局音量条，移除各组件内的独立音量条
+  - 各播放按钮支持 toggle：正在播放时显示为「⏹ 停止」，点击可停止
+  - 播放新音频时自动停止上一个音频，避免多音频同时播放
+  - 列表预览同一音色正在播放时直接停止，不重复请求后端
+
+- **`call_api` 新增 `voice_id` 显式参数**（`providers/base.py`、百炼、MiniMax 适配器）：
+  - 抽象方法签名新增 `voice_id: Optional[str] = None`，用于在合成时显式覆盖配置中的音色 ID（典型场景：音色预览）
+  - 百炼适配器：`voice = voice_id or config.get("voice")`，移除原先 `raw_params.get("voice")` 兼容分支
+  - MiniMax 适配器：`voice_id = voice_id or config.get("voice_id")`，同上
+  - 各供应商配置键名保持与上游 API 命名一致（百炼 `voice`、MiniMax `voice_id`），不强制统一
+
+- **音色预览路由重构**（`main.py`）：
+  - `/voice/preview` 改为通过 `call_api(..., voice_id=voice_id)` 显式传参
+  - `raw_params` 语义收敛为「SubAgent 工具产出的增强参数」，调用方控制信号（如预览覆盖音色）不再注入其中
+
+- **百炼配置冲突检查前移到 `__init__`**：
+  - 原先在 `call_api` 中每次合成时检测 `config.model` 与 `voice` 解析出的 model 是否冲突，
+    现改为初始化时检查一次并输出警告
+  - 移除 `raw_params["_suppress_model_warning"]` 私有控制键，`raw_params` 不再混入调用方控制信号
+  - `call_api` 签名保持与 base 一致，不引入百炼独有的参数
+
+- **前端公共组件目录重组**：`pages/tts_manager/components/` 下新增 `common/` 子目录，集中收纳跨供应商共享的公共组件
+  - `bailian_speech_synthesizer.js` 从 `components/` 移入 `components/common/`
+  - 各供应商组件的导入路径同步调整为 `./common/xxx.js`（涉及 `bailian_qwen_audio_3_0_tts.js`、`bailian_cosyvoice_v3_5.js`、`minimax_speech_2_8.js`）
+  - 百炼通用组件内部对 composables 的引用调整为 `../../composables/xxx.js`
+
+- **抽取音色预览模态框为公共组件** (`pages/tts_manager/components/common/voice_preview_modal.js`)：
+  - 封装「输入预览文本 → 调用 `voice/preview` → 播放 / 停止」的完整交互流程，内部使用 `useToast` / `useAudioManager`，与其它组件共享全局音频单例
+  - props 支持 `visible`（v-model）/ `bridge` / `entryId` / `voiceId` / `initialText` / `idPrefix` / `defaultFormat` / `title`
+  - `idPrefix` 用于隔离不同调用方的播放标识（避免「列表预览」与「设计预览」等按钮状态互相干扰）
+  - 同一音色正在播放时点击「试听」→ 直接切换为停止，不重复请求后端（toggle 语义）
+  - 通过 `previewed` 事件把预览结果通知父组件，便于激活未激活音色后刷新列表
+  - 内置 `defaultFormat` 兜底：后端未返回 `format` 时按调用方指定格式构造 Blob
+  - `bailian_speech_synthesizer.js` 与 `minimax_speech_2_8.js` 均改用该组件
+    - 百炼（列表预览）：`id-prefix="list_preview"`、`default-format="mpeg"`
+    - MiniMax：`id-prefix="preview"`，并监听 `@previewed="onVoicePreviewed"` 实现「未激活音色被激活后自动从本地列表移除」
+
+- **抽取删除确认模态框为公共组件** (`pages/tts_manager/components/common/delete_confirm_modal.js`)：
+  - 受控组件，通过 `v-model:visible` 控制显隐；props 支持 `title` / `message` / `confirmText` / `cancelText` / `maxWidth`
+  - 点击遮罩或「取消」按钮 → `emit('cancel')` 并自动关闭；点击「确认」按钮 → `emit('confirm')`，**不自动关闭**（便于父组件在异步删除失败时保留弹窗让用户重试）
+  - 提供默认插槽以承载自定义消息内容（如内嵌加粗的 `voice_id`）
+  - `bailian_speech_synthesizer.js` 与 `minimax_speech_2_8.js` 均改用该组件，移除各自内联的删除确认模态框实现
+    - 百炼：使用默认插槽渲染「确定要删除音色 **{voice_id}** 吗？」
+    - MiniMax：通过 `message` prop 传入动态消息，删除逻辑保留在 `deleteModal.onConfirm` 回调中
+  - 调用方业务逻辑保持不变（`deleteModalVisible` / `deleteTargetId` / `deleteModal` 等状态与 `deleteVoice` / `confirmDelete` / `cancelDelete` 方法签名保持原样）
+  - `style.css` 新增 `.delete-confirm-body` 与 `.delete-confirm-actions` 类，保持原有视觉样式
+
+- **抽取文本字数校验为公共 composable** (`pages/tts_manager/composables/useTextValidator.js`)：
+  - 新增 `countChars(text)`（汉字按 2 字符、其余按 1 字符）与 `validateText(text, options)` 两个导出
+  - `validateText` 支持 `label` / `min` / `max` / `required` 参数，返回 `{ valid, error, count }`，便于同时驱动「红框 / 提示文案 / 字符计数 / 提交按钮禁用」四项 UI 状态
+  - **统一报错文案**：
+    - 必填未填 → `{label}不能为空`
+    - 低于下限 → `{label}不能少于 {min} 字符（当前 {count} 字符）`
+    - 超出上限 → `{label}不能超过 {max} 字符（当前 {count} 字符）`
+  - 仅保留 Voice ID / 音色前缀等厂商规则差异较大的校验在各供应商组件内本地实现，其余文本长度校验全部接入 `useTextValidator`
+  - `bailian_speech_synthesizer.js`：`voice_prompt`（≤ 500）、`preview_text`（15 ~ 200）改为基于 `validateText` 的 `voicePromptValidation` / `previewTextValidation` computed，并向下暴露 `voicePromptError` / `previewTextError` 供模板渲染
+  - `minimax_speech_2_8.js`：`cloneParams.text`（≤ 1000）、`cloneParams.text_validation`（≤ 200）、`designForm.preview_text`（≤ 500）、`designForm.prompt`（新增必填校验）改为基于 `validateText` 的 computed
+  - 后端 `providers/base.py` 已有的 `_count_text_chars` / `validate_text_length` 保持不变，前后端计数规则（汉字 = 2 字符）继续对齐
+
+- **MiniMax 声音设计 hint 补充字数上限说明**：
+  - 「预览文本」的 hint 由原来的「试听音频的合成将收取 2 元/万字符的费用」调整为「最大 500 字符（汉字按 2 字符计算）；试听音频的合成将收取 2 元/万字符的费用」
+
+### Fixed
+
+- **修复百炼声音设计「预览文本」为空时不报错的 bug** (`pages/tts_manager/components/common/bailian_speech_synthesizer.js`)：
+  - 原模板对 `preview_text` 的 `:class="{'input-error': ...}"` 与 `v-if="..."` 均带有 `&& designForm.preview_text` 条件，导致用户清空输入框后既无红框也无错误提示，仅「设计音色」按钮被禁用，无法得知原因
+  - 现统一改为直接基于 `!isPreviewTextValid` / `previewTextError` 渲染，空值时正确显示红框与「⚠️ 预览文本不能为空」
+  - 「声音描述」字段同步做相同处理，`voice_prompt` 为空时也会立刻给出红框与提示
+
+- **修复 MiniMax 声音设计「音色描述」为空时无任何提示的问题** (`pages/tts_manager/components/minimax_speech_2_8.js`)：
+  - 新增 `designPromptError` computed（基于 `validateText(designForm.prompt, { label: '音色描述', required: true })`），并在模板中以 `:class` / `error-hint` 形式接入，为空时显示红框与「⚠️ 音色描述不能为空」
+  - `isDesignEnabled` 改为直接基于 `!designPromptError && !designTextError && isDesignVoiceIdValid`，去掉原先单独判断 `designForm.prompt.trim().length > 0` 的分支，避免校验分散
+  - `performDesign()` 的前置校验改为直接复用 `designPromptError.value` / `designTextError.value`，与模板展示的文案保持一致
+
+- **统一 logger 获取方式** (`src/file_server.py`、`providers/utils/audio.py`、`main.py`、`src/config.py`、`src/sub_agent.py`、`src/tts_service.py`、`providers/*`)：
+  - 移除内置 `logging` 模块的 `import logging` / `logging.getLogger(__name__)` 用法（涉及 `src/file_server.py`、`providers/utils/audio.py`）
+  - 全部 `from astrbot.core import logger` 统一改为 `from astrbot.api import logger`
+  - 修复后全量检索无 `logging.getLogger` / `astrbot.core import logger` 残留
+
+- **修复临时文件服务器的路径穿越风险** (`main.py`)：
+  - `start_file_server` / `stop_file_server` / `file_upload` 原先将用户可控的 `file_id` 直接与 `self.plugin_data_path / 'uploads'` 拼接，含 `../` 的 `file_id` 可越权读取或 `unlink` uploads 之外的文件
+  - 新增模块级 `_validate_file_id()`：以白名单正则 `^[A-Za-z0-9_\-]{1,128}$` 从字符集上排除 `.`、`/`、`\` 等一切路径分隔符
+  - 新增 `TTSEnhancerPlugin._resolve_uploads_path()`：在 `Path.resolve()` 后再次比较父目录，作为防御性编程，确保解析结果不逃逸出 `uploads`
+  - 三个路由在入口处校验，非法 `file_id` 返回 `400 非法 file_id: ...`，不再触达文件系统
+  - `upload_file` 顺带对上传文件扩展名做白名单（wav / mp3 / m4a / aac / ogg / flac），避免异常后缀文件落入 `uploads` 目录
+
 ## [0.2.6] - 2026-09-18
 
 ### Changed

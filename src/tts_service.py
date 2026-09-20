@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from astrbot.api.message_components import Record
-from astrbot.core import logger
+from astrbot.api import logger
 
 from .sub_agent import TTSSubAgent
 from ..providers import ProviderFactory

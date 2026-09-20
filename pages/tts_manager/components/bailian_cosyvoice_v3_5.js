@@ -1,4 +1,4 @@
-import BailianSpeechSynthesizer from './bailian_speech_synthesizer.js';
+import BailianSpeechSynthesizer from './common/bailian_speech_synthesizer.js';
 
 export default {
     name: 'BailianCosyvoiceV3_5',

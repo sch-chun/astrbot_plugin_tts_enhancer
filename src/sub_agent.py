@@ -3,7 +3,7 @@
 import traceback
 
 from astrbot.core.provider import Provider
-from astrbot.core import logger
+from astrbot.api import logger
 
 from typing import Any, Optional
 from astrbot.api.event import AstrMessageEvent

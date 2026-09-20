@@ -3,14 +3,12 @@
 提供基于 aiohttp 的临时文件 HTTP 服务，用于在指定端口上提供单个文件的访问。
 包含 TempFileServer 类以及全局服务器管理相关的辅助函数。
 """
-import logging
 from pathlib import Path
 from aiohttp import web
 
 from typing import Optional
 
-
-logger = logging.getLogger(__name__)
+from astrbot.api import logger
 
 
 _MIME_MAP = {

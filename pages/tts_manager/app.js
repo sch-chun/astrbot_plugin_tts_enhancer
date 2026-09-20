@@ -4,6 +4,7 @@ const { createApp, ref, shallowRef, onMounted } = Vue;
 import BailianQwenAudio3_0 from './components/bailian_qwen_audio_3_0_tts.js';
 import BailianCosyvoiceV3_5 from './components/bailian_cosyvoice_v3_5.js'
 import MinimaxSpeech2_8 from './components/minimax_speech_2_8.js';
+import { useAudioManager } from './composables/useAudioManager.js';
 
 const bridge = window.AstrBotPluginPage;
 
@@ -14,6 +15,9 @@ const app = createApp({
         const currentComponent = shallowRef(null);
         const currentEntries = ref([]);
         const loading = ref(true);
+
+        // 全局单例音频管理器（共享音量，供顶层音量条使用）
+        const { volume } = useAudioManager();
 
         // 组件映射表（template_key → Vue 组件）
         const componentMap = {
@@ -86,6 +90,7 @@ const app = createApp({
             switchTab,
             getDisplayName,
             bridge, // 传递给子组件
+            volume, // 顶层音量条
         };
     }
 });

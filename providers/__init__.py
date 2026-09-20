@@ -8,7 +8,7 @@ from typing import Type, Optional
 
 from .base import TTSProviderAdapter
 
-from astrbot.core import logger
+from astrbot.api import logger
 
 
 class ProviderFactory:

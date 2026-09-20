@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 import re
 
-from typing import Any, Optional
+from typing import Optional
 from astrbot.core.agent.tool import FunctionTool
 
 
@@ -80,7 +80,9 @@ class TTSProviderAdapter(ABC):
         pass
 
     @abstractmethod
-    async def call_api(self, text: str, raw_params: dict, config: dict) -> str:
+    async def call_api(
+        self, text: str, raw_params: dict, config: dict, voice_id: Optional[str] = None
+    ) -> str:
         """调用 TTS API
         
         调用具体的 TTS 服务 API 进行语音合成。
@@ -90,6 +92,7 @@ class TTSProviderAdapter(ABC):
             text (str): 要合成的文本内容
             raw_params (dict): 原始的 TTS 参数
             config (dict): API 配置信息
+            voice_id (Optional[str]): 显示传入的音色 ID，覆盖 config 中的音色 ID 用于音色预览等功能
             
         Returns:
             str: 合成后的音频文件路径或音频内容
