@@ -920,7 +920,7 @@ export default {
                 <div class="form-group">
                     <label>模型版本</label>
                     <select v-model="currentForm.model">
-                        <option v-for="m in availableModels" :key="m.value" :value="m.value">
+                        <option v-for="m in availableModels" :key="m.code" :value="m.code">
                             {{ m.label }}
                         </option>
                     </select>
