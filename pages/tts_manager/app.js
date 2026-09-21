@@ -2,6 +2,7 @@ const { createApp, ref, shallowRef, onMounted } = Vue;
 
 // 静态导入所有已知供应商组件
 import BailianQwenAudio3_0 from './components/bailian_qwen_audio_3_0_tts.js';
+import BailianQwenAudio3_1 from './components/bailian_qwen_audio_3_1_tts.js';
 import BailianCosyvoiceV3_5 from './components/bailian_cosyvoice_v3_5.js'
 import MinimaxSpeech2_8 from './components/minimax_speech_2_8.js';
 import { useAudioManager } from './composables/useAudioManager.js';
@@ -22,6 +23,7 @@ const app = createApp({
         // 组件映射表（template_key → Vue 组件）
         const componentMap = {
             'bailian_qwen_audio_3_0_tts': BailianQwenAudio3_0,
+            'bailian_qwen_audio_3_1_tts': BailianQwenAudio3_1,
             'bailian_cosyvoice_v3_5': BailianCosyvoiceV3_5,
             'minimax_speech_2_8': MinimaxSpeech2_8
 
@@ -69,6 +71,7 @@ const app = createApp({
         function getDisplayName(key) {
             const map = {
                 'bailian_qwen_audio_3_0_tts': '百炼 Qwen Audio 3.0 TTS',
+                'bailian_qwen_audio_3_1_tts': '百炼 Qwen Audio 3.1 TTS',
                 'bailian_cosyvoice_v3_5': '百炼 Cosyvoice-V3.5',
                 'minimax_speech_2_8': 'MiniMax Speech 2.8'
                 

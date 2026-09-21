@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.2.8] - 2026-09-21
+
+### Added
+- 新增百炼 Qwen Audio 3.1 TTS 支持（`bailian_qwen_audio_3_1_tts`）
+  - 新增后端适配器 `BailianQwenAudio3_1TTSAdapter`，复用现有 `BailianSpeechSynthesizerAdapter`
+  - 新增声音复刻/声音设计能力文档 `bailian_qwen_audio_3_1_tts.md` 与 `bailian_qwen_audio_3_1_tts_design.md`
+  - 新增前端配置组件 `bailian_qwen_audio_3_1_tts.js`
+  - `_conf_schema.json` 新增 `bailian_qwen_audio_3_1_tts` 模板
+  - `app.js` 注册新供应商组件映射与显示名称
+- 公共前端组件 `bailian_speech_synthesizer.js` 支持 `availableModels` 配置，模型版本下拉动态渲染
+
+### Changed
+- Qwen Audio 3.1 仅提供 `flash` 模型版本，前端下拉不再展示 `plus`，避免误选导致 API 报错
+- `currentEntry` 监听逻辑增加模型版本回退：当配置中的 model 不在当前供应商支持列表时，自动回退到第一个可用版本
+
 ## [0.2.7] - 2026-09-20
 
 ### Changed

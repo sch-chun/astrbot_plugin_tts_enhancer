@@ -27,7 +27,8 @@ export default {
                 ],
                 supportsSystemVoices: true,
                 systemVoiceHelpLink: '',
-                designHelpLink: 'https://help.aliyun.com/zh/model-studio/voice-design-user-guide'
+                designHelpLink: 'https://help.aliyun.com/zh/model-studio/voice-design-user-guide',
+                availableModels: ['flash', 'plus']
             })
         }
     },
@@ -69,6 +70,7 @@ export default {
         });
         const uploading = ref(false);
         let currentFileId = null;
+
         // 用于重置文件输入框的 ref
         const fileInputRef = ref(null);
 
@@ -102,6 +104,7 @@ export default {
         // ----- 语言列表（从 providerConfig 中读取）-----
         const allLanguages = computed(() => {
             const codes = props.providerConfig.supportedLanguages || [];
+
             // 标签映射（可复用原映射）
             const labelMap = {
                 'zh': '中文', 'en': '英语', 'fr': '法语', 'de': '德语',
@@ -118,6 +121,14 @@ export default {
                 return allLanguages.value.filter(l => l.code === 'zh' || l.code === 'en');
             }
             return allLanguages.value;
+        });
+
+        // ----- 模型列表（从 providerConfig 中读取）-----
+        const MODEL_LABELS = { flash: 'Flash', plus: 'Plus' };
+
+        const availableModels = computed(() => {
+            const models = props.providerConfig.availableModels || ['flash', 'plus'];
+            return models.map(m => ({ code: m, label: MODEL_LABELS[m] || m }));
         });
 
         // ----- 当前表单（根据模式）-----
@@ -172,12 +183,17 @@ export default {
         });
 
         watch(currentEntry, (newEntry) => {
-            if (newEntry) {
-                uploadForm.model = newEntry.model || 'flash';
-                urlForm.model = newEntry.model || 'flash';
-                designForm.model = newEntry.model || 'flash';
+        if (newEntry) {
+            const models = props.providerConfig.availableModels || ['flash', 'plus'];
+            let entryModel = newEntry.model || 'flash';
+            if (!models.includes(entryModel)) {
+                entryModel = models[0];
             }
-        }, { immediate: true });
+            uploadForm.model = entryModel;
+            urlForm.model = entryModel;
+            designForm.model = entryModel;
+        }
+    }, { immediate: true });
 
         // ----- 获取音色列表 -----
         async function fetchVoices() {
@@ -569,7 +585,7 @@ export default {
 
             // 数据
             selectedEntryId, currentEntry, voiceList, loading, creating, designing, mode,
-            currentForm, uploadForm, uploading, urlForm, designForm,
+            currentForm, uploadForm, uploading, urlForm, designForm, availableModels,
             deleteModalVisible, deleteTargetId, languages,
 
             // 预览
@@ -904,8 +920,9 @@ export default {
                 <div class="form-group">
                     <label>模型版本</label>
                     <select v-model="currentForm.model">
-                        <option value="flash">Flash</option>
-                        <option value="plus">Plus</option>
+                        <option v-for="m in availableModels" :key="m.value" :value="m.value">
+                            {{ m.label }}
+                        </option>
                     </select>
                 </div>
 

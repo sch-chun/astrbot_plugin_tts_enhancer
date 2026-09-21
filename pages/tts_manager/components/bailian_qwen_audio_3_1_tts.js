@@ -1,16 +1,16 @@
 import BailianSpeechSynthesizer from './common/bailian_speech_synthesizer.js';
 
 export default {
-    name: 'BailianQwenAudio3_0',
+    name: 'BailianQwenAudio3_1',
     props: ['entries', 'bridge', 'templateKey'],
     components: { BailianSpeechSynthesizer },
     setup(props) {
         const config = {
-            displayName: '百炼 Qwen Audio 3.0 TTS',
+            displayName: '百炼 Qwen Audio 3.1 TTS',
             supportedLanguages: [
                 'zh','en','fr','de','ja','ko','ru','pt','th','id','vi','es','it','ms','fil','ar'
             ],
-            availableModels: ['flash', 'plus'],
+            availableModels: ['flash'],  // 当前仅支持 Flash
             supportsSystemVoices: true,
             systemVoiceHelpLink: 'https://help.aliyun.com/zh/model-studio/qwen-audio-tts-voice-list',
             designHelpLink: 'https://help.aliyun.com/zh/model-studio/voice-design-user-guide',
@@ -20,14 +20,13 @@ export default {
                 {
                     label: '系统音色列表',
                     url: 'https://help.aliyun.com/zh/model-studio/qwen-audio-tts-voice-list'
-                },
-                { label: '基础音色参考库', url: 'https://qwenaudio.tairitsu.work' }
+                }
             ]
         };
         return { config };
     },
-    template: /*html*/ `
-        <BailianSpeechSynthesizer 
+    template: `
+        <BailianSpeechSynthesizer
             :entries="entries" 
             :bridge="bridge" 
             :templateKey="templateKey" 
