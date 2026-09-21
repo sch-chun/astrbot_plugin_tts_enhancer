@@ -67,94 +67,6 @@ export default {
         const cloneFileInput = ref(null);
         const cloneCustomFileName = ref('');
 
-        async function handleCloneUpload() {
-            const input = cloneFileInput.value;
-            if (!input || !input.files || !input.files[0]) {
-                showError('请选择一个文件');
-                return;
-            }
-            const file = input.files[0];
-            if (!selectedEntryId.value) {
-                showError('请先选择认证配置');
-                return;
-            }
-            cloneUploading.value = true;
-            try {
-
-                // 1. 上传到本地
-                const uploadResult = await props.bridge.upload('upload', file);
-                if (!uploadResult.file_id) {
-                    showError(
-                        '上传失败: ' + (uploadResult.message || uploadResult.error || '未知错误')
-                    );
-                    return;
-                }
-                const localFileId = uploadResult.file_id;
-
-                // 2. 调用 /file/upload 传递给供应商
-                const payload = {
-                    entry_id: selectedEntryId.value,
-                    file_id: localFileId,
-                    purpose: 'voice_clone'
-                };
-                const customName = cloneCustomFileName.value.trim();
-                if (customName) {
-                    payload.filename = customName;
-                }
-
-                const result = await props.bridge.apiPost('file/upload', payload);
-                if (result.file_id) {
-                    showSuccess('复刻音频上传成功');
-                    cloneCustomFileName.value = '';
-
-                    // 清空文件选择
-                    input.value = '';
-                    await fetchCloneFiles();
-                } else {
-                    showError('上传失败: ' + (result.message || result.error || '未知错误'));
-                }
-            } catch (e) {
-                showError('上传失败: ' + e.message);
-            } finally {
-                cloneUploading.value = false;
-            }
-        }
-
-        async function fetchCloneFiles() {
-            if (!selectedEntryId.value) return;
-            cloneLoading.value = true;
-            try {
-                const result = await props.bridge.apiPost('file/list', {
-                    entry_id: selectedEntryId.value,
-                    purpose: 'voice_clone'
-                });
-                cloneFiles.value = result.files || [];
-            } catch (e) {
-                showError('获取复刻音频列表失败: ' + e.message);
-            } finally {
-                cloneLoading.value = false;
-            }
-        }
-
-        async function deleteCloneFile(fileId) {
-            showDeleteConfirm(
-                '确认删除',
-                `确定删除复刻音频 ${fileId} 吗？`,
-                async () => {
-                    await props.bridge.apiPost('file/delete', {
-                        entry_id: selectedEntryId.value,
-                        file_id: fileId,
-                        purpose: 'voice_clone'
-                    });
-                    showSuccess('删除成功');
-                    if (selectedCloneFileId.value === fileId) {
-                        selectedCloneFileId.value = null;
-                    }
-                    await fetchCloneFiles();
-                }
-            );
-        }
-
         // ---------- 示例音频管理 ----------
         const promptFiles = ref([]);
         const promptLoading = ref(false);
@@ -170,9 +82,10 @@ export default {
         const promptTextInput = ref('');
         const promptCustomFileName = ref('');
 
-        // ---------- 示例音频上传 ----------
-        async function handlePromptUpload() {
-            const input = promptFileInput.value;
+        // ---------- 供应商文件通用操作（复刻/示例音频共用） ----------
+        // 上传到本地 → 转发给供应商 /file/upload；校验结果与成功后行为通过参数注入
+        async function uploadProviderFile({ inputRef, uploadingRef, filenameRef, purpose, validate, onSuccess }) {
+            const input = inputRef.value;
             if (!input || !input.files || !input.files[0]) {
                 showError('请选择一个文件');
                 return;
@@ -182,83 +95,166 @@ export default {
                 showError('请先选择认证配置');
                 return;
             }
-            const text = promptTextInput.value.trim();
-            if (!text) {
-                showError('请输入源文本（音频对应的文字内容）');
-                return;
-            }
-            promptUploading.value = true;
-            try {
 
+            let validated = null;
+            if (validate) {
+                validated = await validate(file);
+                if (!validated) return;
+            }
+
+            uploadingRef.value = true;
+            try {
                 // 1. 上传到本地
                 const uploadResult = await props.bridge.upload('upload', file);
                 if (!uploadResult.file_id) {
-                    showError(
-                        '上传失败: ' + (uploadResult.message || uploadResult.error || '未知错误')
-                    );
+                    showError('上传失败: ' + (uploadResult.message || uploadResult.error || '未知错误'));
                     return;
                 }
-                const localFileId = uploadResult.file_id;
 
                 // 2. 调用 /file/upload 传递给供应商
                 const payload = {
                     entry_id: selectedEntryId.value,
-                    file_id: localFileId,
-                    purpose: 'prompt_audio'
+                    file_id: uploadResult.file_id,
+                    purpose,
                 };
-                const customName = promptCustomFileName.value.trim();
+                const customName = filenameRef ? filenameRef.value.trim() : '';
                 if (customName) {
                     payload.filename = customName;
                 }
 
                 const result = await props.bridge.apiPost('file/upload', payload);
                 if (result.file_id) {
-
-                    // 3. 保存源文本到 KV
-                    await props.bridge.apiPost('kv/set', {
-                        key: `minimax_prompt_${result.file_id}`,
-                        value: text
-                    });
-                    showSuccess('示例音频上传成功');
-                    promptTextInput.value = '';
-                    promptCustomFileName.value = '';
-                    input.value = '';
-                    await fetchPromptFiles();
+                    if (onSuccess) await onSuccess(result.file_id, input, validated);
                 } else {
                     showError('上传失败: ' + (result.message || result.error || '未知错误'));
                 }
             } catch (e) {
                 showError('上传失败: ' + e.message);
             } finally {
-                promptUploading.value = false;
+                uploadingRef.value = false;
             }
         }
 
-        async function fetchPromptFiles() {
+        // 拉取供应商某类目的文件列表；onLoaded 可做额外处理（如加载 KV 源文本）
+        async function fetchProviderFiles({ purpose, filesRef, loadingRef, label, onLoaded }) {
             if (!selectedEntryId.value) return;
-            promptLoading.value = true;
+            loadingRef.value = true;
             try {
                 const result = await props.bridge.apiPost('file/list', {
                     entry_id: selectedEntryId.value,
-                    purpose: 'prompt_audio'
+                    purpose,
                 });
-                promptFiles.value = result.files || [];
-
-                // 加载每个文件的源文本
-                for (const f of promptFiles.value) {
-                    const fileId = f.file_id;
-                    if (!(fileId in promptTexts)) {
-                        const kv = await props.bridge.apiPost('kv/get', {
-                            key: `minimax_prompt_${fileId}`
-                        });
-                        promptTexts[fileId] = kv.value || '';
-                    }
-                }
+                const files = result.files || [];
+                filesRef.value = files;
+                if (onLoaded) await onLoaded(files);
             } catch (e) {
-                showError('获取示例音频列表失败: ' + e.message);
+                showError(`获取${label}列表失败: ` + e.message);
             } finally {
-                promptLoading.value = false;
+                loadingRef.value = false;
             }
+        }
+
+        // 删除供应商某类目的文件；onSuccess 负责删除后的收尾与刷新
+        function deleteProviderFile({ purpose, fileId, label, onSuccess }) {
+            showDeleteConfirm(
+                '确认删除',
+                `确定删除${label} ${fileId} 吗？`,
+                async () => {
+                    await props.bridge.apiPost('file/delete', {
+                        entry_id: selectedEntryId.value,
+                        file_id: fileId,
+                        purpose,
+                    });
+                    if (onSuccess) await onSuccess(fileId);
+                }
+            );
+        }
+
+        async function handleCloneUpload() {
+            await uploadProviderFile({
+                inputRef: cloneFileInput,
+                uploadingRef: cloneUploading,
+                filenameRef: cloneCustomFileName,
+                purpose: 'voice_clone',
+                onSuccess: async (_fileId, input) => {
+                    showSuccess('复刻音频上传成功');
+                    cloneCustomFileName.value = '';
+                    input.value = '';
+                    await fetchCloneFiles();
+                },
+            });
+        }
+
+        async function fetchCloneFiles() {
+            await fetchProviderFiles({
+                purpose: 'voice_clone',
+                filesRef: cloneFiles,
+                loadingRef: cloneLoading,
+                label: '复刻音频',
+            });
+        }
+
+        function deleteCloneFile(fileId) {
+            deleteProviderFile({
+                purpose: 'voice_clone',
+                fileId,
+                label: '复刻音频',
+                onSuccess: async (fileId) => {
+                    showSuccess('删除成功');
+                    if (selectedCloneFileId.value === fileId) {
+                        selectedCloneFileId.value = null;
+                    }
+                    await fetchCloneFiles();
+                },
+            });
+        }
+
+        async function handlePromptUpload() {
+            await uploadProviderFile({
+                inputRef: promptFileInput,
+                uploadingRef: promptUploading,
+                filenameRef: promptCustomFileName,
+                purpose: 'prompt_audio',
+                validate: () => {
+                    const text = promptTextInput.value.trim();
+                    if (!text) {
+                        showError('请输入源文本（音频对应的文字内容）');
+                        return null;
+                    }
+                    return text;
+                },
+                onSuccess: async (fileId, input, text) => {
+                    await props.bridge.apiPost('kv/set', {
+                        key: `minimax_prompt_${fileId}`,
+                        value: text,
+                    });
+                    showSuccess('示例音频上传成功');
+                    promptTextInput.value = '';
+                    promptCustomFileName.value = '';
+                    input.value = '';
+                    await fetchPromptFiles();
+                },
+            });
+        }
+
+        async function fetchPromptFiles() {
+            await fetchProviderFiles({
+                purpose: 'prompt_audio',
+                filesRef: promptFiles,
+                loadingRef: promptLoading,
+                label: '示例音频',
+                onLoaded: async (files) => {
+                    for (const f of files) {
+                        const fileId = f.file_id;
+                        if (!(fileId in promptTexts)) {
+                            const kv = await props.bridge.apiPost('kv/get', {
+                                key: `minimax_prompt_${fileId}`
+                            });
+                            promptTexts[fileId] = kv.value || '';
+                        }
+                    }
+                },
+            });
         }
 
         async function savePromptText(fileId) {
@@ -280,23 +276,19 @@ export default {
         }
 
         async function deletePromptFile(fileId) {
-            showDeleteConfirm(
-                '确认删除',
-                `确定删除示例音频 ${fileId} 吗？`,
-                async () => {
-                    await props.bridge.apiPost('file/delete', {
-                        entry_id: selectedEntryId.value,
-                        file_id: fileId,
-                        purpose: 'prompt_audio'
-                    });
+            deleteProviderFile({
+                purpose: 'prompt_audio',
+                fileId,
+                label: '示例音频',
+                onSuccess: async (fileId) => {
                     await props.bridge.apiPost('kv/delete', {
                         key: `minimax_prompt_${fileId}`
                     });
                     delete promptTexts[fileId];
                     showSuccess('删除成功');
                     await fetchPromptFiles();
-                }
-            );
+                },
+            });
         }
 
         // 判断示例音频是否可绑定（源文本非空）
