@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.2.9] - 2026-09-22
+
+### Added
+- 新增百炼 MiniMax Speech 2.8 供应商（`bailian_minimax_speech_2_8`），通过阿里云百炼平台调用 MiniMax Speech 2.8 模型
+  - 新增后端适配器 `BailianMinimaxSpeech2_8Adapter`，支持 HD/Turbo 两种模型，实现语音合成、声音复刻、音色列表查询与删除
+  - 声音复刻支持本地音频文件（自动转 Base64 Data URL）与公网 URL 两种方式
+  - 支持可选示例音频（`clone_prompt`）、语言增强、降噪、音量归一化、AIGC 水印等复刻参数
+  - 新增前端配置组件 `bailian_minimax_speech_2_8.js`，提供「上传音频文件 / 使用音频 URL / 音色列表」三个标签页
+  - `_conf_schema.json` 新增 `bailian_minimax_speech_2_8` 模板，`app.js` 注册组件映射与显示名称
+- 复刻成功后展示试听窗口，支持播放 `demo_audio` 试听音频
+- 未激活音色管理：复刻音色通过 KV（`bailian_minimax_unactivated_list`）本地存储未激活列表，音色列表分区展示未激活/复刻/系统音色，支持「预览激活」与「删除」操作
+
+### Changed
+- **文档共享机制**：`TTSProviderAdapter` 新增 `DOCS_KEY` 类属性，供应商可显式指定复用的能力文档文件名，避免相同模型说明文档的重复拷贝
+  - 百炼 MiniMax 通过 `DOCS_KEY = "minimax_speech_2_8"` 复用官方 MiniMax 2.8 文档，删除冗余副本 `bailian_minimax_speech_2_8.md`
+- **音频解码播放逻辑抽取**：`useAudioManager` 新增 `base64ToBlobUrl(data, mime)` 与 `hexToBlobUrl(data, mime)` 两个纯函数，统一消除四处重复的「字节解码 → Blob → objectURL」链路
+  - `voice_preview_modal.js`、`bailian_speech_synthesizer.js`、`minimax_speech_2_8.js` 均改用上述工具，删除 `minimax_speech_2_8.js` 内联的 `hexToUint8Array`
+- 百炼 MiniMax 后端 voice_id 支持自动生成（未提供时生成 `Clone_时间戳` 格式）、完整格式校验（长度 8-256、首字母、字符集、末位字符）
+- 百炼 MiniMax 后端补充 `latex_read` 校验、`voice_generation` 类型解析、`base_resp` 空值兜底
+- 前端 `LANGUAGE_BOOST` 校验与 voice_id、试听文本校验对齐官方 MiniMax 逻辑
+- 后端日志对 Data URL 做截断，避免 Base64 音频数据撑爆 Debug 日志
+
 ## [0.2.8] - 2026-09-21
 
 ### Added
