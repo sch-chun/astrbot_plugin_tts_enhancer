@@ -85,6 +85,33 @@ watch(volume, (v) => {
     if (currentAudio.value) currentAudio.value.volume = v;
 });
 
+/**
+ * 将 base64 编码的音频数据解码为 Blob URL。
+ * @param {string} data base64 字符串（不含 data: 前缀）
+ * @param {string} mime MIME 类型，如 'audio/mp3'
+ * @returns {string} blob: URL
+ */
+export function base64ToBlobUrl(data, mime) {
+    const bytes = Uint8Array.from(atob(data), c => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: mime });
+    return URL.createObjectURL(blob);
+}
+
+/**
+ * 将 hex 编码的音频数据解码为 Blob URL。
+ * @param {string} data hex 字符串
+ * @param {string} mime MIME 类型，如 'audio/mp3'
+ * @returns {string} blob: URL
+ */
+export function hexToBlobUrl(data, mime) {
+    const bytes = new Uint8Array(data.length / 2);
+    for (let i = 0; i < data.length; i += 2) {
+        bytes[i / 2] = parseInt(data.substr(i, 2), 16);
+    }
+    const blob = new Blob([bytes], { type: mime });
+    return URL.createObjectURL(blob);
+}
+
 export function useAudioManager() {
     return {
         volume,

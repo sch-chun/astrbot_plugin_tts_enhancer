@@ -5,6 +5,7 @@ import BailianQwenAudio3_0 from './components/bailian_qwen_audio_3_0_tts.js';
 import BailianQwenAudio3_1 from './components/bailian_qwen_audio_3_1_tts.js';
 import BailianCosyvoiceV3_5 from './components/bailian_cosyvoice_v3_5.js'
 import MinimaxSpeech2_8 from './components/minimax_speech_2_8.js';
+import BailianMinimaxSpeech2_8 from './components/bailian_minimax_speech_2_8.js';
 import { useAudioManager } from './composables/useAudioManager.js';
 
 const bridge = window.AstrBotPluginPage;
@@ -25,7 +26,8 @@ const app = createApp({
             'bailian_qwen_audio_3_0_tts': BailianQwenAudio3_0,
             'bailian_qwen_audio_3_1_tts': BailianQwenAudio3_1,
             'bailian_cosyvoice_v3_5': BailianCosyvoiceV3_5,
-            'minimax_speech_2_8': MinimaxSpeech2_8
+            'minimax_speech_2_8': MinimaxSpeech2_8,
+            'bailian_minimax_speech_2_8': BailianMinimaxSpeech2_8
 
             // 未来添加新供应商时在此处增加映射
         };
@@ -73,7 +75,8 @@ const app = createApp({
                 'bailian_qwen_audio_3_0_tts': '百炼 Qwen Audio 3.0 TTS',
                 'bailian_qwen_audio_3_1_tts': '百炼 Qwen Audio 3.1 TTS',
                 'bailian_cosyvoice_v3_5': '百炼 Cosyvoice-V3.5',
-                'minimax_speech_2_8': 'MiniMax Speech 2.8'
+                'minimax_speech_2_8': 'MiniMax Speech 2.8',
+                'bailian_minimax_speech_2_8': '百炼 MiniMax Speech 2.8'
                 
                 // 未来扩展
             };

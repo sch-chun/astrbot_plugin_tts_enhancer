@@ -7,7 +7,7 @@ const { ref, computed, watch } = Vue;
 
 
 import { useToast } from '../../composables/useToast.js';
-import { useAudioManager } from '../../composables/useAudioManager.js';
+import { useAudioManager, base64ToBlobUrl } from '../../composables/useAudioManager.js';
 
 
 export default {
@@ -93,12 +93,8 @@ export default {
                     showError('预览失败: 未返回音频数据');
                     return;
                 }
-                const audioBytes = Uint8Array.from(
-                    atob(result.audio_base64), c => c.charCodeAt(0)
-                );
                 const mimeType = `audio/${result.format || props.defaultFormat}`;
-                const blob = new Blob([audioBytes], { type: mimeType });
-                const audioUrl = URL.createObjectURL(blob);
+                const audioUrl = base64ToBlobUrl(result.audio_base64, mimeType);
                 playAudioGlobal(audioUrl, playId.value, {
                     cleanup: () => URL.revokeObjectURL(audioUrl),
                     onError: (e) => showError('预览失败: ' + e.message),

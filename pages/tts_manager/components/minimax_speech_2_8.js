@@ -5,6 +5,7 @@ import { useToast } from '../composables/useToast.js';
 import { useClipboard } from '../composables/useClipboard.js';
 import { useAudioManager } from '../composables/useAudioManager.js';
 import { validateText, countChars } from '../composables/useTextValidator.js'
+import { base64ToBlobUrl, hexToBlobUrl } from '../composables/useAudioManager.js';
 import VoicePreviewModal from './common/voice_preview_modal.js';
 import DeleteConfirmModal from './common/delete_confirm_modal.js';
 
@@ -309,11 +310,7 @@ export default {
                     const buttonId = 'file_' + fileId;
 
                     // 先构造 Blob URL 再播放
-                    const audioBytes = Uint8Array.from(
-                        atob(result.audio_base64), c => c.charCodeAt(0)
-                    );
-                    const blob = new Blob([audioBytes], { type: 'audio/mp3' });
-                    const url = URL.createObjectURL(blob);
+                    const url = base64ToBlobUrl(result.audio_base64, 'audio/mp3');
                     playAudio(url, buttonId, () => URL.revokeObjectURL(url));
                 } else {
                     showError('未获取到音频数据');
@@ -479,25 +476,10 @@ export default {
             fetchVoiceList();
         }
 
-        function hexToUint8Array(hex) {
-            if (!hex) return null;
-            const bytes = new Uint8Array(hex.length / 2);
-            for (let i = 0; i < hex.length; i += 2) {
-                bytes[i/2] = parseInt(hex.substr(i, 2), 16);
-            }
-            return bytes;
-        }
-
         function playTrialAudio() {
             if (designResult.value && designResult.value.trial_audio) {
                 const hex = designResult.value.trial_audio;
-                const bytes = hexToUint8Array(hex);
-                if (!bytes) {
-                    showError('试听音频数据无效');
-                    return;
-                }
-                const blob = new Blob([bytes], { type: 'audio/mp3' });
-                const url = URL.createObjectURL(blob);
+                const url = hexToBlobUrl(hex, 'audio/mp3');
                 playAudio(url, 'trial_audio', () => URL.revokeObjectURL(url));
             } else {
                 showError('没有试听音频');
@@ -936,7 +918,7 @@ export default {
                 <div>
                     <strong>重要：音色复刻与音色设计产出的均为临时（未激活）音色</strong>
                     <ul style="margin: 4px 0 0 0; padding-left: 20px; color: var(--text);">
-                        <li>费用在首次用于语音合成时才收取（<strong>不含</strong>接口内试听）</li>
+                        <li>9.9 元音色激活费用在首次用于语音合成时才收取（<strong>不含</strong>接口内试听）</li>
                         <li>若 <strong>168h（7 天）</strong>内未在任意语音合成接口中使用，该音色将被删除</li>
                         <li>
                             <strong>本界面音色列表中的预览功能会调用一次语音合成</strong>，<!--

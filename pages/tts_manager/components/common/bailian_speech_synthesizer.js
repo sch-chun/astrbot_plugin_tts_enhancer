@@ -5,6 +5,7 @@ import { useClipboard } from '../../composables/useClipboard.js';
 import { useToast } from '../../composables/useToast.js';
 import { useAudioManager } from '../../composables/useAudioManager.js';
 import { validateText, countChars } from '../../composables/useTextValidator.js';
+import { base64ToBlobUrl } from '../../composables/useAudioManager.js';
 import VoicePreviewModal from './voice_preview_modal.js';
 import DeleteConfirmModal from './delete_confirm_modal.js';
 
@@ -462,12 +463,8 @@ export default {
                 return;
             }
             try {
-                const audioBytes = Uint8Array.from(
-                    atob(previewAudioBase64.value), c => c.charCodeAt(0)
-                );
                 const mimeType = `audio/${previewAudioFormat.value}`;
-                const blob = new Blob([audioBytes], { type: mimeType });
-                const audioUrl = URL.createObjectURL(blob);
+                const audioUrl = base64ToBlobUrl(previewAudioBase64.value, mimeType);
                 playAudioGlobal(audioUrl, designPreviewId.value, {
                     cleanup: () => URL.revokeObjectURL(audioUrl),
                     onError: (e) => showError('播放失败: ' + e.message),

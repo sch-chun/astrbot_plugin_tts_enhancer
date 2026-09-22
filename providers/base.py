@@ -3,6 +3,8 @@ from pathlib import Path
 import re
 
 from typing import Optional
+
+from astrbot.api import logger
 from astrbot.core.agent.tool import FunctionTool
 
 
@@ -25,6 +27,10 @@ class TTSProviderAdapter(ABC):
     - call_api: 调用具体的 TTS API
     """
 
+    # 文档文件名（不含 .md 后缀）。子类可覆盖，实现多供应商共享同一份能力文档。
+    # 默认回退到 __template_key。
+    DOCS_KEY: Optional[str] = None
+
     # ———————— 语音合成 ————————
 
     def __init__(self, entry: dict) -> None:
@@ -38,18 +44,27 @@ class TTSProviderAdapter(ABC):
         self.template_key = entry.get("__template_key", "unknown")
         self.docs_content = self._load_docs()
 
+    @property
+    def docs_key(self) -> str:
+        """返回用于加载能力文档的文件名（不含后缀）。
+
+        优先使用子类声明的 DOCS_KEY，缺省回退到 template_key。
+        """
+        return self.DOCS_KEY or self.template_key
+
     def _load_docs(self) -> str:
-        """根据 template_key 加载对应的 Markdown 文档
+        """根据 docs_key 加载对应的 Markdown 文档
         
-        从 docs 目录下加载与 template_key 同名的 markdown 文档文件。
+        从 docs 目录下加载与 docs_key 同名的 markdown 文档文件。
         如果文档不存在，返回空字符串。
         
         Returns:
             str: 文档内容字符串，如果文档不存在则返回空字符串
         """
-        docs_path = Path(__file__).parent / "docs" / f"{self.template_key}.md"
+        docs_path = Path(__file__).parent / "docs" / f"{self.docs_key}.md"
         if docs_path.exists():
             return docs_path.read_text(encoding="utf-8")
+        logger.warning(f"文档文件 {docs_path} 不存在，该供应商增强能力可能将不可用")
         return ""
 
     @abstractmethod

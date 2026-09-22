@@ -355,6 +355,79 @@
             "hint": "1 为单声道，2 为立体声"
           }
         }
+      },
+      "bailian_minimax_speech_2_8": {
+        "name": "百炼 MiniMax Speech 2.8",
+        "hint": "通过阿里云百炼平台调用 MiniMax Speech 2.8",
+        "display_item": "display_name",
+        "items": {
+          "display_name": {
+            "description": "显示名称",
+            "type": "string",
+            "default": "百炼 MiniMax Speech 2.8",
+            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+          },
+          "priority": {
+            "description": "优先级（数字越小越优先）",
+            "type": "int",
+            "default": 0
+          },
+          "api_key": {
+            "description": "百炼 API Key",
+            "type": "string",
+            "default": ""
+          },
+          "voice_id": {
+            "description": "音色 ID",
+            "type": "string",
+            "default": "lovely_girl",
+            "hint": "支持系统音色、复刻音色。首次使用复刻音色需支付 9.9 元解锁费"
+          },
+          "model": {
+            "description": "模型版本",
+            "type": "string",
+            "options": ["HD", "Turbo"],
+            "default": "HD"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "type": "int",
+            "default": 60,
+            "hint": "单位：秒。合成较长文本时可能需要增加此值"
+          },
+          "text_normalization": {
+            "description": "文本规范化",
+            "type": "bool",
+            "default": true,
+            "hint": "开启后，模型会对文本进行规范化处理，如将数字转换为中文读法等"
+          },
+          "sample_rate": {
+            "description": "采样率",
+            "type": "int",
+            "default": 32000,
+            "options": [8000, 16000, 22050, 24000, 32000, 44100]
+          },
+          "format": {
+            "description": "音频格式",
+            "type": "string",
+            "default": "mp3",
+            "options": ["wav", "mp3", "pcm", "opus", "flac", "pcmu_raw", "pcmu_wav"]
+          },
+          "bitrate": {
+            "description": "比特率",
+            "type": "int",
+            "default": 128000,
+            "options": [32000, 64000, 128000, 256000],
+            "hint": "仅在音频格式为 mp3 时生效"
+          },
+          "channel": {
+            "description": "声道数",
+            "type": "int",
+            "default": 1,
+            "options": [1, 2],
+            "hint": "1 为单声道，2 为立体声"
+          }
+        }
       }
     }
   }
