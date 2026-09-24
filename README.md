@@ -1,6 +1,6 @@
 # AstrBot TTS Enhancer
 
-> **让 AstrBot 的回复自然带上情感、方言与个性化声音，**
+> **让 AstrBot 的回复自然带上情感、方言与个性化声音，**  
 > 解决"传统文本输入"与"TTS 供应商丰富能力"之间的不平衡，以高可插拔架构轻松接入任意语音服务。
 
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
@@ -49,7 +49,20 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 
 ### 3️⃣ 前端 UI：可复用组件 + 按需定制
 
-插件提供了**可复用的前端组件**（`BailianSpeechSynthesizer`），封装了音色管理的标准交互流程（上传/URL/设计三种模式、试听、列表、删除）。同时支持各供应商**自定义交互**（如 MiniMax 的「未激活音色 → 预览 → 决定激活」三段式流程）。
+插件提供了**可复用的前端组件**（`components/common/`），封装了音色管理的标准交互流程：
+
+- `bailian_speech_synthesizer.js` – 上传/URL/设计三种模式、试听、列表、删除
+- `voice_preview_modal.js` – 音色预览模态框，支持试听与保留/删除
+- `delete_confirm_modal.js` – 删除确认模态框，避免沙盒环境 `confirm()` 被拦截
+
+同时支持各供应商**自定义交互**（如 MiniMax 的「未激活音色 → 预览 → 决定激活」三段式流程）。
+
+公共逻辑抽取为 `composables/`：
+
+- `useAudioManager.js` – 全局音频播放控制单例
+- `useTextValidator.js` – 文本字数校验（汉字 = 2 字符）
+- `useClipboard.js` – 剪贴板操作
+- `useToast.js` – 通知提示
 
 具体到每个供应商：
 
@@ -66,10 +79,13 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 | 供应商 | 模型 | 情感控制 | 系统音色 | 复刻 | 设计 | 方言 | 语种 | LaTeX |
 |---|---|---|---|---|---|---|---|---|
 | **百炼 Qwen Audio 3.0 TTS** | Flash / Plus | 富语言标签 + 自然语言指令 | ✅ | ✅ | ✅ | 21 种 | 16 种 | ❌ |
+| **百炼 Qwen Audio 3.1 TTS** | Flash | 富语言标签 + 自然语言指令 | ✅ | ✅ | ✅ | 21 种 | 16 种 | ❌ |
 | **百炼 CosyVoice v3.5** | Flash / Plus | 自然语言指令 | ❌ | ✅ | ✅ | 17 种 | 11 种 | 规划中 |
-| **MiniMax Speech 2.8** | Turbo / HD | 文本内联语气词 | ✅ | ✅ | ✅ | 粤语 | 39 种 | ✅
+| **MiniMax Speech 2.8** | HD / Turbo | 文本内联语气词 | ✅ | ✅ | ✅ | 粤语 | 39 种 | ✅ |
+| **百炼 MiniMax Speech 2.8** | HD / Turbo | 文本内联语气词 | ✅ | ✅ | ✅ | 粤语 | 39 种 | ✅ |
+| **小米 MiMo V2.5 TTS** | 预置音色 / 文本设计 / 音频复刻 | 富语言标签 + 自然语言指令 | ✅ | ✅ | ✅ | ✅ | 中文为主 | ❌ |
 
-> 三个供应商可以**同时配置并按 priority 回退**。
+> 多个供应商可以**同时配置并按 priority 回退**。
 
 更多供应商（Edge TTS、GPT-SoVITS 等）正在规划中，欢迎社区贡献！
 
@@ -77,16 +93,16 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 
 ## 快速开始
 
-1. **安装插件**
+1. **安装插件**  
    AstrBot 插件市场搜索并安装
 
-2. **配置供应商**
+2. **配置供应商**  
    插件配置 → 添加至少一个供应商。
 
-3. **让模型输出 `<tts>` 标签**
+3. **让模型输出 `<tts>` 标签**  
    主模型在回复中包裹 `<tts>要合成的文本</tts>`，插件将自动处理并发送语音消息。
 
-4. **使用 Tool 调用**
+4. **使用 Tool 调用**  
    插件已注册 `send_voice_to_user` 工具，模型可主动决定何时发语音，无需标签。
 
 ---
@@ -136,9 +152,12 @@ providers:                        # 供应商列表（支持多个回退）
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ [Provider Adapter]  校验参数 → 调 API → 下载音频            │
-│   - BailianQwenAudio3_0TTSAdapter                            │
-│   - BailianCosyVoiceV3_5Adapter                              │
-│   - MinimaxSpeech2_8Adapter                                  │
+│   - BailianQwenAudio3_0TTSAdapter                           │
+│   - BailianQwenAudio3_1TTSAdapter                           │
+│   - BailianCosyVoiceV3_5Adapter                             │
+│   - MinimaxSpeech2_8Adapter                                 │
+│   - BailianMinimaxSpeech2_8Adapter                          │
+│   - MimoV2_5TTSAdapter                                      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -151,7 +170,7 @@ providers:                        # 供应商列表（支持多个回退）
 1. **编写适配器**：在 `providers/` 下新建 `<vendor>_<model>.py`，继承 `TTSProviderAdapter` 或已有的公共基类。
 2. **撰写能力说明书**：创建 `providers/docs/<template_key>.md`，详细描述参数、标签、示例。
 3. **前端接入（按需）**：
-   - 需要 UI：在 `pages/tts_manager/components/` 下新建 Vue 组件，引用通用组件并配置 `providerConfig`；在 `app.js` 中注册映射。
+   - 需要 UI：在 `pages/tts_manager/components/` 下新建 Vue 组件，引用 `components/common/` 的通用组件并配置 `providerConfig`；在 `app.js` 中注册映射。
    - 已有官方控制台：仅在 `app.js` 中配置外链即可。
    - 有特殊交互需求（如 MiniMax 的「未激活 → 预览 → 激活」三段式）：独立写自定义组件。
 4. **添加配置模板**：在 `_conf_schema.json` 中补充供应商配置项。
@@ -165,8 +184,11 @@ providers:                        # 供应商列表（支持多个回退）
 - [CHANGELOG.md](CHANGELOG.md) – 完整版本记录
 - 能力说明书样例：
   - `providers/docs/bailian_qwen_audio_3_0_tts.md`
+  - `providers/docs/bailian_qwen_audio_3_1_tts.md`
   - `providers/docs/bailian_cosyvoice_v3_5.md`
   - `providers/docs/minimax_speech_2_8.md`
+  - `providers/docs/mimo_v2_5_tts.md`
+  - `providers/docs/mimo_v2_5_tts_preset.md`
 
 ## 许可
 
