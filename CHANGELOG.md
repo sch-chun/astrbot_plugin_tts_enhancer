@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.0] - 2026-09-24
+
+### Added
+
+- 新增小米 MiMo V2.5 TTS 供应商（`mimo_v2_5_tts`），通过 OpenAI 兼容的 `chat/completions` 端点调用
+  - 新增后端适配器 `MimoV2_5TTSAdapter`，支持三种模型：预置音色（`mimo-v2.5-tts`）、文本设计音色（`mimo-v2.5-tts-voicedesign`）、音频复刻（`mimo-v2.5-tts-voiceclone`）
+  - MiMo 音频复刻样本使用 `file` 类型配置项（复用 AstrBot 内置文件上传组件），上传后以相对路径 `files/...` 持久化
+  - 能力说明书拆分为通用（`mimo_v2_5_tts.md`）与预置音色专用（`mimo_v2_5_tts_preset.md`）两份，预置音色文档额外包含唱歌标签（`(唱歌)`/`sing`/`singing`）说明，并仅对预置音色模型加载
+  - 音频复刻样本在适配器初始化时预编码并落盘缓存至 `<plugin_data>/cache/mimo_voiceclone/`，缓存键含文件 mtime/size 实现变更自动失效，Base64 编码后超 10MB 的样本提前抛错
+  - 端点硬编码为官方地址，输出格式支持 `wav`/`mp3`/`pcm`（`pcm` 即 `pcm16`）
+  - `_conf_schema.json` 新增 `mimo_v2_5_tts` 模板，通过 `model` 下拉 + `condition` 按所选模型分派音色 / 设计描述 / 复刻样本字段
+
+### Changed
+
+- 所有供应商模板的 `api_key` 配置项新增 `"secret": true`，管理面板以密码框遮罩显示
+- 主流程将 `_data_dir` 的注入提前到供应商适配器实例化之前（`src/tts_service.py`、`main.py`），使适配器在 `__init__` 中即可读取数据目录完成样本预编码，路径来源与其他供应商保持一致（均从配置注入，无硬编码）
+
 ## [0.2.9] - 2026-09-22
 
 ### Added

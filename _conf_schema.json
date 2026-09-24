@@ -58,7 +58,8 @@
           "api_key": {
             "description": "API Key",
             "type": "string",
-            "default": ""
+            "default": "",
+            "secret": true
           },
           "workspace_id": {
             "description": "Workspace ID",
@@ -139,7 +140,8 @@
           "api_key": {
             "description": "API Key",
             "type": "string",
-            "default": ""
+            "default": "",
+            "secret": true
           },
           "workspace_id": {
             "description": "Workspace ID",
@@ -221,7 +223,8 @@
           "api_key": {
             "description": "API Key",
             "type": "string",
-            "default": ""
+            "default": "",
+            "secret": true
           },
           "workspace_id": {
             "description": "Workspace ID",
@@ -303,7 +306,8 @@
           "api_key": {
             "description": "API Key",
             "type": "string",
-            "default": ""
+            "default": "",
+            "secret": true
           },
           "voice_id": {
             "description": "音色 ID",
@@ -375,7 +379,8 @@
           "api_key": {
             "description": "百炼 API Key",
             "type": "string",
-            "default": ""
+            "default": "",
+            "secret": true
           },
           "voice_id": {
             "description": "音色 ID",
@@ -426,6 +431,90 @@
             "default": 1,
             "options": [1, 2],
             "hint": "1 为单声道，2 为立体声"
+          }
+        }
+      },
+      "mimo_v2_5_tts": {
+        "name": "小米 MiMo V2.5 TTS",
+        "hint": "支持预置音色、文本设计音色与音频复刻三种模型",
+        "display_item": "display_name",
+        "items": {
+          "display_name": {
+            "description": "显示名称",
+            "type": "string",
+            "default": "MiMo V2.5 TTS",
+            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+          },
+          "priority": {
+            "description": "优先级（数字越小越优先）",
+            "type": "int",
+            "default": 0
+          },
+          "api_key": {
+            "description": "API Key",
+            "type": "string",
+            "default": "",
+            "secret": true
+          },
+          "model": {
+            "description": "模型",
+            "type": "string",
+            "options": [
+              "mimo-v2.5-tts",
+              "mimo-v2.5-tts-voicedesign",
+              "mimo-v2.5-tts-voiceclone"
+            ],
+            "default": "mimo-v2.5-tts",
+            "hint": "预置音色 / 文本设计音色 / 音频复刻三选一"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "type": "int",
+            "default": 60,
+            "hint": "单位：秒。合成较长文本时可能需要增加此值"
+          },
+          "format": {
+            "description": "音频格式",
+            "type": "string",
+            "default": "wav",
+            "options": ["wav", "mp3", "pcm"],
+            "hint": "输出音频格式。pcm 即 pcm16（非流式）"
+          },
+          "voice": {
+            "description": "预置音色",
+            "type": "string",
+            "default": "mimo_default",
+            "condition": {
+              "model": "mimo-v2.5-tts"
+            },
+            "options": ["mimo_default", "冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean"]
+          },
+          "voice_prompt": {
+            "description": "音色设计描述",
+            "type": "text",
+            "default": "",
+            "condition": {
+              "model": "mimo-v2.5-tts-voicedesign"
+            },
+            "hint": "填写说明见 https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5?target=%E4%BD%BF%E7%94%A8%E6%96%87%E6%9C%AC%E8%AE%BE%E8%AE%A1%E9%9F%B3%E8%89%B2%E8%BF%9B%E8%A1%8C%E8%AF%AD%E9%9F%B3%E5%90%88%E6%88%90"
+          },
+          "optimize_text_preview": {
+            "description": "智能润色播报文本",
+            "type": "bool",
+            "default": false,
+            "condition": {
+              "model": "mimo-v2.5-tts-voicedesign"
+            },
+            "hint": "开启后模型会根据音色描述自动润色/生成适配的播报文本，可以提高音色匹配度，但也可能更改主模型的原始文本"
+          },
+          "voice_sample": {
+            "description": "复刻音频样本",
+            "type": "file",
+            "file_types": ["mp3", "wav"],
+            "condition": {
+              "model": "mimo-v2.5-tts-voiceclone"
+            },
+            "hint": "音频复刻样本。仅支持 mp3/wav，Base64 编码后不超过 10MB。可多选，实际取第一个"
           }
         }
       }

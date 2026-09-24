@@ -564,12 +564,12 @@ class TTSEnhancerPlugin(Star):
                     return error_response("entry not found", status_code=404)
                 entry = providers_raw[entry_id]
 
-                adapter = ProviderFactory.get_adapter(entry)
-                if not adapter:
-                    return error_response("无法创建适配器，请检查配置", status_code=500)
-
                 entry_with_data_dir = dict(entry)
                 entry_with_data_dir["_data_dir"] = str(self.plugin_data_path / "audio")
+
+                adapter = ProviderFactory.get_adapter(entry_with_data_dir)
+                if not adapter:
+                    return error_response("无法创建适配器，请检查配置", status_code=500)
 
                 audio_path = await adapter.call_api(
                     text=text,
