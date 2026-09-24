@@ -219,7 +219,7 @@ class MimoV2_5TTSAdapter(TTSProviderAdapter):
             voice = voice_id or self.entry.get("voice")
             if not voice:
                 logger.warning("[MiMo] 未配置预置音色，使用默认语音")
-                self.DEFAULT_VOICE
+                voice = self.DEFAULT_VOICE
             messages = []
             if instruction:
                 messages.append({"role": "user", "content": instruction})
