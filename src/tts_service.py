@@ -141,12 +141,12 @@ class TTSService:
         for idx, entry in enumerate(self.providers):
             entry_name = self.config.get_entry_name(entry, idx)
 
-            adapter = ProviderFactory.get_adapter(entry)
-            if not adapter:
-                continue
-
             entry_with_data_dir = dict(entry)
             entry_with_data_dir["_data_dir"] = str(self.audio_data_dir)
+
+            adapter = ProviderFactory.get_adapter(entry_with_data_dir)
+            if not adapter:
+                continue
 
             # 检查文档是否存在
             has_docs = bool(adapter.docs_content)
