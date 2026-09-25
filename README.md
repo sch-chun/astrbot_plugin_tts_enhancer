@@ -6,7 +6,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v0.3.0-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.3.1-green)](CHANGELOG.md)
 
 ---
 
@@ -80,7 +80,7 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 |---|---|---|---|---|---|---|---|---|
 | **百炼 Qwen Audio 3.0 TTS** | Flash / Plus | 富语言标签 + 自然语言指令 | ✅ | ✅ | ✅ | 21 种 | 16 种 | ❌ |
 | **百炼 Qwen Audio 3.1 TTS** | Flash | 富语言标签 + 自然语言指令 | ✅ | ✅ | ✅ | 21 种 | 16 种 | ❌ |
-| **百炼 CosyVoice v3.5** | Flash / Plus | 自然语言指令 | ❌ | ✅ | ✅ | 17 种 | 11 种 | 规划中 |
+| **百炼 CosyVoice v3.5** | Flash / Plus | 自然语言指令 | ❌ | ✅ | ✅ | 17 种 | 11 种 | ✅ |
 | **MiniMax Speech 2.8** | HD / Turbo | 文本内联语气词 | ✅ | ✅ | ✅ | 粤语 | 39 种 | ✅ |
 | **百炼 MiniMax Speech 2.8** | HD / Turbo | 文本内联语气词 | ✅ | ✅ | ✅ | 粤语 | 39 种 | ✅ |
 | **小米 MiMo V2.5 TTS** | 预置音色 / 文本设计 / 音频复刻 | 富语言标签 + 自然语言指令 | ✅ | ✅ | ✅ | ✅ | 中文为主 | ❌ |
