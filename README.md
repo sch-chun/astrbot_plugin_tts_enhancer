@@ -6,7 +6,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v0.3.1-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.3.2-green)](CHANGELOG.md)
 
 ---
 
@@ -85,7 +85,7 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 | **百炼 MiniMax Speech 2.8** | HD / Turbo | 文本内联语气词 | ✅ | ✅ | ✅ | 粤语 | 39 种 | ✅ |
 | **小米 MiMo V2.5 TTS** | 预置音色 / 文本设计 / 音频复刻 | 富语言标签 + 自然语言指令 | ✅ | ✅ | ✅ | ✅ | 中文为主 | ❌ |
 
-> 多个供应商可以**同时配置并按 priority 回退**。
+> 多个供应商可以**同时配置并按 priority 回退**；每个供应商条目还可通过 `persona_id` **绑定到指定人格**，实现「不同人格使用不同音色」。
 
 更多供应商（Edge TTS、GPT-SoVITS 等）正在规划中，欢迎社区贡献！
 
@@ -119,6 +119,7 @@ providers:                        # 供应商列表（支持多个回退）
   - __template_key: bailian_qwen_audio_3_0_tts
     display_name: "我的语音"
     priority: 0
+    persona_id: ""                # 绑定人格（可选，留空为通用兜底音色）
     api_key: "sk-..."
     workspace_id: "ws-..."
     model: "flash"

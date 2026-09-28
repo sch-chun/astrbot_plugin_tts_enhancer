@@ -1,17 +1,16 @@
 """TTS 核心服务层 —— 供 Plugin 和 Tool 共同调用"""
+
 import json
 from pathlib import Path
 
-from astrbot.api.message_components import Record
 from astrbot.api import logger
-
-from .sub_agent import TTSSubAgent
-from ..providers import ProviderFactory
-
-from typing import Optional
 from astrbot.api.event import AstrMessageEvent
+from astrbot.api.message_components import Record
 from astrbot.api.star import Context
+
+from ..providers import ProviderFactory
 from .config import TTSEnhancerConfig
+from .sub_agent import TTSSubAgent
 
 
 class TTSService:
@@ -75,7 +74,9 @@ class TTSService:
 
                             # 只保留有内容的消息（避免空消息干扰计数）
                             if content:
-                                collected.append({"role": role, "content": str(content)})
+                                collected.append(
+                                    {"role": role, "content": str(content)}
+                                )
                                 if role == "user":
                                     user_count += 1
 
@@ -90,47 +91,54 @@ class TTSService:
 
         return messages
 
-    async def get_current_persona(self, event: AstrMessageEvent) -> str:
-        """获取当前会话的人格提示词
+    async def get_current_persona(self, event: AstrMessageEvent) -> tuple[str, str]:
+        """获取当前会话的人格提示词与人格 ID
 
         Args:
             event: 消息事件对象，用于获取会话标识和平台名称。
 
         Returns:
-            当前生效的人格提示词字符串，若未配置则返回空字符串。
+            (prompt, persona_id) 元组；未生效人格时两者均为空字符串。
         """
         umo = event.unified_msg_origin
 
         # 拿到当前 conversation 绑定的 persona_id
         conv_mgr = self.context.conversation_manager
         conv_id = await conv_mgr.get_curr_conversation_id(umo)
-        conversation = await conv_mgr.get_conversation(umo, conv_id) if conv_id else None
+        conversation = (
+            await conv_mgr.get_conversation(umo, conv_id) if conv_id else None
+        )
         conversation_persona_id = conversation.persona_id if conversation else None
 
         # 解析最终生效的人格
-        (persona_id, persona, _force, _webchat) = await self.context.persona_manager.resolve_selected_persona(
+        (
+            persona_id,
+            persona,
+            _force,
+            _webchat,
+        ) = await self.context.persona_manager.resolve_selected_persona(
             umo=umo,
             conversation_persona_id=conversation_persona_id,
             platform_name=event.get_platform_name(),
         )
 
         if persona:
-            return persona.get("prompt", "")
-        return ""
+            return persona.get("prompt", ""), persona_id or ""
+        return "", persona_id or ""
 
     async def synthesize(
         self,
         raw_text: str,
         event: AstrMessageEvent,
         context_messages: list[dict],
-    ) -> Optional[Record]:
+    ) -> Record | None:
         """核心合成方法
-        
+
         Args:
             raw_text: 待合成文本
             event: 消息事件
             context_messages: 上下文消息列表
-        
+
         Returns:
             Record 对象或 None
         """
@@ -138,7 +146,35 @@ class TTSService:
             logger.warning("没有配置任何 TTS 供应商")
             return None
 
-        for idx, entry in enumerate(self.providers):
+        # 解析当前人格（失败时降级为空，避免异常冒泡中断整条消息装饰）
+        try:
+            persona, persona_id = await self.get_current_persona(event)
+        except Exception as e:
+            logger.warning(f"解析当前人格失败: {e}，降级为通用音色")
+            persona, persona_id = "", ""
+        logger.debug(f"persona: {persona}")
+
+        # 人格专属音色：绑定了当前 persona_id 的供应商
+        bound = [
+            e
+            for e in self.providers
+            if persona_id and e.get("persona_id") == persona_id
+        ]
+        # 通用兜底音色：未绑定任何人格的供应商
+        unbound = [e for e in self.providers if not e.get("persona_id")]
+        ordered_providers = bound + unbound
+
+        # 候选为空：供应商均绑定到其他人格且无通用兜底音色，需提示而非静默失败
+        if not ordered_providers:
+            logger.warning(
+                "当前人格未匹配到可用音色：供应商均绑定到其他人格且无通用兜底音色，本次不合成语音"
+            )
+            return None
+
+        for idx, entry in enumerate(ordered_providers):
+            if bound and idx == len(bound):
+                logger.warning("人格专属音色均失败，回退到通用音色")
+
             entry_name = self.config.get_entry_name(entry, idx)
 
             entry_with_data_dir = dict(entry)
@@ -157,9 +193,7 @@ class TTSService:
                 logger.warning(f"供应商 {entry_name} 缺少文档，降级为纯文本请求")
                 try:
                     audio_path = await adapter.call_api(
-                        text=raw_text,
-                        raw_params={},
-                        config=entry_with_data_dir
+                        text=raw_text, raw_params={}, config=entry_with_data_dir
                     )
                     if audio_path:
                         return Record.fromFileSystem(audio_path, text=raw_text)
@@ -173,6 +207,7 @@ class TTSService:
                 tool = adapter.get_tool_schema()
                 if tool:
                     from astrbot.core.agent.tool import ToolSet
+
                     tool_set = ToolSet(tools=[tool])
 
             current_context = context_messages.copy() if context_messages else []
@@ -183,15 +218,13 @@ class TTSService:
             while attempt < max_attempts:
                 try:
                     sys_prompt = adapter.get_subagent_system_prompt()
-                    persona = await self.get_current_persona(event)
-                    logger.debug(f"persona: {persona}")
                     result = await self.sub_agent.call(
                         event,
                         sys_prompt,
                         raw_text,
                         current_context,
                         persona,
-                        tool_set=tool_set
+                        tool_set=tool_set,
                     )
 
                     if result and isinstance(result, dict):
@@ -206,38 +239,48 @@ class TTSService:
                                 api_params = adapter.sanitize_params(result)
                                 break
                             else:
-                                current_context.append({
-                                    "role": "assistant",
-                                    "content": f"我尝试调用 tts_enhance，参数为：{json.dumps(result, ensure_ascii=False)}"
-                                })
-                                current_context.append({
-                                    "role": "user",
-                                    "content": f"参数格式错误：{err_msg}。请检查参数范围并仅调用 tts_enhance 工具修正。"
-                                })
+                                current_context.append(
+                                    {
+                                        "role": "assistant",
+                                        "content": f"我尝试调用 tts_enhance，参数为：{json.dumps(result, ensure_ascii=False)}",
+                                    }
+                                )
+                                current_context.append(
+                                    {
+                                        "role": "user",
+                                        "content": f"参数格式错误：{err_msg}。请检查参数范围并仅调用 tts_enhance 工具修正。",
+                                    }
+                                )
                                 attempt += 1
                                 continue
                     else:
                         if attempt == max_attempts - 1:
                             break
                         else:
-                            current_context.append({
-                                "role": "assistant",
-                                "content": "我尝试调用 tts_enhance，但未返回有效结构。"
-                            })
-                            current_context.append({
-                                "role": "user",
-                                "content": "请检查你的 tts_enhance 工具调用，并确保返回有效的结构。"
-                            })
+                            current_context.append(
+                                {
+                                    "role": "assistant",
+                                    "content": "我尝试调用 tts_enhance，但未返回有效结构。",
+                                }
+                            )
+                            current_context.append(
+                                {
+                                    "role": "user",
+                                    "content": "请检查你的 tts_enhance 工具调用，并确保返回有效的结构。",
+                                }
+                            )
                             attempt += 1
                             continue
                 except Exception as e:
-                    logger.warning(f"SubAgent 调用异常 (尝试 {attempt+1}): {e}")
+                    logger.warning(f"SubAgent 调用异常 (尝试 {attempt + 1}): {e}")
                     if attempt == max_attempts - 1:
                         break
-                    current_context.append({
-                        "role": "user",
-                        "content": f"调用过程中出现异常：{e}，请重新调用 tts_enhance 工具。"
-                    })
+                    current_context.append(
+                        {
+                            "role": "user",
+                            "content": f"调用过程中出现异常：{e}，请重新调用 tts_enhance 工具。",
+                        }
+                    )
                     attempt += 1
                     continue
 
@@ -253,7 +296,7 @@ class TTSService:
                 audio_path = await adapter.call_api(
                     text=enhanced_text,
                     raw_params=api_params or {},
-                    config=entry_with_data_dir
+                    config=entry_with_data_dir,
                 )
                 if audio_path:
                     logger.info(f"TTS 合成成功，供应商: {entry_name}")
@@ -261,6 +304,8 @@ class TTSService:
             except Exception as e:
                 logger.warning(f"供应商 {entry_name} TTS API 失败: {e}，尝试下一个")
 
-        logger.error(f"所有 TTS 供应商均失败")
+        if bound and not unbound:
+            logger.warning("人格专属音色均失败，且未配置通用兜底音色")
+        else:
+            logger.error("所有 TTS 供应商均失败")
         return None
-    
