@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.2] - 2026-09-28
+
+### Added
+
+- 支持按人格绑定 TTS 供应商音色
+  - `_conf_schema.json` 所有供应商模板新增 `persona_id` 配置项（`select_persona` 选择器），用于将供应商绑定到指定人格；留空则作为通用兜底音色
+  - `TTSService.get_current_persona()` 返回类型改为 `(prompt, persona_id)` 元组，供人格提示词与音色绑定共同复用
+  - `TTSService.synthesize()` 按当前人格将供应商分区为「人格专属音色」与「通用兜底音色」：优先尝试专属音色，全部失败且存在通用音色时报 Warning 并回退；无专属配置时静默使用通用音色；无任何可用音色或专属音色失败且无通用兜底时输出 Warning 提示
+- 供应商配置初始化时检测 `display_name` 重名与 `priority` 重复
+  - 重名条目自动追加数字后缀（`#2`、`#3`…），重复优先级保持配置顺序依次尝试，两者均输出 Warning 提示
+
 ## [0.3.1] - 2026-09-25
 
 ### Added

@@ -55,6 +55,13 @@
             "type": "int",
             "default": 0
           },
+          "persona_id": {
+            "description": "绑定人格",
+            "type": "string",
+            "_special": "select_persona",
+            "default": "",
+            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+          },
           "api_key": {
             "description": "API Key",
             "type": "string",
@@ -136,6 +143,13 @@
             "description": "优先级（数字越小越优先）",
             "type": "int",
             "default": 0
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "type": "string",
+            "_special": "select_persona",
+            "default": "",
+            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
           },
           "api_key": {
             "description": "API Key",
@@ -220,6 +234,13 @@
             "type": "int",
             "default": 0
           },
+          "persona_id": {
+            "description": "绑定人格",
+            "type": "string",
+            "_special": "select_persona",
+            "default": "",
+            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+          },
           "api_key": {
             "description": "API Key",
             "type": "string",
@@ -303,6 +324,13 @@
             "type": "int",
             "default": 0
           },
+          "persona_id": {
+            "description": "绑定人格",
+            "type": "string",
+            "_special": "select_persona",
+            "default": "",
+            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+          },
           "api_key": {
             "description": "API Key",
             "type": "string",
@@ -375,6 +403,13 @@
             "description": "优先级（数字越小越优先）",
             "type": "int",
             "default": 0
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "type": "string",
+            "_special": "select_persona",
+            "default": "",
+            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
           },
           "api_key": {
             "description": "百炼 API Key",
@@ -449,6 +484,13 @@
             "description": "优先级（数字越小越优先）",
             "type": "int",
             "default": 0
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "type": "string",
+            "_special": "select_persona",
+            "default": "",
+            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
           },
           "api_key": {
             "description": "API Key",
