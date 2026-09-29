@@ -1,5 +1,4 @@
-"""
-pytest 全局夹具与测试替身。
+"""pytest 全局夹具与测试替身。
 
 测试直接依赖真实 AstrBot 运行时符号（``astrbot.api`` 等），因此需要把
 AstrBot 源码根目录与 ``data/plugins`` 目录加入 ``sys.path``。

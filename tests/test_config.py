@@ -105,7 +105,7 @@ class TestGetEntryNameFallback:
         assert cfg.get_entry_name({}) == "unknown"
 
     def test_index_zero_boundary(self):
-        """index=0 是有效索引（>=0），不应被当作「無索引」。"""
+        """index=0 是有效索引（>=0），不应被当作「无索引」。"""
         cfg = TTSEnhancerConfig({})
         assert cfg.get_entry_name({"__template_key": "k"}, 0) == "k #0"
 
