@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.3] - 2026-09-29
+
+### Fixed
+
+- **修复上传链路断裂（0.2.7「后端安全加固」引入的回归）**（`main.py`）：
+  - `_SAFE_FILE_ID_RE` 白名单未放行 `.`，而 `/upload` 生成的 file_id 形如 `upload_<毫秒时间戳>.mp3`（扩展名自带点号），导致 `/start_file_server`、`/stop_file_server`、`/file/upload` 三处 `_validate_file_id()` 全部返回 400，「上传音频 → 预览 → 音色克隆」整条链路不可用
+  - 白名单改为 `^[A-Za-z0-9_\-][A-Za-z0-9_\-.]{0,127}$`：在放行 `.` 的同时要求首字符为字母/数字/下划线，从根上排除 `.`、`..`、`.hidden` 等以点开头的名字；`_resolve_uploads_path()` 的 `resolve()` + 父目录比较防御保持不变
+- **修复 `priority` 为字符串导致插件加载失败**（`src/config.py`）：
+  - `_load_providers()` 原先直接以 `x.get("priority", 100)` 作为 `sorted()` 的 key，WebUI 表单把数字存成字符串时（如 `{"priority": "5"}`）抛 `TypeError`，异常从 `TTSEnhancerConfig.__init__` 冒泡到插件 `__init__`，导致插件加载失败、全部功能不可用
+  - 新增 `_normalize_priority()`：接受 int 与可解析为 int 的字符串（排除 bool），非法值回退默认优先级 100；`priority` 重复统计与排序统一走该归一函数
+  - `providers` 被误配为 dict 时取其 `values()`，并过滤非 dict 条目，消除 `entry.get(...)` 抛 `AttributeError` 的同源问题
+- **修复 `entry_id` 未做类型校验导致的未捕获异常**（`main.py`）：
+  - `/voice/create`、`/voice/list`、`/voice/delete`、`/voice/preview`、`/file/upload`、`/file/list`、`/file/get`、`/file/delete` 在 `entry_id < 0 or entry_id >= len(providers_raw)` 比较前未校验类型，请求体传 `{"entry_id": "abc"}` 时抛未捕获的 `TypeError`
+  - 新增 `_is_valid_entry_id()` 并在上述路由的比较前调用，非法 `entry_id` 统一返回 `400 entry_id 必须为整数`
+
 ## [0.3.2] - 2026-09-28
 
 ### Added
