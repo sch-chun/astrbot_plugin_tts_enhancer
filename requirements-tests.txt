@@ -1,0 +1,4 @@
+# 测试依赖 —— 运行 pytest 套件所需。
+# 仓库本身不含 requirements/pyproject，故单独声明，避免依赖 pytest-asyncio 漂浮在环境里。
+pytest>=8.0
+pytest-asyncio>=0.23
