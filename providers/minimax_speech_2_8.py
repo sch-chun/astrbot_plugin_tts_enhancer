@@ -3,18 +3,25 @@
 提供 MinimaxSpeech2_8Adapter 类，支持 HD 和 Turbo 两种模型，
 实现语音合成、参数校验、音色克隆与设计、以及音色和音频文件的增删查等完整功能。
 """
-import httpx
-from pathlib import Path
-from datetime import datetime
 
-from typing import Any, Optional
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import httpx
 
 from astrbot.api import logger
 from astrbot.core.agent.tool import FunctionTool
 
 from .base import TTSProviderAdapter
 from .utils import http
-from .utils.audio import get_audio_duration, trim_audio_to_max, AudioConstraints, save_audio_bytes
+from .utils.audio import (
+    AudioConstraints,
+    get_audio_duration,
+    save_audio_bytes,
+    trim_audio_to_max,
+)
 
 
 class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
@@ -29,27 +36,69 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
 
     # 情感标签（与 API 一致）
     VALID_EMOTIONS = [
-        "happy", "sad", "angry", "fearful",
-        "disgusted", "surprised", "calm", "fluent"
+        "happy",
+        "sad",
+        "angry",
+        "fearful",
+        "disgusted",
+        "surprised",
+        "calm",
+        "fluent",
     ]
 
     # 语言增强（完整列表，与官方一致）
     VALID_LANGUAGE_BOOST = [
-        "Chinese", "Chinese,Yue", "English", "Arabic", "Russian",
-        "Spanish", "French", "Portuguese", "German", "Turkish",
-        "Dutch", "Ukrainian", "Vietnamese", "Indonesian", "Japanese",
-        "Italian", "Korean", "Thai", "Polish", "Romanian",
-        "Greek", "Czech", "Finnish", "Hindi", "Bulgarian",
-        "Danish", "Hebrew", "Malay", "Persian", "Slovak",
-        "Swedish", "Croatian", "Filipino", "Hungarian", "Norwegian",
-        "Slovenian", "Catalan", "Nynorsk", "Tamil", "Afrikaans",
-        "auto"
+        "Chinese",
+        "Chinese,Yue",
+        "English",
+        "Arabic",
+        "Russian",
+        "Spanish",
+        "French",
+        "Portuguese",
+        "German",
+        "Turkish",
+        "Dutch",
+        "Ukrainian",
+        "Vietnamese",
+        "Indonesian",
+        "Japanese",
+        "Italian",
+        "Korean",
+        "Thai",
+        "Polish",
+        "Romanian",
+        "Greek",
+        "Czech",
+        "Finnish",
+        "Hindi",
+        "Bulgarian",
+        "Danish",
+        "Hebrew",
+        "Malay",
+        "Persian",
+        "Slovak",
+        "Swedish",
+        "Croatian",
+        "Filipino",
+        "Hungarian",
+        "Norwegian",
+        "Slovenian",
+        "Catalan",
+        "Nynorsk",
+        "Tamil",
+        "Afrikaans",
+        "auto",
     ]
 
     def __init__(self, entry: dict) -> None:
-        super().__init__(entry)   # 基类会加载 docs/minimax_speech_2_8.md 到 self.docs_content
+        super().__init__(
+            entry
+        )  # 基类会加载 docs/minimax_speech_2_8.md 到 self.docs_content
 
-        logger.debug(f"Initialized MinimaxSpeech2_8Adapter with template_key={self.template_key}")
+        logger.debug(
+            f"Initialized MinimaxSpeech2_8Adapter with template_key={self.template_key}"
+        )
 
     def _check_base_resp(self, base_resp: dict, action: str) -> str | None:
         """检查 MiniMax 响应的 base_resp 状态。
@@ -82,44 +131,44 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "合成文本，支持语气词标签 (laughs) 和停顿 <#x#>"
+                        "description": "合成文本，支持语气词标签 (laughs) 和停顿 <#x#>",
                     },
                     "emotion": {
                         "type": "string",
                         "enum": self.VALID_EMOTIONS,
-                        "description": "情感标签（模型会自动匹配合适情绪，一般无需指定）"
+                        "description": "情感标签（模型会自动匹配合适情绪，一般无需指定）",
                     },
                     "speed": {
                         "type": "number",
                         "minimum": 0.5,
                         "maximum": 2.0,
-                        "description": "语速倍率，默认 1.0"
+                        "description": "语速倍率，默认 1.0",
                     },
                     "vol": {
                         "type": "number",
                         "minimum": 0.0,
                         "maximum": 10.0,
-                        "description": "音量，默认 1.0"
+                        "description": "音量，默认 1.0",
                     },
                     "pitch": {
                         "type": "integer",
                         "minimum": -12,
                         "maximum": 12,
-                        "description": "语调偏移，默认 0"
+                        "description": "语调偏移，默认 0",
                     },
                     "language_boost": {
                         "type": "string",
                         "enum": self.VALID_LANGUAGE_BOOST,
-                        "description": "增强对指定语种的识别，一般留空，默认设为 'auto' 让模型自主判断"
+                        "description": "增强对指定语种的识别，一般留空，默认设为 'auto' 让模型自主判断",
                     },
                     "latex_read": {
                         "type": "boolean",
-                        "description": "是否朗读 LaTeX 公式，仅中文有效，会自动设置 language_boost=Chinese，公式需在首尾加上 $$ 包裹"
-                    }
+                        "description": "是否朗读 LaTeX 公式，仅中文有效，会自动设置 language_boost=Chinese，公式需在首尾加上 $$ 包裹",
+                    },
                 },
-                "required": ["text"]
+                "required": ["text"],
             },
-            handler=None
+            handler=None,
         )
 
     # ---------- SubAgent 系统提示 ----------
@@ -141,7 +190,7 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
         text: str,
         raw_params: dict[str, Any],
         config: dict[str, Any],
-        voice_id: Optional[str] = None
+        voice_id: str | None = None,
     ) -> str:
         """调用 MiniMax TTS API 进行语音合成并保存为本地文件。
 
@@ -207,9 +256,14 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
         # 若 latex_read 为 True，强制 language_boost = "Chinese"（覆盖）
         if latex_read:
             language_boost = "Chinese"
-            if "language_boost" in raw_params and raw_params["language_boost"] != "Chinese":
-                logger.warning("latex_read 为 True，强制将 language_boost 设置为 'Chinese'")
-        
+            if (
+                "language_boost" in raw_params
+                and raw_params["language_boost"] != "Chinese"
+            ):
+                logger.warning(
+                    "latex_read 为 True，强制将 language_boost 设置为 'Chinese'"
+                )
+
         payload = {
             "model": model_id,
             "text": final_text,
@@ -250,7 +304,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
             audio_bytes = bytes.fromhex(audio_hex)
             audio_format = audio_setting.get("format", "mp3")
 
-            return save_audio_bytes(config.get("_data_dir", ""), audio_bytes, audio_format)
+            return save_audio_bytes(
+                config.get("_data_dir", ""), audio_bytes, audio_format
+            )
 
         except httpx.TimeoutException:
             logger.error(f"MiniMax API 超时 (timeout={timeout}s)")
@@ -272,21 +328,31 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
         Returns:
             tuple[bool, str]: 校验结果与错误信息。合法时返回 (True, "")，非法时返回 (False, 错误描述)。
         """
-        if "speed" in params and not (0.5 <= params["speed"] <= 2.0):
-            return False, f"speed 必须在 0.5~2.0 之间，当前 {params['speed']}"
-        
-        if "vol" in params and not (0.0 <= params["vol"] <= 10.0):
-            return False, f"vol 必须在 0~10 之间，当前 {params['vol']}"
-        
-        if "pitch" in params and not (-12 <= params["pitch"] <= 12):
-            return False, f"pitch 必须在 -12~12 之间，当前 {params['pitch']}"
-        
+        # 数值参数走 _as_float：兼容字符串数字并排除 bool
+        if "speed" in params:
+            speed = self._as_float(params["speed"])
+            if speed is None or not (0.5 <= speed <= 2.0):
+                return False, f"speed 必须在 0.5~2.0 之间，当前 {params['speed']}"
+
+        if "vol" in params:
+            vol = self._as_float(params["vol"])
+            if vol is None or not (0.0 <= vol <= 10.0):
+                return False, f"vol 必须在 0~10 之间，当前 {params['vol']}"
+
+        if "pitch" in params:
+            pitch = self._as_float(params["pitch"])
+            if pitch is None or not (-12 <= pitch <= 12):
+                return False, f"pitch 必须在 -12~12 之间，当前 {params['pitch']}"
+
         if "emotion" in params and params["emotion"] not in self.VALID_EMOTIONS:
             return False, f"不支持的情感标签: {params['emotion']}"
-        
-        if "language_boost" in params and params["language_boost"] not in self.VALID_LANGUAGE_BOOST:
+
+        if (
+            "language_boost" in params
+            and params["language_boost"] not in self.VALID_LANGUAGE_BOOST
+        ):
             return False, f"不支持的语言增强: {params['language_boost']}"
-        
+
         return True, ""
 
     def sanitize_params(self, params: dict) -> dict:
@@ -300,18 +366,25 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
         """
         sanitized = {"text": params.get("text", "")}
         for key in ["speed", "vol", "pitch", "emotion", "language_boost"]:
-            if key in params:
-                valid, _ = self.validate_params({key: params[key]})
-                if valid:
-                    sanitized[key] = params[key]
-                else:
-                    logger.warning(f"丢弃非法的 {key} 参数: {params[key]}")
+            if key not in params:
+                continue
+            valid, _ = self.validate_params({key: params[key]})
+            if not valid:
+                logger.warning(f"丢弃非法的 {key} 参数: {params[key]}")
+                continue
+            # 数值参数归一为 float（兼容 LLM 以字符串返回的数字、排除 bool），
+            # 避免字符串原样进入 voice_setting 传给 API（与百炼适配器行为对齐）；
+            # 非数值项（emotion / language_boost）保持原样。
+            if key in ("speed", "vol", "pitch"):
+                sanitized[key] = self._as_float(params[key])
+            else:
+                sanitized[key] = params[key]
         return sanitized
 
     # ————————————————————————
 
     # ———————— 音色管理 ————————
-    
+
     # ============================================================
     # 1. 文件管理
     # ============================================================
@@ -338,7 +411,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
 
         # 2. 基础校验
         if purpose not in ["voice_clone", "prompt_audio"]:
-            raise ValueError(f"不支持的 purpose: {purpose}，仅支持 'voice_clone' 或 'prompt_audio'")
+            raise ValueError(
+                f"不支持的 purpose: {purpose}，仅支持 'voice_clone' 或 'prompt_audio'"
+            )
 
         api_key = self.entry.get("api_key")
         if not api_key:
@@ -395,7 +470,6 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
                 with open(file_path, "rb") as f:
                     custom_filename = kwargs.get("filename")
                     if custom_filename:
-
                         # 确保有扩展名，如果没有则从原文件扩展名补全
                         original_ext = Path(file_path).suffix
                         if not Path(custom_filename).suffix:
@@ -406,7 +480,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
 
                     files = {"file": (upload_filename, f, "audio/mpeg")}
                     data = {"purpose": purpose}
-                    resp = await client.post(url, headers=headers, data=data, files=files)
+                    resp = await client.post(
+                        url, headers=headers, data=data, files=files
+                    )
                     resp.raise_for_status()
                     result = resp.json()
 
@@ -419,7 +495,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
             if not file_obj.get("file_id"):
                 raise RuntimeError(f"未返回 file_id: {result}")
 
-            logger.debug(f"文件上传成功: file_id={file_obj.get('file_id')}, purpose={purpose}")
+            logger.debug(
+                f"文件上传成功: file_id={file_obj.get('file_id')}, purpose={purpose}"
+            )
             return file_obj
 
         finally:
@@ -465,7 +543,7 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
             return {
                 "files": result.get("files", []),
                 "total": len(result.get("files", [])),
-                "base_resp": base_resp
+                "base_resp": base_resp,
             }
 
         except httpx.TimeoutException:
@@ -577,13 +655,18 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
             dict: 包含 voice_id 和 demo_audio/trial_audio（如有）的结果
         """
         mode = params.get("mode")
+        if isinstance(mode, str):
+            # 大小写不敏感，容忍 LLM/前端传入 "Clone" / "DESIGN"
+            mode = mode.strip().lower()
         if mode is None:
             if "file_id" in params:
                 mode = "clone"
             elif "prompt" in params and "preview_text" in params:
                 mode = "design"
             else:
-                raise ValueError("无法推断创建模式，请指定 mode='clone' 或 mode='design'")
+                raise ValueError(
+                    "无法推断创建模式，请指定 mode='clone' 或 mode='design'"
+                )
 
         if mode == "clone":
             return await self._create_voice_by_clone(params)
@@ -591,6 +674,15 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
             return await self._create_voice_by_design(params)
         else:
             raise ValueError(f"未知模式: {mode}")
+
+    def _generate_voice_id(self) -> str:
+        """生成形如 ``Clone_<时间戳>_<随机后缀>`` 的唯一 voice_id。
+
+        Returns:
+            str: 满足首字符为字母、末字符为字母或数字的命名规则的 voice_id。
+        """
+        stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        return f"Clone_{stamp}_{uuid.uuid4().hex[:8]}"
 
     async def _create_voice_by_clone(self, params: dict) -> dict:
         """通过 file_id 进行音色克隆（不处理本地文件）。
@@ -620,12 +712,10 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
                 voice_id=voice_id,
                 min_len=8,
                 max_len=256,
-                pattern=r'^[A-Za-z][A-Za-z0-9\-_]*[A-Za-z0-9]$'
+                pattern=r"^[A-Za-z][A-Za-z0-9\-_]*[A-Za-z0-9]$",
             )
         else:
-
-            # 自动生成 voice_id（首字母必须为英文字母）
-            voice_id = f"Clone_{datetime.now().strftime('%Y%m%d%H%M%S')}_{id(self)}"
+            voice_id = self._generate_voice_id()
             logger.warning(f"未提供 voice_id，自动生成: {voice_id}")
 
         payload = {
@@ -808,31 +898,37 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
 
             # 系统音色
             for v in result.get("system_voice", []):
-                response["items"].append({
-                    "voice_id": v.get("voice_id"),
-                    "voice_name": v.get("voice_name"),
-                    "description": v.get("description", []),
-                    "created_time": v.get("created_time"),
-                    "type": "system"
-                })
+                response["items"].append(
+                    {
+                        "voice_id": v.get("voice_id"),
+                        "voice_name": v.get("voice_name"),
+                        "description": v.get("description", []),
+                        "created_time": v.get("created_time"),
+                        "type": "system",
+                    }
+                )
 
             # 克隆音色
             for v in result.get("voice_cloning", []):
-                response["items"].append({
-                    "voice_id": v.get("voice_id"),
-                    "description": v.get("description", []),
-                    "created_time": v.get("created_time"),
-                    "type": "voice_cloning"
-                })
+                response["items"].append(
+                    {
+                        "voice_id": v.get("voice_id"),
+                        "description": v.get("description", []),
+                        "created_time": v.get("created_time"),
+                        "type": "voice_cloning",
+                    }
+                )
 
             # 文生音色
             for v in result.get("voice_generation", []):
-                response["items"].append({
-                    "voice_id": v.get("voice_id"),
-                    "description": v.get("description", []),
-                    "created_time": v.get("created_time"),
-                    "type": "voice_generation"
-                })
+                response["items"].append(
+                    {
+                        "voice_id": v.get("voice_id"),
+                        "description": v.get("description", []),
+                        "created_time": v.get("created_time"),
+                        "type": "voice_generation",
+                    }
+                )
 
             response["total"] = len(response["items"])
             return response
@@ -863,7 +959,9 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
         if not voice_id:
             raise ValueError("voice_id 为必填参数")
         if not voice_type:
-            raise ValueError("voice_type 为必填参数（voice_cloning 或 voice_generation）")
+            raise ValueError(
+                "voice_type 为必填参数（voice_cloning 或 voice_generation）"
+            )
         if voice_type not in ["voice_cloning", "voice_generation"]:
             raise ValueError(
                 f"不支持的 voice_type: {voice_type}，仅支持 voice_cloning 或 voice_generation"

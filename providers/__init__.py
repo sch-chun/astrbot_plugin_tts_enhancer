@@ -90,6 +90,10 @@ class ProviderFactory:
             TTSProviderAdapter | None: 如果找到对应的适配器类，返回其实例；否则返回None
         """
         cls._discover_adapters()
+        # entry 可能为空（配置缺失或传入 None），先做防御再取字段
+        if not isinstance(entry, dict):
+            return None
+
         template_key = entry.get("__template_key")
         if not template_key or cls._adapters is None:
             return None

@@ -61,7 +61,12 @@ def split_by_tts_tags(text: str) -> list[dict]:
 
     Returns:
         list[dict]: 分割后的片段列表，每个片段为字典，包含 'type' ('text' 或 'tts') 和 'content'。
+        入参不是字符串时返回空列表（按「无内容可解析」处理）。
     """
+    # 入参可能为空（如消息体缺失 text 字段），按无内容处理而非抛 TypeError
+    if not isinstance(text, str):
+        return []
+
     segments = []
     cursor = 0
     text_length = len(text)

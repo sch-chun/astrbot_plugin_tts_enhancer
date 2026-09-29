@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.3] - 2026-09-29
+
+### Added
+
+- **pytest 测试套件**（`pytest.ini`、`tests/`、`requirements-tests.txt`）：以 `asyncio_mode = auto` 覆盖非 happy path 场景，共 329 用例通过、8 条 xfail 观察项、0 条 xpass（共移除 10 条「写死缺陷现状」的非 xfail 测试，避免挡住后续修复：含 8 条 `_current_behavior` 与 2 条锁死嵌套标签 / bool 窗口现状的用例；P1-4 修复后将原 xfail 转为普通回归用例；xfail 观察项均属上游担保 / 设计取舍 / 不可达，非本仓库责任）
+  - `tests/conftest.py`：向上探测 AstrBot 源码根目录（不再硬编码 `parents[2]`）并用 `pytest.importorskip("astrbot.core.provider")`，脱离 AstrBot 源码时优雅跳过而非崩溃；新增 `requirements-tests.txt` 显式声明 `pytest` 与 `pytest-asyncio`
+  - `main.py`：文件 ID 校验与路由、entry_id 类型与越界校验
+  - `providers/`：MiniMax 与百炼适配器的参数校验、音色生命周期（克隆 / 设计 / 列表 / 删除）、voice_id 生成熵、mode 大小写
+  - `src/`：`tts_service` 降级与参数处理、`tts_parser` 入参校验、配置加载
+  - 基类 `TTSProviderAdapter` 的 `validate_voice_id` / `_count_text_chars` / `_as_float` / `_as_int` 等通用工具
+
+### Fixed
+
+- **修复补充测试过程中发现的若干真实缺陷**
+  - `main.py`：文件 ID 校验放宽点号并新增 `_parse_entry_id()` 统一校验类型与越界（排除 bool）；8 处裸比较全部收敛（P0-1、P1-3）
+  - `src/tts_service.py`：无文档降级分支补 `continue`；空文本校验改用 `api_params.get("text")`；`conv_mgr` 与 `persona_manager` 判空（P1-1、P2-5、P3-4）
+  - `src/tts_parser.py`：非字符串入参直接返回空列表（P3-6）
+  - `providers/base.py`：字符计数改用 `unicodedata.east_asian_width`（CJK / 全角 / emoji 按 2 计）；原 `_as_number` 拆分为 `_as_float()` / `_as_int()` 两个类型安全助手（兼容 LLM 以字符串返回的数字、排除 bool）（P1-5、P2-2、P3-3a）
+  - `providers/minimax_speech_2_8.py`：voice_id 自动生成改用 uuid 熵替代 `id(self)`；`mode` 大小写归一（P2-1、P3-2）；`sanitize_params` 对 `speed`/`vol`/`pitch` 用 `_as_float` 归一到数值，避免 LLM 以字符串返回的数字经 `voice_setting` 原样传给 API（P1-5 收尾，与百炼对齐）
+  - `providers/__init__.py`：`get_adapter` 非 dict 入参判空返回 None（P3-5）
+  - **百炼适配器一致性收敛**：`validate_params` / `sanitize_params` 改用基类 `_as_int` / `_as_float`，修复原先以 `isinstance(x, (int, float))` 守卫导致「拒字符串数字」且「漏掉 bool」的问题，与 MiniMax 行为对齐
+  - `src/config.py`：供应商排序新增 `priority` 兜底——非数值（手工编辑 / 上游回归）归一到 100 并输出 Warning，避免 `sorted` 因 int/str 混排抛 `TypeError`（P1-4，原归上游担保，现加一行防御并显式告警，不静默吞掉回归）
+
 ## [0.3.2] - 2026-09-28
 
 ### Added

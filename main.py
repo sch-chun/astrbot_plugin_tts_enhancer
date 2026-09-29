@@ -28,7 +28,11 @@ from astrbot.api.event import AstrMessageEvent
 from astrbot.api.star import Context
 
 
-_SAFE_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,128}$")
+# 放行点号以支持 "upload_<毫秒时间戳>.mp3" 这类真实文件名；
+# 首字符限定为 [A-Za-z0-9_]，从而挡住 "." / ".." / ".hidden" / ".env"。
+# 点号不是路径分隔符，"/" 与 "\" 仍被排除；即便有误放行，
+# _resolve_uploads_path() 的 resolve() + 父目录比较仍会拦截穿越。
+_SAFE_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.\-]{0,127}$")
 
 
 def _validate_file_id(file_id: str) -> str:
@@ -46,6 +50,24 @@ def _validate_file_id(file_id: str) -> str:
     if not isinstance(file_id, str) or not _SAFE_FILE_ID_RE.match(file_id):
         raise ValueError(f"非法 file_id: {file_id!r}")
     return file_id
+
+
+def _parse_entry_id(entry_id, providers_count: int) -> int | None:
+    """校验请求体中的 entry_id 并返回合法索引。
+
+    Args:
+        entry_id: 待校验的 entry_id，类型未知。
+        providers_count: 当前已配置的供应商数量。
+
+    Returns:
+        合法时返回 entry_id；类型错误或越界时返回 None。
+    """
+    # bool 是 int 子类，需显式排除，避免 {"entry_id": true} 被当作索引 1
+    if isinstance(entry_id, bool) or not isinstance(entry_id, int):
+        return None
+    if entry_id < 0 or entry_id >= providers_count:
+        return None
+    return entry_id
 
 
 class TTSEnhancerPlugin(Star):
@@ -286,9 +308,10 @@ class TTSEnhancerPlugin(Star):
                 return error_response("entry_id required", status_code=400)
             params = {k: v for k, v in payload.items() if k != "entry_id"}
             providers_raw = self.config.get_providers()
-            if entry_id < 0 or entry_id >= len(providers_raw):
+            entry_idx = _parse_entry_id(entry_id, len(providers_raw))
+            if entry_idx is None:
                 return error_response("entry not found", status_code=404)
-            entry = providers_raw[entry_id]
+            entry = providers_raw[entry_idx]
             adapter = ProviderFactory.get_adapter(entry)
             if not adapter:
                 return error_response("无法创建适配器，请检查配置", status_code=500)
@@ -326,9 +349,10 @@ class TTSEnhancerPlugin(Star):
                 return error_response("entry_id required", status_code=400)
             params = {k: v for k, v in payload.items() if k != "entry_id"}
             providers_raw = self.config.get_providers()
-            if entry_id < 0 or entry_id >= len(providers_raw):
+            entry_idx = _parse_entry_id(entry_id, len(providers_raw))
+            if entry_idx is None:
                 return error_response("entry not found", status_code=404)
-            entry = providers_raw[entry_id]
+            entry = providers_raw[entry_idx]
             adapter = ProviderFactory.get_adapter(entry)
             if not adapter:
                 return error_response("无法创建适配器，请检查配置", status_code=500)
@@ -366,9 +390,10 @@ class TTSEnhancerPlugin(Star):
                 return error_response("entry_id required", status_code=400)
             params = {k: v for k, v in payload.items() if k != "entry_id"}
             providers_raw = self.config.get_providers()
-            if entry_id < 0 or entry_id >= len(providers_raw):
+            entry_idx = _parse_entry_id(entry_id, len(providers_raw))
+            if entry_idx is None:
                 return error_response("entry not found", status_code=404)
-            entry = providers_raw[entry_id]
+            entry = providers_raw[entry_idx]
             adapter = ProviderFactory.get_adapter(entry)
             if not adapter:
                 return error_response("无法创建适配器，请检查配置", status_code=500)
@@ -560,9 +585,10 @@ class TTSEnhancerPlugin(Star):
                     return error_response("entry_id 和 voice_id 是必需的", status_code=400)
 
                 providers_raw = self.config.get_providers()
-                if entry_id < 0 or entry_id >= len(providers_raw):
+                entry_idx = _parse_entry_id(entry_id, len(providers_raw))
+                if entry_idx is None:
                     return error_response("entry not found", status_code=404)
-                entry = providers_raw[entry_id]
+                entry = providers_raw[entry_idx]
 
                 entry_with_data_dir = dict(entry)
                 entry_with_data_dir["_data_dir"] = str(self.plugin_data_path / "audio")
@@ -702,9 +728,10 @@ class TTSEnhancerPlugin(Star):
 
                 # 获取适配器
                 providers_raw = self.config.get_providers()
-                if entry_id < 0 or entry_id >= len(providers_raw):
+                entry_idx = _parse_entry_id(entry_id, len(providers_raw))
+                if entry_idx is None:
                     return error_response("entry not found", status_code=404)
-                entry = providers_raw[entry_id]
+                entry = providers_raw[entry_idx]
                 adapter = ProviderFactory.get_adapter(entry)
                 if not adapter or not hasattr(adapter, 'upload_file'):
                     return error_response("该适配器不支持文件上传", status_code=501)
@@ -739,9 +766,10 @@ class TTSEnhancerPlugin(Star):
                 kwargs = {k: v for k, v in payload.items() if k != "entry_id"}
 
                 providers_raw = self.config.get_providers()
-                if entry_id < 0 or entry_id >= len(providers_raw):
+                entry_idx = _parse_entry_id(entry_id, len(providers_raw))
+                if entry_idx is None:
                     return error_response("entry not found", status_code=404)
-                entry = providers_raw[entry_id]
+                entry = providers_raw[entry_idx]
                 adapter = ProviderFactory.get_adapter(entry)
                 if not adapter or not hasattr(adapter, 'list_files'):
                     return error_response("该适配器不支持文件列表", status_code=501)
@@ -764,9 +792,10 @@ class TTSEnhancerPlugin(Star):
                     return error_response("entry_id 和 file_id 都是必需的", status_code=400)
 
                 providers_raw = self.config.get_providers()
-                if entry_id < 0 or entry_id >= len(providers_raw):
+                entry_idx = _parse_entry_id(entry_id, len(providers_raw))
+                if entry_idx is None:
                     return error_response("entry not found", status_code=404)
-                entry = providers_raw[entry_id]
+                entry = providers_raw[entry_idx]
                 adapter = ProviderFactory.get_adapter(entry)
                 if not adapter or not hasattr(adapter, 'get_file_content'):
                     return error_response("该适配器不支持文件获取", status_code=501)
@@ -796,9 +825,10 @@ class TTSEnhancerPlugin(Star):
                     return error_response("entry_id 和 file_id 都是必需的", status_code=400)
 
                 providers_raw = self.config.get_providers()
-                if entry_id < 0 or entry_id >= len(providers_raw):
+                entry_idx = _parse_entry_id(entry_id, len(providers_raw))
+                if entry_idx is None:
                     return error_response("entry not found", status_code=404)
-                entry = providers_raw[entry_id]
+                entry = providers_raw[entry_idx]
                 adapter = ProviderFactory.get_adapter(entry)
                 if not adapter or not hasattr(adapter, 'delete_file'):
                     return error_response("该适配器不支持文件删除", status_code=501)
