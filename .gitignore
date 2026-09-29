@@ -210,12 +210,3 @@ __marimo__/
 
 # ESLint
 node_modules
-
-# AstrBot 运行时副产物（cwd 相对根目录的影子 data/，非本仓库文件）
-# 根因：astrbot/core/utils/astrbot_path.py::get_astrbot_root() 默认取 os.getcwd()，
-# 当在本插件目录运行 pytest 时，框架会把 cmd_config.json / t2i_templates / temp 等
-# 写到 <cwd>/data 下。该目录与插件源码无关，切勿提交。
-/data/
-
-# 阶段性测试分析报告（本地分析用，非插件贡献，不纳入版本跟踪）
-TEST_REPORT.md
