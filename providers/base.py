@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 import re
+import unicodedata
 
 from typing import Optional
 
@@ -118,6 +119,55 @@ class TTSProviderAdapter(ABC):
 
     # ———————— 参数验证 ————————
 
+    @staticmethod
+    def _as_float(value) -> float | None:
+        """将参数值安全转换为 float。
+
+        接受 int / float / 可解析的字符串；排除 bool；无法解析时返回 None。
+
+        Args:
+            value: 待转换的参数值，类型未知。
+
+        Returns:
+            转换成功返回 float；bool 或无法解析的值返回 None。
+        """
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value.strip())
+            except ValueError:
+                return None
+        return None
+
+    @staticmethod
+    def _as_int(value) -> int | None:
+        """将参数值安全转换为 int（整数语义）。
+
+        接受 int 与整型浮点（如 80.0）；排除 bool；非整型浮点（80.5）
+        与无法解析的字符串返回 None。
+
+        Args:
+            value: 待转换的参数值，类型未知。
+
+        Returns:
+            转换成功返回 int；bool、非整型数值或无法解析的值返回 None。
+        """
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value) if value.is_integer() else None
+        if isinstance(value, str):
+            try:
+                return int(value.strip())
+            except ValueError:
+                return None
+        return None
+
     def validate_params(self, params: dict) -> tuple[bool, str]:
         """验证 TTS 参数是否合法
         
@@ -221,8 +271,8 @@ class TTSProviderAdapter(ABC):
 
     def _count_text_chars(self, text: str) -> int:
         """计算文本字符数。
-        
-        默认 CJK 统一汉字（0x4E00-0x9FFF）按2字符。
+
+        按东亚宽度规则计数：宽字符（W）与全角字符（F）计 2，其余计 1。
         子类可覆盖此方法以实现不同的计数规则。
 
         Args:
@@ -236,8 +286,8 @@ class TTSProviderAdapter(ABC):
         count = 0
         for ch in text:
 
-            # CJK 统一汉字范围
-            if 0x4E00 <= ord(ch) <= 0x9FFF:
+            # 'W' = 宽（CJK 汉字/假名/韩文/多数 emoji），'F' = 全角（全角标点与全角字母）
+            if unicodedata.east_asian_width(ch) in ("W", "F"):
                 count += 2
             else:
                 count += 1

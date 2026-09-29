@@ -3,6 +3,17 @@
 from astrbot.api import logger
 
 
+def _to_priority_int(value) -> int:
+    """将 priority 归一到 int；非数值时告警并回退到默认 100。"""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        logger.warning(
+            f"TTS Enhancer: 供应商 priority 取值 {value!r} 非数值，已按默认 100 处理。"
+        )
+        return 100
+
+
 class TTSEnhancerConfig:
     """TTS Enhancer 插件配置管理类。
 
@@ -53,8 +64,11 @@ class TTSEnhancerConfig:
                     f"TTS Enhancer: 有 {count} 个供应商使用了相同优先级 {priority}，将按配置顺序依次尝试。"
                 )
 
-        # 稳定排序：priority 越小越优先，priority 相同时保持配置顺序
-        self._providers = sorted(providers_raw, key=lambda x: x.get("priority", 100))
+        # 稳定排序：priority 越小越优先，priority 相同时保持配置顺序。
+        # priority 归一到 int；非数值（手工编辑/上游回归）兜底为 100 并告警，避免混排抛 TypeError。
+        self._providers = sorted(
+            providers_raw, key=lambda x: _to_priority_int(x.get("priority", 100))
+        )
 
         # 检测 display_name 重名：后续重名条目自动追加数字后缀，并写入私有字段
         display_name_counts: dict[str, int] = {}

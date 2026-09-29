@@ -103,20 +103,28 @@ class TTSService:
         umo = event.unified_msg_origin
 
         # 拿到当前 conversation 绑定的 persona_id
+        # conv_mgr 可能未就绪（与 get_context_messages 保持一致，先判空）
         conv_mgr = self.context.conversation_manager
-        conv_id = await conv_mgr.get_curr_conversation_id(umo)
-        conversation = (
-            await conv_mgr.get_conversation(umo, conv_id) if conv_id else None
-        )
-        conversation_persona_id = conversation.persona_id if conversation else None
+        conversation_persona_id = None
+        if conv_mgr:
+            conv_id = await conv_mgr.get_curr_conversation_id(umo)
+            conversation = (
+                await conv_mgr.get_conversation(umo, conv_id) if conv_id else None
+            )
+            conversation_persona_id = conversation.persona_id if conversation else None
 
-        # 解析最终生效的人格
+        # 解析最终生效的人格（persona_manager 同样可能未就绪）
+        persona_mgr = self.context.persona_manager
+        if not persona_mgr:
+            logger.warning("persona_manager 未就绪，跳过人格解析")
+            return "", ""
+
         (
             persona_id,
             persona,
             _force,
             _webchat,
-        ) = await self.context.persona_manager.resolve_selected_persona(
+        ) = await persona_mgr.resolve_selected_persona(
             umo=umo,
             conversation_persona_id=conversation_persona_id,
             platform_name=event.get_platform_name(),
@@ -200,6 +208,9 @@ class TTSService:
                 except Exception as e:
                     logger.warning(f"纯文本 TTS 失败 ({entry_name}): {e}")
                     continue
+                # call_api 返回空串（而非抛异常）时同样视为失败：
+                # 缺少文档的供应商本就不该走增强流程，直接换下一个，避免白白调用一次 LLM。
+                continue
 
             # 准备 SubAgent 工具
             tool_set = None
@@ -285,7 +296,8 @@ class TTSService:
                     continue
 
             enhanced_text = raw_text
-            if api_params and "text" in api_params:
+            # SubAgent 可能返回空 text；此时保留原文，否则会带着空文本去请求 TTS API
+            if api_params and api_params.get("text"):
                 enhanced_text = api_params["text"]
 
             if self.config.get("log_enhanced_params", False) and api_params:
