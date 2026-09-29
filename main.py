@@ -28,7 +28,10 @@ from astrbot.api.event import AstrMessageEvent
 from astrbot.api.star import Context
 
 
-_SAFE_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,128}$")
+# file_id 由 /upload 生成，形如 upload_<毫秒时间戳>.mp3（含扩展名点号），
+# 故白名单需放行 "."；同时要求首字符为字母/数字/下划线，从根上排除
+# "."、".."、".hidden" 等以点开头的名字。
+_SAFE_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_\-][A-Za-z0-9_\-.]{0,127}$")
 
 
 def _validate_file_id(file_id: str) -> str:
@@ -46,6 +49,22 @@ def _validate_file_id(file_id: str) -> str:
     if not isinstance(file_id, str) or not _SAFE_FILE_ID_RE.match(file_id):
         raise ValueError(f"非法 file_id: {file_id!r}")
     return file_id
+
+
+def _is_valid_entry_id(entry_id) -> bool:
+    """校验 entry_id 是否为合法的供应商索引（int，且显式排除 bool）。
+
+    WebUI/前端可能传入非整数（如 `"abc"`），原代码直接执行
+    `entry_id < 0 or entry_id >= len(providers_raw)` 会抛出未捕获的
+    `TypeError`，由 AstrBot 路由层兜底成非预期错误页，故在做范围比较前先校验类型。
+
+    Args:
+        entry_id: 请求体中的原始 entry_id。
+
+    Returns:
+        bool: entry_id 为 int（且非 bool）时返回 True，否则返回 False。
+    """
+    return isinstance(entry_id, int) and not isinstance(entry_id, bool)
 
 
 class TTSEnhancerPlugin(Star):
@@ -284,6 +303,8 @@ class TTSEnhancerPlugin(Star):
             entry_id = payload.get("entry_id")
             if entry_id is None:
                 return error_response("entry_id required", status_code=400)
+            if not _is_valid_entry_id(entry_id):
+                return error_response("entry_id 必须为整数", status_code=400)
             params = {k: v for k, v in payload.items() if k != "entry_id"}
             providers_raw = self.config.get_providers()
             if entry_id < 0 or entry_id >= len(providers_raw):
@@ -324,6 +345,8 @@ class TTSEnhancerPlugin(Star):
             entry_id = payload.get("entry_id")
             if entry_id is None:
                 return error_response("entry_id required", status_code=400)
+            if not _is_valid_entry_id(entry_id):
+                return error_response("entry_id 必须为整数", status_code=400)
             params = {k: v for k, v in payload.items() if k != "entry_id"}
             providers_raw = self.config.get_providers()
             if entry_id < 0 or entry_id >= len(providers_raw):
@@ -364,6 +387,8 @@ class TTSEnhancerPlugin(Star):
             entry_id = payload.get("entry_id")
             if entry_id is None:
                 return error_response("entry_id required", status_code=400)
+            if not _is_valid_entry_id(entry_id):
+                return error_response("entry_id 必须为整数", status_code=400)
             params = {k: v for k, v in payload.items() if k != "entry_id"}
             providers_raw = self.config.get_providers()
             if entry_id < 0 or entry_id >= len(providers_raw):
@@ -558,6 +583,8 @@ class TTSEnhancerPlugin(Star):
                 text = payload.get("text", "欢迎使用语音合成预览功能。")
                 if entry_id is None or not voice_id:
                     return error_response("entry_id 和 voice_id 是必需的", status_code=400)
+                if not _is_valid_entry_id(entry_id):
+                    return error_response("entry_id 必须为整数", status_code=400)
 
                 providers_raw = self.config.get_providers()
                 if entry_id < 0 or entry_id >= len(providers_raw):
@@ -690,6 +717,8 @@ class TTSEnhancerPlugin(Star):
                 file_id = payload.get("file_id")
                 if entry_id is None or file_id is None:
                     return error_response("entry_id 和 file_id 都是必需的", status_code=400)
+                if not _is_valid_entry_id(entry_id):
+                    return error_response("entry_id 必须为整数", status_code=400)
 
                 # 查找本地文件
                 try:
@@ -735,6 +764,8 @@ class TTSEnhancerPlugin(Star):
                 entry_id = payload.get("entry_id")
                 if entry_id is None:
                     return error_response("entry_id 是必需的", status_code=400)
+                if not _is_valid_entry_id(entry_id):
+                    return error_response("entry_id 必须为整数", status_code=400)
 
                 kwargs = {k: v for k, v in payload.items() if k != "entry_id"}
 
@@ -762,6 +793,8 @@ class TTSEnhancerPlugin(Star):
                 file_id = payload.get("file_id")
                 if entry_id is None or file_id is None:
                     return error_response("entry_id 和 file_id 都是必需的", status_code=400)
+                if not _is_valid_entry_id(entry_id):
+                    return error_response("entry_id 必须为整数", status_code=400)
 
                 providers_raw = self.config.get_providers()
                 if entry_id < 0 or entry_id >= len(providers_raw):
@@ -794,6 +827,8 @@ class TTSEnhancerPlugin(Star):
                 kwargs = {k: v for k, v in payload.items() if k not in ["entry_id", "file_id"]}
                 if entry_id is None or file_id is None:
                     return error_response("entry_id 和 file_id 都是必需的", status_code=400)
+                if not _is_valid_entry_id(entry_id):
+                    return error_response("entry_id 必须为整数", status_code=400)
 
                 providers_raw = self.config.get_providers()
                 if entry_id < 0 or entry_id >= len(providers_raw):

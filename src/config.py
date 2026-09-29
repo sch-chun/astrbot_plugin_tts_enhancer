@@ -3,6 +3,29 @@
 from astrbot.api import logger
 
 
+def _normalize_priority(value) -> int:
+    """将供应商 priority 归一化为 int，非法值回退默认优先级 100。
+
+    WebUI 表单常把数字序列化为字符串（如 `{"priority": "5"}`），若直接作为
+    `sorted()` 的 key 会抛 `TypeError`，并从 `TTSEnhancerConfig.__init__` 冒泡到
+    插件 `__init__`，导致插件加载失败、全部功能不可用。
+
+    Args:
+        value: 配置中的原始 priority 值。
+
+    Returns:
+        int: 可解析为整数时返回其整数值（bool 除外），否则返回默认值 100。
+    """
+    if isinstance(value, bool):
+        return 100
+    if isinstance(value, int):
+        return value
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return 100
+
+
 class TTSEnhancerConfig:
     """TTS Enhancer 插件配置管理类。
 
@@ -42,10 +65,20 @@ class TTSEnhancerConfig:
             self._providers = []
             return
 
+        # 容错：providers 被误配为 dict 时取其 values，并过滤非 dict 条目，
+        # 避免后续 `entry.get(...)` 抛 AttributeError 导致整个插件加载失败
+        if isinstance(providers_raw, dict):
+            providers_raw = list(providers_raw.values())
+        if not isinstance(providers_raw, (list, tuple)):
+            logger.warning("TTS Enhancer: providers 配置格式非法（应为列表），已忽略。")
+            self._providers = []
+            return
+        providers_raw = [entry for entry in providers_raw if isinstance(entry, dict)]
+
         # 检测 priority 重复：仅告警，稳定排序会保持配置顺序
         priority_counts: dict[int, int] = {}
         for entry in providers_raw:
-            priority = entry.get("priority", 100)
+            priority = _normalize_priority(entry.get("priority", 100))
             priority_counts[priority] = priority_counts.get(priority, 0) + 1
         for priority, count in priority_counts.items():
             if count > 1:
@@ -54,7 +87,9 @@ class TTSEnhancerConfig:
                 )
 
         # 稳定排序：priority 越小越优先，priority 相同时保持配置顺序
-        self._providers = sorted(providers_raw, key=lambda x: x.get("priority", 100))
+        self._providers = sorted(
+            providers_raw, key=lambda x: _normalize_priority(x.get("priority", 100))
+        )
 
         # 检测 display_name 重名：后续重名条目自动追加数字后缀，并写入私有字段
         display_name_counts: dict[str, int] = {}
