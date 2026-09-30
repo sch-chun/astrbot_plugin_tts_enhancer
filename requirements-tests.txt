@@ -1,0 +1,16 @@
+# 测试依赖 —— 运行 pytest 套件所需。
+# 仓库本身不含 requirements/pyproject，故单独声明，避免依赖 pytest-asyncio 漂浮在环境里。
+pytest>=8.0
+pytest-asyncio>=0.23
+
+# pydub：tests/test_utils.py::TestTrimAudioToMax 依赖。
+# providers/utils/audio.py::trim_audio_to_max 首行即检查 AudioSegment，
+# 缺失会先抛 RuntimeError 而非预期的 FileNotFoundError/ValueError。
+pydub
+
+# httpx / aiohttp：适配器导入路径依赖。
+# tests/test_minimax_provider.py 顶部直接 import httpx；
+# ProviderFactory._discover_adapters 会 import 全部 providers/*.py，
+# 任一适配器 import 失败都会让注册表用例变红，故显式声明比赌传递依赖稳。
+httpx
+aiohttp

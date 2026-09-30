@@ -1,0 +1,73 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: "true"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-tests.txt
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-tests.txt
+
+      - name: Install AstrBot runtime
+        run: python -m pip install "AstrBot==4.28.1"
+
+      - name: Run pytest
+        run: |
+          set -o pipefail
+          python -m pytest -ra 2>&1 | tee pytest.log
+
+      - name: Guard against silent all-skip
+        if: always()
+        run: |
+          tail -n 20 pytest.log || true
+          if ! grep -Eq '[0-9]+ passed' pytest.log; then
+            echo "::error::0 tests passed — 套件疑似整体 skip，拒绝假绿。"
+            exit 1
+          fi
+          if grep -Eq '[0-9]+ skipped' pytest.log; then
+            echo "::error::检测到 skipped 用例 — 套件未完整执行，拒绝假绿。"
+            exit 1
+          fi
+          if ! grep -Eq '([3-9][0-9]{2}|[0-9]{4,}) passed' pytest.log; then
+            echo "::error::passed 数量低于 300 — 套件疑似大面积失效。"
+            exit 1
+          fi
+
+      - name: Summarize pytest results
+        if: always()
+        run: |
+          SUMMARY=$(grep -E '[0-9]+ (passed|failed|error|skipped|xfailed).* in [0-9.]+s' pytest.log | tail -n 1 || true)
+          echo "pytest: ${SUMMARY:-未取到汇总行}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f pytest.log ]; then
+            {
+              echo '```'
+              tail -n 30 pytest.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload pytest log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-log
+          path: pytest.log
+          if-no-files-found: warn
