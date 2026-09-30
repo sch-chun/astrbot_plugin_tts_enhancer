@@ -7,6 +7,7 @@ AstrBot 源码根目录与 ``data/plugins`` 目录加入 ``sys.path``。
 前提下驱动 TTSService / TTSSubAgent 等需要 Context 与 MessageEvent 的组件。
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -31,10 +32,18 @@ for _p in (_ASTRBOT_ROOT, _PLUGINS_DIR):
     if _p is not None and str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-# astrbot 不可用时整体跳过（例如在脱离 AstrBot 源码的环境下运行），
-# 而非抛 ImportError 直接崩溃。
-pytest.importorskip("astrbot.core.provider")
-from astrbot.core.provider import Provider  # noqa: E402
+try:
+    from astrbot.core.provider import Provider  # noqa: E402
+except ImportError:
+    # 本地开发（未装 AstrBot）保持整体 skip；CI 下必须硬失败，
+    # 否则缺 AstrBot 会退化成「空套件全 skip → 退出码 0 → 假绿」。
+    if os.environ.get("CI"):
+        raise RuntimeError(
+            "CI 需要已安装的 AstrBot 运行时（pip install astrbot），"
+            "但导入 astrbot.core.provider 失败——拒绝静默全 skip。"
+        )
+    pytest.importorskip("astrbot.core.provider")
+    raise
 
 
 class DummyEvent:
