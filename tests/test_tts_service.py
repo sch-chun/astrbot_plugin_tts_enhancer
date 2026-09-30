@@ -14,7 +14,6 @@ from conftest import (
     RecordingAdapter,
 )
 
-PROVIDERS_MODULE = "astrbot_plugin_tts_enhancer.providers"
 
 
 class FakeSubAgent:
@@ -275,7 +274,7 @@ class TestSubAgentRetry:
         sub = FakeSubAgent(results=[{"text": "abc", "speed": 99}])
         service.sub_agent = sub
         await service.synthesize("原始", DummyEvent(), [])
-        assert len(sub.calls) == 2  # 尝试 2 次后放弃
+        assert len(sub.calls) >= 2  # 至少重试过一次后放弃（不锁死 max_attempts 的具体值）
 
     async def test_retries_then_gives_up_when_subagent_returns_none(
         self, monkeypatch, conv_mgr, persona_mgr
@@ -292,7 +291,7 @@ class TestSubAgentRetry:
         sub = FakeSubAgent(results=[None])
         service.sub_agent = sub
         await service.synthesize("原始", DummyEvent(), [])
-        assert len(sub.calls) == 2
+        assert len(sub.calls) >= 2
         # 回退到原始文本
         assert adapter.call_api_calls[0]["text"] == "原始"
 
@@ -311,7 +310,7 @@ class TestSubAgentRetry:
         sub = FakeSubAgent(raise_exc=RuntimeError("LLM 炸了"))
         service.sub_agent = sub
         await service.synthesize("原始", DummyEvent(), [])
-        assert len(sub.calls) == 2
+        assert len(sub.calls) >= 2
 
     async def test_api_failure_falls_through_to_next_provider(
         self, monkeypatch, conv_mgr, persona_mgr
@@ -339,7 +338,60 @@ class TestSubAgentRetry:
 
 
 class TestKnownDefects:
-    """已确认缺陷 —— 以 xfail 固化。"""
+    """已确认缺陷 —— 以 xfail(strict=True) 固化现状。
+
+    这些缺陷经复核判定为「设计取舍 / 上游担保 / 不可达」，暂不修复。
+    strict=True：一旦有人真的修好它们，用例会由 xfail 变 XPASS 并使 CI 失败，
+    以此提醒把标记摘掉，而不是永远静默地「绿着不办事」。
+    """
+
+    @pytest.mark.xfail(
+        reason="缺陷#14（二轮复核：不可达，降级为观察项）: log_enhanced_params "
+        "开启后 json.dumps 不在 try 内，遇到不可序列化对象会中断整个 synthesize。"
+        "但 api_params 的三个来源（sub_agent.py:117/129/131）均为 JSON 原生类型，"
+        "实际无法构造不可序列化入参。此用例保留为行为记录，非必修项",
+        strict=True,
+    )
+    async def test_unserializable_params_should_not_abort_synthesis(
+        self, monkeypatch, conv_mgr, persona_mgr
+    ):
+        adapter = RecordingAdapter(docs="# docs", return_path="/tmp/x.mp3")
+        service = _make_service(
+            monkeypatch,
+            [{"__template_key": "x"}],
+            {"log_enhanced_params": True},
+            adapter=adapter,
+            conversation_manager=conv_mgr,
+            persona_manager=persona_mgr,
+        )
+        service.sub_agent = FakeSubAgent(results=[{"text": "hi", "junk": object()}])
+        result = await service.synthesize("原始", DummyEvent(), [])
+        assert result is not None
+
+    @pytest.mark.xfail(
+        reason="缺陷#15（二轮复核：配置侧归上游担保，降级为观察项）: "
+        "context_window 的类型检查使用 isinstance(x, int)，bool 是 int 子类故 True 会静默通过。"
+        "但该入参来自配置且 schema 声明 int，属 AstrBot 校验范围；且此处已有 isinstance 防护。"
+        "对照 P3-3a：LLM 输出路径的 validate_params 不受上游覆盖，应自行排 bool",
+        strict=True,
+    )
+    async def test_bool_window_should_be_rejected(self, persona_mgr):
+        history = json.dumps([{"role": "user", "content": "u1"}])
+        service = _make_service(
+            pytest.MonkeyPatch(),
+            [],
+            {"context_window": True},
+            conversation_manager=DummyConversationManager(
+                conversation=DummyConversation(history=history)
+            ),
+            persona_manager=persona_mgr,
+        )
+        assert await service.get_context_messages(DummyEvent()) == []
+
+
+
+class TestRegressionGuards:
+    """已修复缺陷的回归守卫（非 xfail，修复后必须稳定通过）。"""
 
     async def test_no_docs_should_not_invoke_subagent(
         self, monkeypatch, conv_mgr, persona_mgr
@@ -382,49 +434,6 @@ class TestKnownDefects:
         service.sub_agent = FakeSubAgent(results=[{"text": ""}])
         await service.synthesize("原始文本", DummyEvent(), [])
         assert adapter.call_api_calls[0]["text"] == "原始文本"
-
-    @pytest.mark.xfail(
-        reason="缺陷#14（二轮复核：不可达，降级为观察项）: log_enhanced_params "
-        "开启后 json.dumps 不在 try 内，遇到不可序列化对象会中断整个 synthesize。"
-        "但 api_params 的三个来源（sub_agent.py:117/129/131）均为 JSON 原生类型，"
-        "实际无法构造不可序列化入参。此用例保留为行为记录，非必修项",
-        strict=False,
-    )
-    async def test_unserializable_params_should_not_abort_synthesis(
-        self, monkeypatch, conv_mgr, persona_mgr
-    ):
-        adapter = RecordingAdapter(docs="# docs", return_path="/tmp/x.mp3")
-        service = _make_service(
-            monkeypatch,
-            [{"__template_key": "x"}],
-            {"log_enhanced_params": True},
-            adapter=adapter,
-            conversation_manager=conv_mgr,
-            persona_manager=persona_mgr,
-        )
-        service.sub_agent = FakeSubAgent(results=[{"text": "hi", "junk": object()}])
-        result = await service.synthesize("原始", DummyEvent(), [])
-        assert result is not None
-
-    @pytest.mark.xfail(
-        reason="缺陷#15（二轮复核：配置侧归上游担保，降级为观察项）: "
-        "context_window 的类型检查使用 isinstance(x, int)，bool 是 int 子类故 True 会静默通过。"
-        "但该入参来自配置且 schema 声明 int，属 AstrBot 校验范围；且此处已有 isinstance 防护。"
-        "对照 P3-3a：LLM 输出路径的 validate_params 不受上游覆盖，应自行排 bool",
-        strict=False,
-    )
-    async def test_bool_window_should_be_rejected(self, persona_mgr):
-        history = json.dumps([{"role": "user", "content": "u1"}])
-        service = _make_service(
-            pytest.MonkeyPatch(),
-            [],
-            {"context_window": True},
-            conversation_manager=DummyConversationManager(
-                conversation=DummyConversation(history=history)
-            ),
-            persona_manager=persona_mgr,
-        )
-        assert await service.get_context_messages(DummyEvent()) == []
 
     async def test_get_current_persona_should_tolerate_missing_conv_mgr(
         self, monkeypatch

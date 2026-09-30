@@ -139,9 +139,14 @@ def _missing_path():
 
 
 class TestPydubAvailability:
-    def test_module_reports_availability(self):
-        """pydub 缺失时应降级导入而非让整个 providers 包导入失败。"""
-        # 模块导入成功本身就证明了 try/except 兜底有效
-        assert isinstance(audio_utils.AudioSegment, type) or (
-            audio_utils.AudioSegment is None
-        )
+    def test_import_degrades_consistently(self):
+        """pydub 缺失时 AudioSegment 与 mediainfo 必须同时降级为 None。"""
+        assert (audio_utils.AudioSegment is None) == (audio_utils.mediainfo is None)
+
+    def test_trim_reports_missing_pydub(self, monkeypatch, tmp_path):
+        """真正驱动降级分支：pydub 不可用时必须抛出明确的 RuntimeError。"""
+        monkeypatch.setattr(audio_utils, "AudioSegment", None)
+        f = tmp_path / "a.mp3"
+        f.write_bytes(b"not audio")
+        with pytest.raises(RuntimeError, match="pydub 未安装"):
+            audio_utils.trim_audio_to_max(str(f), max_sec=10)

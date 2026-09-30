@@ -126,7 +126,7 @@ class TestKnownDefects:
         "调用方传入的 raw_config（写入 __resolved_name）。该字段仅为去重显示名、"
         "非敏感信息，且 AstrBot 对 schema 外字段宽容不会污染保存流程。"
         "保留此用例以记录「插件持有并修改上游 dict 引用」这一事实，非必修项",
-        strict=False,
+        strict=True,
     )
     def test_should_not_mutate_caller_config(self):
         raw = _prov({"display_name": "小明"})
@@ -136,7 +136,7 @@ class TestKnownDefects:
     @pytest.mark.xfail(
         reason="缺陷#6（二轮复核：设计取舍，降级为观察项）: providers 为非空 dict 时触发 AttributeError "
         "（配置结构被误配时缺乏校验）。但 schema 已要求 providers 为数组，手工误配 dict 属使用者责任，非必修项",
-        strict=False,
+        strict=True,
     )
     def test_providers_as_dict_should_not_raise(self):
         TTSEnhancerConfig({"providers": {"a": 1}})

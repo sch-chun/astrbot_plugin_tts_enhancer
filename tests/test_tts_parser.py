@@ -64,13 +64,17 @@ class TestMalformedTags:
 
 
 class TestKnownDefects:
-    """已确认缺陷（xfail 固化现状，修复后会 XPASS 提示）。"""
+    """已确认缺陷 —— xfail(strict=True) 固化现状。
+
+    修复后这些用例会 XPASS 并使 CI 失败，以此提醒摘掉标记，
+    而不是永远静默地「绿着不办事」。
+    """
 
     @pytest.mark.xfail(
         reason="缺陷#1（二轮复核：设计取舍，降级为观察项）: 空 <tts></tts> 标签返回空列表，"
         "上游 _process_tts_text 会丢弃整个 Plain 组件。但空标签本就无内容可念，"
         "静默移除可接受；仅「整条消息只有一个空标签」时客户端收不到内容，影响面极小",
-        strict=False,
+        strict=True,
     )
     def test_empty_tts_tag_should_preserve_nothing_but_not_break(self):
         # 期望：不应返回空列表导致整段文本被吞；返回 [] 亦可接受，
@@ -78,7 +82,7 @@ class TestKnownDefects:
         result = split_by_tts_tags("<tts></tts>")
         assert result != []  # 当前实际行为为 []，故 xfail
 
-    @pytest.mark.xfail(reason="缺陷#1 连带影响: 纯空白标签同样返回空列表", strict=False)
+    @pytest.mark.xfail(reason="缺陷#1 连带影响: 纯空白标签同样返回空列表", strict=True)
     def test_whitespace_only_tts_tag(self):
         assert split_by_tts_tags("<tts>   </tts>") != []
 
@@ -87,7 +91,7 @@ class TestKnownDefects:
         "内层 <tts> 残留于 TTS 内容中将被原样发送给 API。"
         "但 <tts> 是给 LLM 的标记，嵌套属未定义输入，非递归解析器给出未定义输出可接受。"
         "注：完整产出为 [{'tts':'a<tts>b'}, {'text':'c'}] —— 尾部 c 会被保留为纯文本",
-        strict=False,
+        strict=True,
     )
     def test_nested_tags_should_not_leak_inner_tag(self):
         result = split_by_tts_tags("<tts>a<tts>b</tts>c</tts>")

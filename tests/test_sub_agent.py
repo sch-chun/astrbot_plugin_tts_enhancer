@@ -123,9 +123,12 @@ class TestPromptAssembly:
             ],
         )
         prompt = provider.calls[0]["prompt"]
-        assert "今天天气如何" in prompt
+        assert "[user] 今天天气如何" in prompt
         assert "[assistant] 晴" in prompt
-        assert "[]" not in prompt
+        # 空内容那条必须整条跳过：原断言 "[]" not in prompt 抓不到它——
+        # 渲染格式是 "[角色] 内容"，空内容会变成 "[user] "（方括号并不相邻）。
+        assert prompt.count("[user]") == 1
+        assert prompt.count("[assistant]") == 1
 
     async def test_system_prompt_forwarded(self):
         provider = DummyProvider(DummyResponse(completion_text="ok"))

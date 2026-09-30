@@ -96,17 +96,17 @@ class TestAllProvidersSmoke:
         prompt = adapter.get_subagent_system_prompt()
         assert isinstance(prompt, str) and prompt.strip()
 
-    def test_validate_params_tolerates_empty_dict(self, entry_and_adapter):
-        _key, adapter = entry_and_adapter
-        ok, msg = adapter.validate_params({})
-        assert isinstance(ok, bool)
-        assert isinstance(msg, str)
+    def test_validate_params_accepts_empty_dict(self, entry_and_adapter):
+        """空参数字典应被接受且不带错误信息（实测 6 个适配器一致）。"""
+        key, adapter = entry_and_adapter
+        assert adapter.validate_params({}) == (True, ""), f"{key} 空参数未被接受"
 
-    def test_sanitize_params_always_returns_dict(self, entry_and_adapter):
-        _key, adapter = entry_and_adapter
+    def test_sanitize_params_preserves_text(self, entry_and_adapter):
+        """清洗后必须保留 text，且不得混入未声明的多余字段。"""
+        key, adapter = entry_and_adapter
         out = adapter.sanitize_params({"text": "hi"})
-        assert isinstance(out, dict)
-        assert "text" in out
+        assert out["text"] == "hi", f"{key} 丢失了 text"
+        assert set(out) <= {"text", "instruction"}, f"{key} 出现意外字段: {sorted(out)}"
 
 
 class TestDocsDiscovery:

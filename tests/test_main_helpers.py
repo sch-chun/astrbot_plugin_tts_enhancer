@@ -10,6 +10,7 @@ import pytest
 from astrbot_plugin_tts_enhancer.main import (
     _SAFE_FILE_ID_RE,
     TTSEnhancerPlugin,
+    _parse_entry_id,
     _validate_file_id,
 )
 from astrbot_plugin_tts_enhancer.src.config import TTSEnhancerConfig
@@ -167,7 +168,7 @@ class TestKnownDefects:
         "降级为观察项）: _process_tts_text 对仅含空标签的文本返回空组件列表，"
         "使得该消息组件被静默删除，客户端将收不到任何内容。"
         "但空标签本就无内容可念，静默移除可接受，影响面极小",
-        strict=False,
+        strict=True,
     )
     async def test_only_empty_tts_tag_should_not_vanish(self, tmp_path):
         plugin = _make_plugin(tmp_path)
@@ -242,3 +243,37 @@ class TestFileIdRegexCandidate:
         fid = "upload_1790658522958.mp3"
         assert not _PRE_FIX_FILE_ID_RE.match(fid), "修复前基线应当失败"
         assert _SAFE_FILE_ID_RE.match(fid), "修复后应当通过"
+
+
+class TestParseEntryId:
+    """``_parse_entry_id`` 的类型与边界校验。
+
+    P1-3 的修复（排除 bool、校验上下界）此前零测试覆盖，这里补齐直接背书：
+    Web 路由拿到的是未经校验的 JSON 请求体，任何类型都可能出现。
+    """
+
+    @pytest.mark.parametrize("entry_id, count, expected", [
+        (0, 3, 0),
+        (1, 3, 1),
+        (2, 3, 2),
+    ])
+    def test_accepts_valid_index(self, entry_id, count, expected):
+        assert _parse_entry_id(entry_id, count) == expected
+
+    @pytest.mark.parametrize("bad", ["0", "1", "", 1.0, 2.5, None, [], {}, ()])
+    def test_rejects_non_int(self, bad):
+        """字符串、浮点、None、容器一律拒绝（JSON 里 entry_id 是裸值，类型不可信）。"""
+        assert _parse_entry_id(bad, 3) is None
+
+    @pytest.mark.parametrize("bad", [True, False])
+    def test_rejects_bool(self, bad):
+        """bool 是 int 子类：不显式排除的话 {"entry_id": true} 会被当成索引 1。"""
+        assert _parse_entry_id(bad, 3) is None
+
+    @pytest.mark.parametrize("bad", [-1, -100, 3, 4, 999])
+    def test_rejects_out_of_range(self, bad):
+        assert _parse_entry_id(bad, 3) is None
+
+    def test_empty_providers_rejects_zero(self):
+        """供应商列表为空时，索引 0 也必须越界拒绝。"""
+        assert _parse_entry_id(0, 0) is None

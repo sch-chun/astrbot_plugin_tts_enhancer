@@ -444,8 +444,10 @@ class TestParamValidationRegression:
         assert len(seen) == 5
 
     def test_generated_voice_id_matches_naming_rule(self, adapter):
-        """自动生成的 voice_id 必须满足命名规则（首字母+末字母数字）。"""
-        import re
+        """自动生成的 voice_id 必须通过基类的真实命名规则校验。
 
+        这里刻意不复制正则：直接调用生产代码的 validate_voice_id，
+        否则生产正则改了这条测试也不会发现。
+        """
         vid = adapter._generate_voice_id()
-        assert re.match(r"^[A-Za-z][A-Za-z0-9\-_]*[A-Za-z0-9]$", vid), vid
+        assert adapter.validate_voice_id(vid) is None

@@ -26,8 +26,8 @@ class TestValidateVoiceId:
     """validate_voice_id 的格式与长度校验。"""
 
     def test_empty_allowed(self, adapter):
-        """空值放行，由调用方决定是否必填。"""
-        adapter.validate_voice_id("")
+        """空值放行（返回 None），由调用方决定是否必填。"""
+        assert adapter.validate_voice_id("") is None
 
     def test_valid_minimum_length(self, adapter):
         adapter.validate_voice_id("abcdefgh")  # 8 位
@@ -91,10 +91,12 @@ class TestCountTextChars:
 
 class TestValidateTextLength:
     def test_none_is_noop(self, adapter):
-        adapter.validate_text_length(None)
+        """None 视为空值直接放行（返回 None）。"""
+        assert adapter.validate_text_length(None) is None
 
     def test_empty_is_noop(self, adapter):
-        adapter.validate_text_length("")
+        """空串视为空值直接放行（返回 None）。"""
+        assert adapter.validate_text_length("") is None
 
     def test_within_limit(self, adapter):
         adapter.validate_text_length("你好世界", max_len=200)
@@ -137,8 +139,8 @@ class TestVoiceLifecycleDefaults:
             await adapter.delete_voice()
 
 
-class TestKnownDefects:
-    """已确认缺陷 —— 以 xfail 固化。"""
+class TestRegressionGuards:
+    """已修复缺陷的回归守卫（非 xfail，修复必须稳定成立）。"""
 
     def test_fullwidth_punctuation_should_count_double(self, adapter):
         """原缺陷#7 回归：全角标点按 2 计（多数 TTS 厂商按全角计费）。"""

@@ -34,6 +34,7 @@ for _p in (_ASTRBOT_ROOT, _PLUGINS_DIR):
 
 try:
     from astrbot.core.provider import Provider  # noqa: E402
+    from astrbot.core.provider.entities import LLMResponse  # noqa: E402
 except ImportError:
     # 本地开发（未装 AstrBot）保持整体 skip；CI 下必须硬失败，
     # 否则缺 AstrBot 会退化成「空套件全 skip → 退出码 0 → 假绿」。
@@ -107,13 +108,17 @@ class DummyPersonaManager:
 
     async def resolve_selected_persona(
         self,
+        *,
         umo: str = "",
         conversation_persona_id: str | None = None,
         platform_name: str = "",
+        provider_settings: dict | None = None,
     ):
+        # 真实签名是 keyword-only（core/persona_mgr.py），第三条是
+        # 「会话规则强制指定的人格 id」，类型为 str | None，不是 bool。
         if self.raise_on_call:
             raise RuntimeError("persona manager unavailable")
-        return (self.persona_id, self.persona, False, False)
+        return (self.persona_id, self.persona, None, False)
 
 
 class DummyContext:
@@ -134,34 +139,74 @@ class DummyContext:
         self._provider = provider
         self._provider_by_id = provider_by_id
 
-    def get_using_provider(self, session_id: str = ""):
+    def get_using_provider(self, umo: str | None = None):
+        # 真实签名是 get_using_provider(umo: str | None = None)，
+        # 插件在 sub_agent.py 里按位置传入 session_id，故这里名字必须对齐 umo。
         return self._provider
 
     def get_provider_by_id(self, provider_id: str):
         return self._provider_by_id
 
 
-class DummyResponse:
-    """LLM 响应替身，模拟 AstrBot 的 provider 返回对象。"""
+class DummyResponse(LLMResponse):
+    """LLM 响应替身。
+
+    直接继承真实的 ``LLMResponse``，字段与真实返回值同源：
+    真实类改名或改字段时这里会立刻炸，而不是靠自造属性蒙混过关。
+    """
 
     def __init__(
-        self, completion_text: str = "", tools_call_name=None, tools_call_args=None
+        self,
+        completion_text: str = "",
+        tools_call_name=None,
+        tools_call_args=None,
     ):
-        self.completion_text = completion_text
-        self.tools_call_name = tools_call_name or []
-        self.tools_call_args = tools_call_args or []
+        super().__init__(
+            role="assistant",
+            completion_text=completion_text,
+            tools_call_name=list(tools_call_name or []),
+            tools_call_args=list(tools_call_args or []),
+        )
 
 
 class DummyProvider(Provider):
-    """LLM Provider 替身，继承自真实 Provider 以便通过 isinstance 校验。"""
+    """LLM Provider 替身。
+
+    继承真实 ``Provider`` 以便通过 isinstance 校验；``text_chat`` 的形参与
+    真实签名逐一对齐且**不吞 ``**kwargs``**，因此插件若把 ``func_tool`` 写成
+    ``func_tools`` 之类的笔误，测试会当场 TypeError，而不是静默通过。
+    """
 
     def __init__(self, response: DummyResponse | None = None, raise_on_call=False):
         self.response = response or DummyResponse()
         self.raise_on_call = raise_on_call
         self.calls: list[dict] = []
 
-    async def text_chat(self, **kwargs):
-        self.calls.append(kwargs)
+    async def text_chat(
+        self,
+        prompt=None,
+        session_id=None,
+        image_urls=None,
+        audio_urls=None,
+        func_tool=None,
+        contexts=None,
+        system_prompt=None,
+        tool_calls_result=None,
+        model=None,
+        extra_user_content_parts=None,
+        tool_choice="auto",
+        request_max_retries=None,
+    ):
+        self.calls.append(
+            {
+                "prompt": prompt,
+                "session_id": session_id,
+                "system_prompt": system_prompt,
+                "func_tool": func_tool,
+                "contexts": contexts,
+                "model": model,
+            }
+        )
         if self.raise_on_call:
             raise RuntimeError("LLM 调用失败")
         return self.response
@@ -172,7 +217,7 @@ class DummyProvider(Provider):
     def set_key(self, key: str) -> None:
         self.key = key
 
-    def get_models(self) -> list:
+    async def get_models(self) -> list:
         return ["test-model"]
 
 
