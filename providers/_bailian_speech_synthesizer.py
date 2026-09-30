@@ -356,19 +356,19 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
                               第二个元素是错误信息（验证失败时）
         """
         if "volume" in params:
-            vol = params["volume"]
-            if not isinstance(vol, int) or not (0 <= vol <= 100):
-                return False, f"volume 必须是 0-100 之间的整数。当前值: {vol}"
+            vol = self._as_int(params["volume"])
+            if vol is None or not (0 <= vol <= 100):
+                return False, f"volume 必须是 0-100 之间的整数。当前值: {params['volume']}"
 
         if "rate" in params:
-            rate = params["rate"]
-            if not isinstance(rate, (int, float)) or not (0.5 <= rate <= 2.0):
-                return False, f"rate 必须是 0.5-2.0 之间的数字。当前值: {rate}"
+            rate = self._as_float(params["rate"])
+            if rate is None or not (0.5 <= rate <= 2.0):
+                return False, f"rate 必须是 0.5-2.0 之间的数字。当前值: {params['rate']}"
 
         if "pitch" in params:
-            pitch = params["pitch"]
-            if not isinstance(pitch, (int, float)) or not (0.5 <= pitch <= 2.0):
-                return False, f"pitch 必须是 0.5-2.0 之间的数字。当前值: {pitch}"
+            pitch = self._as_float(params["pitch"])
+            if pitch is None or not (0.5 <= pitch <= 2.0):
+                return False, f"pitch 必须是 0.5-2.0 之间的数字。当前值: {params['pitch']}"
 
         if "language_hints" in params:
             hints = params["language_hints"]
@@ -398,25 +398,25 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
         sanitized["text"] = params.get("text", "")
         sanitized["instruction"] = params.get("instruction", "")
         if "volume" in params:
-            vol = params["volume"]
-            if isinstance(vol, int) and 0 <= vol <= 100:
+            vol = self._as_int(params["volume"])
+            if vol is not None and 0 <= vol <= 100:
                 sanitized["volume"] = vol
             else:
-                logger.warning(f"丢弃非法的 volume 参数: {vol}")
+                logger.warning(f"丢弃非法的 volume 参数: {params['volume']}")
 
         if "rate" in params:
-            rate = params["rate"]
-            if isinstance(rate, (int, float)) and 0.5 <= rate <= 2.0:
+            rate = self._as_float(params["rate"])
+            if rate is not None and 0.5 <= rate <= 2.0:
                 sanitized["rate"] = rate
             else:
-                logger.warning(f"丢弃非法的 rate 参数: {rate}")
+                logger.warning(f"丢弃非法的 rate 参数: {params['rate']}")
 
         if "pitch" in params:
-            pitch = params["pitch"]
-            if isinstance(pitch, (int, float)) and 0.5 <= pitch <= 2.0:
+            pitch = self._as_float(params["pitch"])
+            if pitch is not None and 0.5 <= pitch <= 2.0:
                 sanitized["pitch"] = pitch
             else:
-                logger.warning(f"丢弃非法的 pitch 参数: {pitch}")
+                logger.warning(f"丢弃非法的 pitch 参数: {params['pitch']}")
 
         if "language_hints" in params:
             hints = params["language_hints"]
