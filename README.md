@@ -6,7 +6,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v0.3.3-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.3.4-green)](CHANGELOG.md)
 
 ---
 
@@ -51,7 +51,7 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 
 插件提供了**可复用的前端组件**（`components/common/`），封装了音色管理的标准交互流程：
 
-- `bailian_speech_synthesizer.js` – 上传/URL/设计三种模式、试听、列表、删除
+- `bailian_speech_synthesizer.js` – 声音复刻 / 声音设计两种模式、试听、列表、删除
 - `voice_preview_modal.js` – 音色预览模态框，支持试听与保留/删除
 - `delete_confirm_modal.js` – 删除确认模态框，避免沙盒环境 `confirm()` 被拦截
 

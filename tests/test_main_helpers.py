@@ -64,8 +64,7 @@ class TestValidateFileId:
     def test_upload_roundtrip_file_id_accepted(self):
         """原 P0-1 回归：上传接口产出的 file_id 必须能通过自身校验器。
 
-        否则 /start_file_server、/stop_file_server、/file/upload 会全部 400，
-        「上传音频 → 预览 → 音色克隆」链路从第一步后断死。
+        否则 /file/upload 会返回 400，依赖通用本地上传中转的供应商文件链路会中断。
         """
         import time
 

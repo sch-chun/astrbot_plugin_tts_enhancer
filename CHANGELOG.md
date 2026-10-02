@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.4] - 2026-10-02
+
+### Changed
+
+- **百炼 Qwen Audio / CosyVoice 音色复刻切换为 Data URL**：管理页在浏览器内将 wav/mp3/m4a（≤ 10MB）编码为规范 MIME 的 Base64 Data URL，并直接提交至音色创建接口；移除公网音频 URL 入口、外部访问地址、内部监听端口与公网 IPv4/防火墙提示。
+- **复刻入参收紧**：后端仅接受 `audio_data_url`，校验 Data URL 格式、`audio/wav` / `audio/mpeg` / `audio/mp4` MIME、Base64 完整性及 10MB 上限；Debug 日志仅记录 MIME 与解码后字节数，不再输出音频正文。
+- **管理页文案对齐官方命名**：选项卡改为「声音复刻」（与「声音设计」对应），移除 Data URL 等实现细节提示。
+
+### Removed
+
+- 删除 `src/file_server.py`、`/start_file_server`、`/stop_file_server` 及仅为临时公网文件服务引入的 `aiohttp` 测试依赖；通用 `/upload` 与供应商 `/file/*` 路由保留，继续服务其他供应商文件流程。
+- **Breaking**：百炼 Qwen Audio / CosyVoice 的 `/voice/create` 复刻入参由 `audio_url` 改为 `audio_data_url`，不再兼容公网 URL。
+
 ## [0.3.3] - 2026-09-29
 
 ### Added
