@@ -1,8 +1,12 @@
 """百炼 Speech Synthesizer 适配器"""
 
-import httpx
+import base64
+import binascii
 from pathlib import Path
+import re
 import traceback
+
+import httpx
 
 from astrbot.api import logger
 from astrbot.core.agent.tool import FunctionTool
@@ -12,6 +16,52 @@ from .utils import http
 from .utils.audio import save_audio_bytes
 
 from typing import Any, Optional
+
+
+_CLONE_DATA_URL_MIME_TYPES = frozenset({"audio/wav", "audio/mpeg", "audio/mp4"})
+_MAX_CLONE_AUDIO_BYTES = 10 * 1024 * 1024
+_DATA_URL_RE = re.compile(
+    r"data:audio/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=_-]+",
+    re.IGNORECASE,
+)
+
+
+def _redact_data_urls(value: Any) -> Any:
+    """递归脱敏错误响应中的音频 Data URL，避免 Base64 泄漏到日志或前端。"""
+    if isinstance(value, str):
+        return _DATA_URL_RE.sub("<Data URL omitted>", value)
+    if isinstance(value, dict):
+        return {key: _redact_data_urls(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_data_urls(item) for item in value]
+    return value
+
+
+def _validate_clone_data_url(value: str) -> tuple[str, int]:
+    """校验百炼复刻音频 Data URL，并返回 MIME 与解码后字节数。"""
+    if not isinstance(value, str) or not value.startswith("data:"):
+        raise ValueError("audio_data_url 必须是 Base64 Data URL")
+
+    header, separator, encoded = value.partition(",")
+    if not separator or not encoded or not header.endswith(";base64"):
+        raise ValueError("audio_data_url 格式错误，应为 data:{mime};base64,{data}")
+
+    mime_type = header[5:-7].lower()
+    if mime_type not in _CLONE_DATA_URL_MIME_TYPES:
+        supported = ", ".join(sorted(_CLONE_DATA_URL_MIME_TYPES))
+        raise ValueError(f"不支持的复刻音频 MIME 类型: {mime_type}，仅支持 {supported}")
+
+    try:
+        audio_bytes = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("audio_data_url 包含无效的 Base64 数据") from exc
+
+    if not audio_bytes:
+        raise ValueError("audio_data_url 不得包含空音频")
+    if len(audio_bytes) > _MAX_CLONE_AUDIO_BYTES:
+        raise ValueError("复刻音频不得超过 10MB")
+
+    return mime_type, len(audio_bytes)
 
 
 class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
@@ -442,7 +492,7 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
                 - prefix (str): 音色前缀，必填，字母数字且长度不超过 10
                 - language_hints (list, optional): 语言提示列表
                 - mode (str, optional): 创建模式，'clone' 或 'design'，若不指定则根据参数自动推断
-                - audio_url (str, optional): 声音克隆时的音频 URL（mode='clone' 时必填）
+                - audio_data_url (str, optional): 声音克隆时的音频 Data URL（mode='clone' 时必填）
                 - voice_prompt (str, optional): 声音设计时的提示词（mode='design' 时必填）
                 - preview_text (str, optional): 声音设计时的预览文本
                 - sample_rate (int, optional): 声音设计时的采样率
@@ -513,10 +563,10 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
             )
         elif mode == "clone":
 
-            # 声音克隆分支
-            audio_url = params.get("audio_url")
-            if not audio_url:
-                raise ValueError("audio_url 为必填参数")
+            # 声音克隆分支：仅接受 Data URL，避免依赖公网文件服务器。
+            audio_data_url = params.get("audio_data_url")
+            if not audio_data_url:
+                raise ValueError("audio_data_url 为必填参数")
             enable_volume_normalization = params.get("enable_volume_normalization", False)
             enable_preprocess = params.get("enable_preprocess", False)
             max_prompt_audio_length = params.get("max_prompt_audio_length")
@@ -525,7 +575,7 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
                 target_model=target_model,
                 prefix=prefix,
                 language_hints=language_hints,
-                audio_url=audio_url,
+                audio_data_url=audio_data_url,
                 enable_volume_normalization=enable_volume_normalization,
                 enable_preprocess=enable_preprocess,
                 max_prompt_audio_length=max_prompt_audio_length
@@ -538,18 +588,18 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
         target_model: str,
         prefix: str,
         language_hints: list,
-        audio_url: str,
+        audio_data_url: str,
         enable_volume_normalization: bool,
         enable_preprocess: bool,
         max_prompt_audio_length: float | None
     ) -> dict:
-        """通过声音克隆方式创建音色。
+        """通过 Data URL 方式复刻音色。
 
         Args:
             target_model (str): 目标模型名称，如 'qwen-audio-3.0-tts-flash'
             prefix (str): 音色前缀
             language_hints (list): 语言提示列表
-            audio_url (str): 用于克隆的参考音频 URL
+            audio_data_url (str): Base64 编码的参考音频 Data URL
             enable_volume_normalization (bool): 是否启用音量归一化
             enable_preprocess (bool): 是否启用音频预处理
             max_prompt_audio_length (float | None): 最大提示音频长度（秒），为 None 时不限制
@@ -558,8 +608,10 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
             dict: 创建结果字典，包含 'voice_id' 和 'extra' 等信息
 
         Raises:
+            ValueError: Data URL 格式、MIME 类型、Base64 数据或文件大小不合法
             RuntimeError: 如果 API 请求失败或未返回 voice_id
         """
+        mime_type, audio_size = _validate_clone_data_url(audio_data_url)
         workspace_id = self.entry.get("workspace_id", "")
         api_key = self.entry.get("api_key", "")
         url = f"https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/customization"
@@ -570,7 +622,7 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
                 "action": "create_voice",
                 "target_model": target_model,
                 "prefix": prefix,
-                "url": audio_url,
+                "url": audio_data_url,
                 "enable_volume_normalization": str(enable_volume_normalization).lower(),
             }
         }
@@ -586,15 +638,23 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
             else:
                 raise ValueError("max_prompt_audio_length 必须在 3.0 到 30.0 之间")
 
+        safe_payload = {
+            **payload,
+            "input": {
+                **payload["input"],
+                "url": f"<Data URL {mime_type}, {audio_size} bytes>",
+            },
+        }
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                logger.debug(f"创建音色请求: {payload}")
+            async with httpx.AsyncClient(timeout=60) as client:
+                logger.debug(f"创建音色请求: {safe_payload}")
                 resp = await client.post(url, headers=headers, json=payload)
                 if resp.status_code != 200:
                     try:
                         error_msg = http.extract_error_message(resp.json(), fallback_text=resp.text)
                     except Exception:
                         error_msg = resp.text
+                    error_msg = _redact_data_urls(error_msg)
                     raise RuntimeError(f"百炼 API 错误 (HTTP {resp.status_code}): {error_msg}")
                 data = resp.json()
         except httpx.HTTPStatusError as e:
@@ -606,13 +666,16 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
                 )
             except Exception:
                 error_msg = e.response.text
+            error_msg = _redact_data_urls(error_msg)
             raise RuntimeError(f"请求失败: {error_msg}")
         except Exception as e:
-            raise RuntimeError(f"请求异常: {str(e)}")
+            safe_error = _redact_data_urls(str(e))
+            raise RuntimeError(f"请求异常: {safe_error}")
 
         voice_id = data.get("output", {}).get("voice_id")
         if not voice_id:
-            raise RuntimeError(f"创建音色失败: {data}")
+            safe_data = _redact_data_urls(data)
+            raise RuntimeError(f"创建音色失败: {safe_data}")
         return {"voice_id": voice_id, "extra": data.get("output", {})}
 
     async def _create_voice_by_design(

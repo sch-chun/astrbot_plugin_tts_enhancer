@@ -16,7 +16,6 @@ from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 
 from .src.config import TTSEnhancerConfig
 from .src.tts_parser import split_by_tts_tags, TTS_START_TAG, TTS_END_TAG
-from .src.file_server import TempFileServer, add_server, get_server, remove_server
 from .src.tts_service import TTSService
 from .src.tools import SendVoiceTool
 from .providers import ProviderFactory
@@ -252,8 +251,6 @@ class TTSEnhancerPlugin(Star):
             - POST /voice/list: 查询音色列表。
             - POST /voice/delete: 删除音色。
             - POST /upload: 上传音频文件。
-            - POST /start_file_server: 启动临时文件服务器。
-            - POST /stop_file_server: 停止临时文件服务器。
             - POST /voice/preview: 预览音色。
         """
         async def get_providers() -> JSONResponse:
@@ -466,101 +463,6 @@ class TTSEnhancerPlugin(Star):
             upload_file,
             ["POST"],
             "上传音频文件，返回 file_id"
-        )
-
-        async def start_file_server() -> JSONResponse:
-            """启动临时文件服务器，只绑定内部端口，不构造 URL。
-
-            Args (JSON Body):
-                file_id (str): 上传文件的唯一标识符。
-                internal_port (int): 内部绑定的端口号，范围为 1024-65535。
-
-            Returns:
-                JSONResponse: 包含启动成功状态的 JSON 响应。
-            """
-            try:
-                payload = await request.json()
-                if not payload:
-                    return error_response("payload required", status_code=400)
-                file_id = payload.get('file_id')
-                internal_port = payload.get('internal_port')
-                if not all([file_id, internal_port]):
-                    return error_response("缺少 file_id 或 internal_port", status_code=400)
-
-                try:
-                    internal_port = int(internal_port)
-                    if not (1024 <= internal_port <= 65535):
-                        raise ValueError
-                except ValueError:
-                    return error_response("内部端口必须为 1024-65535 的整数", status_code=400)
-
-                try:
-                    file_id = _validate_file_id(file_id)
-                    file_path = self._resolve_uploads_path(file_id)
-                except ValueError as e:
-                    return error_response(str(e), status_code=400)
-                if not file_path.is_file():
-                    return error_response("文件不存在", status_code=404)
-
-                if get_server(file_id):
-                    return error_response("该文件已有服务器在运行", status_code=400)
-
-                server = TempFileServer(file_path, internal_port)
-                await server.start()
-                add_server(file_id, server)
-                return json_response({"code": 0, "data": {"success": True}})
-            except Exception as e:
-                logger.error(f"启动文件服务器失败: {e}")
-                return error_response(str(e), status_code=500)
-
-        self.context.register_web_api(
-            f"/{self.name}/start_file_server",
-            start_file_server,
-            ["POST"],
-            "启动临时文件服务器（由前端拼接公网 URL）"
-        )
-
-        async def stop_file_server() -> JSONResponse:
-            """停止文件服务器，并删除临时文件。
-
-            Args (JSON Body):
-                file_id (str): 上传文件的唯一标识符。
-
-            Returns:
-                JSONResponse: 包含停止成功状态的 JSON 响应。
-            """
-            try:
-                payload = await request.json()
-                if not payload:
-                    return error_response("payload required", status_code=400)
-                file_id = payload.get('file_id')
-                if not file_id:
-                    return error_response("缺少 file_id", status_code=400)
-
-                server = get_server(file_id)
-                if server:
-                    await server.stop()
-                    remove_server(file_id)
-
-                # 删除临时文件
-                try:
-                    file_id = _validate_file_id(file_id)
-                    file_path = self._resolve_uploads_path(file_id)
-                except ValueError as e:
-                    return error_response(str(e), status_code=400)
-                if file_path.is_file():
-                    file_path.unlink()
-
-                return json_response({"code": 0, "data": {"success": True}})
-            except Exception as e:
-                logger.error(f"停止文件服务器失败: {e}")
-                return error_response(str(e), status_code=500)
-
-        self.context.register_web_api(
-            f"/{self.name}/stop_file_server",
-            stop_file_server,
-            ["POST"],
-            "停止文件服务器并删除文件"
         )
 
         async def preview_voice() -> JSONResponse:

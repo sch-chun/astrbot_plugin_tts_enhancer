@@ -1,13 +1,21 @@
-const { ref, reactive, watch, computed, nextTick } = Vue;
+const { ref, reactive, watch, computed } = Vue;
 
 
 import { useClipboard } from '../../composables/useClipboard.js';
 import { useToast } from '../../composables/useToast.js';
 import { useAudioManager } from '../../composables/useAudioManager.js';
-import { validateText, countChars } from '../../composables/useTextValidator.js';
+import { validateText } from '../../composables/useTextValidator.js';
 import { base64ToBlobUrl } from '../../composables/useAudioManager.js';
 import VoicePreviewModal from './voice_preview_modal.js';
 import DeleteConfirmModal from './delete_confirm_modal.js';
+
+
+const MAX_CLONE_AUDIO_BYTES = 10 * 1024 * 1024;
+const CLONE_AUDIO_MIME_BY_EXTENSION = Object.freeze({
+    wav: 'audio/wav',
+    mp3: 'audio/mpeg',
+    m4a: 'audio/mp4',
+});
 
 
 export default {
@@ -38,7 +46,7 @@ export default {
         // ----- Toast 提示 -----
         const {
             toastMessage, toastVisible, toastType,
-            showToast, showSuccess, showError,
+            showSuccess, showError,
             onToastMouseEnter, onToastMouseLeave,
         } = useToast();
 
@@ -54,37 +62,22 @@ export default {
         const selectedEntryId = ref(null);
         const voiceList = ref([]);
         const loading = ref(false);
-        const creating = ref(false);
-        const mode = ref('upload'); // 'upload' | 'url' | 'design'
+        const mode = ref('clone'); // 'clone' | 'design'
 
-        // ----- 上传模式表单 -----
-        const uploadForm = reactive({
+        // ----- Data URL 复刻表单 -----
+        const cloneForm = reactive({
             file: null,
-            external_base_url: '',
-            internal_port: '',
-            prefix: 'upload',
+            prefix: 'clone',
             language_hint: 'zh',
             enable_volume_normalization: false,
             enable_preprocess: false,
             max_prompt_audio_length: 10.0,
             model: 'flash',
         });
-        const uploading = ref(false);
-        let currentFileId = null;
+        const cloning = ref(false);
 
         // 用于重置文件输入框的 ref
         const fileInputRef = ref(null);
-
-        // ----- URL 模式表单 -----
-        const urlForm = reactive({
-            audio_url: '',
-            prefix: 'urlvoice',
-            language_hint: 'zh',
-            enable_volume_normalization: false,
-            enable_preprocess: false,
-            max_prompt_audio_length: 10.0,
-            model: 'flash',
-        });
 
         // ----- 设计模式表单 -----
         const designForm = reactive({
@@ -134,9 +127,8 @@ export default {
 
         // ----- 当前表单（根据模式）-----
         const currentForm = computed(() => {
-            if (mode.value === 'upload') return uploadForm;
-            if (mode.value === 'url') return urlForm;
-            return designForm;
+            if (mode.value === 'design') return designForm;
+            return cloneForm;
         });
 
         // ----- 设计模式字符数校验 -----
@@ -190,8 +182,7 @@ export default {
             if (!models.includes(entryModel)) {
                 entryModel = models[0];
             }
-            uploadForm.model = entryModel;
-            urlForm.model = entryModel;
+            cloneForm.model = entryModel;
             designForm.model = entryModel;
         }
     }, { immediate: true });
@@ -235,157 +226,108 @@ export default {
                     try {
                         const data = await e.response.json();
                         errMsg = data.message || data.error || errMsg;
-                    } catch (_) {}
+                    } catch {}
                 }
                 showError('创建音色失败: ' + errMsg);
                 return null;
             }
         }
 
-        // ----- 上传模式：上传文件 + 启动服务器 + 创建音色 + 停止服务器 -----
+        // ----- Data URL 复刻 -----
+        function getCloneAudioMimeType(file) {
+            const extension = file.name.split('.').pop()?.toLowerCase() || '';
+            return CLONE_AUDIO_MIME_BY_EXTENSION[extension] || '';
+        }
+
+        function validateCloneAudioFile(file) {
+            const mimeType = getCloneAudioMimeType(file);
+            if (!mimeType) {
+                throw new Error('仅支持 wav、mp3、m4a 音频文件');
+            }
+            if (!file.size) {
+                throw new Error('音频文件不能为空');
+            }
+            if (file.size > MAX_CLONE_AUDIO_BYTES) {
+                throw new Error('音频文件不得超过 10MB');
+            }
+            return mimeType;
+        }
+
+        function encodeAudioAsDataUrl(file, mimeType) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = () => reject(new Error('读取音频文件失败'));
+                reader.onload = () => {
+                    const rawDataUrl = String(reader.result || '');
+                    const separatorIndex = rawDataUrl.indexOf(',');
+                    if (separatorIndex < 0 || separatorIndex === rawDataUrl.length - 1) {
+                        reject(new Error('音频文件编码失败'));
+                        return;
+                    }
+                    resolve(`data:${mimeType};base64,${rawDataUrl.slice(separatorIndex + 1)}`);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
         function handleFileChange(event) {
             const file = event.target.files[0];
-            if (file) {
-                uploadForm.file = file;
+            if (!file) {
+                cloneForm.file = null;
+                return;
+            }
+            try {
+                validateCloneAudioFile(file);
+                cloneForm.file = file;
+            } catch (error) {
+                cloneForm.file = null;
+                event.target.value = '';
+                showError(error.message);
             }
         }
 
-        async function uploadAndClone() {
+        async function cloneFromFile() {
             if (selectedEntryId.value === null || selectedEntryId.value === undefined) {
                 showError('请先选择认证配置');
                 return;
             }
-            if (!uploadForm.file) {
+            if (!cloneForm.file) {
                 showError('请选择音频文件');
                 return;
             }
-            const baseUrl = uploadForm.external_base_url.trim();
-            if (!baseUrl) {
-                showError('请填写外部访问地址（含协议和端口）');
-                return;
-            }
+
+            cloning.value = true;
             try {
-                new URL(baseUrl);
-            } catch (_) {
-                showError('外部访问地址格式不正确，请包含协议（如 https://）');
-                return;
-            }
-            const intPort = parseInt(uploadForm.internal_port);
-            if (isNaN(intPort) || intPort < 1024 || intPort > 65535) {
-                showError('内部端口须为 1024-65535');
-                return;
-            }
-
-            uploading.value = true;
-            try {
-                const uploadResult = await props.bridge.upload(
-                    'upload',
-                    uploadForm.file
-                );
-                if (!uploadResult.file_id) {
-                    const errMsg = uploadResult.message ||
-                        uploadResult.error ||
-                        '上传失败，未返回 file_id';
-                    showError('上传失败: ' + errMsg);
-                    uploading.value = false;
-                    return;
-                }
-                const fileId = uploadResult.file_id;
-                currentFileId = fileId;
-
-                const startResp = await props.bridge.apiPost('start_file_server', {
-                    file_id: fileId,
-                    internal_port: intPort,
-                });
-                if (startResp.success !== true) {
-                    const errMsg = startResp.message || startResp.error || '启动文件服务器失败';
-                    showError('启动文件服务器失败: ' + errMsg);
-                    uploading.value = false;
-                    return;
-                }
-
-                const audioUrl = `${baseUrl.replace(/\/+$/, '')}/${fileId}`;
+                const mimeType = validateCloneAudioFile(cloneForm.file);
+                const audioDataUrl = await encodeAudioAsDataUrl(cloneForm.file, mimeType);
                 const payload = {
                     entry_id: selectedEntryId.value,
                     mode: 'clone',
-                    audio_url: audioUrl,
-                    prefix: uploadForm.prefix,
-                    language_hints: uploadForm.language_hint ? [uploadForm.language_hint] : [],
-                    enable_volume_normalization: uploadForm.enable_volume_normalization,
-                    enable_preprocess: uploadForm.enable_preprocess,
+                    audio_data_url: audioDataUrl,
+                    prefix: cloneForm.prefix,
+                    language_hints: cloneForm.language_hint ? [cloneForm.language_hint] : [],
+                    enable_volume_normalization: cloneForm.enable_volume_normalization,
+                    enable_preprocess: cloneForm.enable_preprocess,
                     max_prompt_audio_length:
-                        uploadForm.enable_preprocess ?
-                        uploadForm.max_prompt_audio_length : undefined,
-                    model: uploadForm.model,
+                        cloneForm.enable_preprocess ?
+                        cloneForm.max_prompt_audio_length : undefined,
+                    model: cloneForm.model,
                 };
                 const result = await callCreateVoice(payload);
                 if (result) {
-                    showSuccess('音色创建成功！Voice ID: ' + result.voice_id);
+                    const voiceId = result.voice_id || result.voice;
+                    showSuccess('音色创建成功！Voice ID: ' + voiceId);
                     await fetchVoices();
-                    uploadForm.file = null;
-
-                    // 使用 ref 重置文件输入
+                    cloneForm.file = null;
                     if (fileInputRef.value) {
                         fileInputRef.value.value = '';
                     }
                 }
-            } catch (e) {
-                console.error('上传复刻失败:', e);
-                showError('请求失败: ' + e.message);
+            } catch (error) {
+                console.error('Data URL 复刻失败:', error);
+                showError('复刻失败: ' + error.message);
             } finally {
-                uploading.value = false;
-                if (currentFileId) {
-                    try {
-                        await props.bridge.apiPost('stop_file_server', { file_id: currentFileId });
-                        currentFileId = null;
-                    } catch (e) {
-                        console.warn('停止文件服务器失败:', e);
-                    }
-                }
-            }
-        }
-
-        // ----- URL 模式：直接使用公网音频 URL 创建音色 -----
-        async function createFromUrl() {
-            if (selectedEntryId.value === null || selectedEntryId.value === undefined) {
-                showError('请先选择认证配置');
-                return;
-            }
-            if (!urlForm.audio_url) {
-                showError('请填写公网音频 URL');
-                return;
-            }
-            try {
-                new URL(urlForm.audio_url);
-            } catch (_) {
-                showError('URL 格式不正确');
-                return;
-            }
-
-            creating.value = true;
-            try {
-                const payload = {
-                    entry_id: selectedEntryId.value,
-                    mode: 'clone',
-                    audio_url: urlForm.audio_url,
-                    prefix: urlForm.prefix,
-                    language_hints: urlForm.language_hint ? [urlForm.language_hint] : [],
-                    enable_volume_normalization: urlForm.enable_volume_normalization,
-                    enable_preprocess: urlForm.enable_preprocess,
-                    max_prompt_audio_length:
-                        urlForm.enable_preprocess ? urlForm.max_prompt_audio_length : undefined,
-                    model: urlForm.model,
-                };
-                const result = await callCreateVoice(payload);
-                if (result) {
-                    showSuccess('音色创建成功！Voice ID: ' + result.voice_id);
-                    await fetchVoices();
-                }
-            } catch (e) {
-                console.error('URL 创建失败:', e);
-                showError('请求失败: ' + e.message);
-            } finally {
-                creating.value = false;
+                cloning.value = false;
             }
         }
 
@@ -561,17 +503,11 @@ export default {
             return typeof val === 'number' && val >= 3.0 && val <= 30.0;
         });
 
-        const isPortValid = computed(() => {
-            if (mode.value !== 'upload') return true;
-            const port = parseInt(uploadForm.internal_port);
-            return !isNaN(port) && port >= 1024 && port <= 65535;
-        });
-
         const isFormValid = computed(() => {
             const prefixOK = isPrefixValid.value;
             const lengthOK = isMaxLengthValid.value;
-            const portOK = isPortValid.value;
-            return prefixOK && lengthOK && portOK;
+            const fileOK = mode.value !== 'clone' || Boolean(cloneForm.file);
+            return prefixOK && lengthOK && fileOK;
         });
 
         return {
@@ -581,8 +517,8 @@ export default {
             onToastMouseEnter, onToastMouseLeave,
 
             // 数据
-            selectedEntryId, currentEntry, voiceList, loading, creating, designing, mode,
-            currentForm, uploadForm, uploading, urlForm, designForm, availableModels,
+            selectedEntryId, currentEntry, voiceList, loading, designing, mode,
+            currentForm, cloneForm, cloning, designForm, availableModels,
             deleteModalVisible, deleteTargetId, languages,
 
             // 预览
@@ -605,11 +541,11 @@ export default {
             // 校验
             voicePromptChars, previewTextChars, voicePromptError, previewTextError, isPrefixValid,
             isVoicePromptValid, isPreviewTextValid, isPrefixValidForDesign, isDesignFormValid,
-            isPortValid, isFormValid,
+            isFormValid,
 
             // 上传文件 ref
             fileInputRef,
-            handleFileChange, uploadAndClone, createFromUrl, createFromDesign,
+            handleFileChange, cloneFromFile, createFromDesign,
             
             // 供应商配置（用于模板）
             providerConfig: props.providerConfig,
@@ -649,21 +585,6 @@ export default {
             >
                 <legend>创建新音色</legend>
 
-                <!-- 公网 IPv4 确认提示 -->
-                <div v-if="mode !== 'design'"
-                    style="
-                        background:rgba(241,151,27,0.15);
-                        border-left:4px solid #f0971b;
-                        padding:8px 12px;
-                        margin-bottom:16px;
-                        border-radius:4px;
-                        color:var(--text);
-                    "
-                >
-                    <strong>⚠️ 重要：</strong>请确认服务器拥有公网 IPv4 地址，<!--
-                    -->且防火墙已开放指定端口 (上传模式) 或音频 URL 可被公网 IPv4 访问 (URL 模式)。
-                </div>
-
                 <!-- 系统音色提示（仅当供应商支持系统音色且非设计模式） -->
                 <div v-if="providerConfig.supportsSystemVoices && mode !== 'design'" 
                     style="
@@ -700,8 +621,8 @@ export default {
                 >
                     <button 
                         class="tab" 
-                        :class="{ active: mode === 'upload' }"
-                        @click="mode = 'upload'"
+                        :class="{ active: mode === 'clone' }"
+                        @click="mode = 'clone'"
                         style="
                             padding:8px 16px;
                             border:none;
@@ -709,19 +630,7 @@ export default {
                             cursor:pointer;
                             border-bottom:2px solid transparent;
                         "
-                    >📁 上传音频文件</button>
-                    <button 
-                        class="tab" 
-                        :class="{ active: mode === 'url' }"
-                        @click="mode = 'url'"
-                        style="
-                            padding:8px 16px;
-                            border:none;
-                            background:transparent;
-                            cursor:pointer;
-                            border-bottom:2px solid transparent;
-                        "
-                    >🔗 使用音频 URL</button>
+                    >📁 声音复刻</button>
                     <button 
                         class="tab" 
                         :class="{ active: mode === 'design' }"
@@ -736,42 +645,13 @@ export default {
                     >🎨 声音设计</button>
                 </div>
 
-                <!-- 上传模式 -->
-                <div v-if="mode === 'upload'">
-                    <div class="form-group">
-                        <label>外部访问地址（基础 URL）</label>
-                        <input
-                            v-model="uploadForm.external_base_url"
-                            placeholder="例如：https://abc.sample.com:8080 或 http://123.123.123.123:8080"
-                        />
-                        <div class="hint">请包含协议（http:// 或 https://）、域名/IP 和端口，末尾不要加斜杠</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label>内部监听端口</label>
-                        <input
-                            v-model="uploadForm.internal_port"
-                            placeholder="例如：8080（1024-65535）"
-                            :class="{ 'input-error': !isPortValid }"
-                        />
-                        <div v-if="!isPortValid" class="error-hint">⚠️ 必须是 1024-65535 之间的整数</div>
-                    </div>
-
+                <div v-if="mode === 'clone'">
                     <div class="form-group">
                         <label>选择音频文件（wav (16bit), mp3, m4a）</label>
                         <input type="file" ref="fileInputRef" accept=".wav,.mp3,.m4a" @change="handleFileChange" />
                         <div class="hint">
-                            推荐 10~20s，最长 60s。文件 ≤ 10MB，采样率 ≥ 16kHz。大于 60s 的文件将被自动裁剪。
+                            推荐 10~20s，最长 60s，文件 ≤ 10MB，采样率 ≥ 16kHz。
                         </div>
-                    </div>
-                </div>
-
-                <!-- URL 模式 -->
-                <div v-if="mode === 'url'">
-                    <div class="form-group">
-                        <label>公网音频 URL（wav (16bit), mp3, m4a）</label>
-                        <input v-model="urlForm.audio_url" placeholder="例如：https://example.com/voice.wav" />
-                        <div class="hint">推荐 10~20s，最长 60s。文件 ≤ 10MB，采样率 ≥ 16kHz。</div>
                     </div>
                 </div>
 
@@ -925,20 +805,12 @@ export default {
 
                 <!-- 提交按钮 -->
                 <button
-                    v-if="mode === 'upload'"
+                    v-if="mode === 'clone'"
                     class="btn"
-                    @click="uploadAndClone"
-                    :disabled="!isFormValid || uploading"
+                    @click="cloneFromFile"
+                    :disabled="!isFormValid || cloning"
                 >
-                    {{ uploading ? '上传并处理中...' : '📁 上传并复刻' }}
-                </button>
-                <button
-                    v-else-if="mode === 'url'"
-                    class="btn"
-                    @click="createFromUrl"
-                    :disabled="!isFormValid || creating"
-                >
-                    {{ creating ? '创建中...' : '🔗 创建音色' }}
+                    {{ cloning ? '复刻中...' : '📁 复刻音色' }}
                 </button>
                 <button
                     v-else-if="mode === 'design'"

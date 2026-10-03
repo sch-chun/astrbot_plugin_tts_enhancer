@@ -8,9 +8,8 @@ pytest-asyncio>=0.23
 # 缺失会先抛 RuntimeError 而非预期的 FileNotFoundError/ValueError。
 pydub
 
-# httpx / aiohttp：适配器导入路径依赖。
+# httpx：适配器导入路径依赖。
 # tests/test_minimax_provider.py 顶部直接 import httpx；
 # ProviderFactory._discover_adapters 会 import 全部 providers/*.py，
 # 任一适配器 import 失败都会让注册表用例变红，故显式声明比赌传递依赖稳。
 httpx
-aiohttp
