@@ -1,3 +1,5 @@
+[English](docs/en/README.md) · 简体中文
+
 # AstrBot TTS Enhancer
 
 > **让 AstrBot 的回复自然带上情感、方言与个性化声音，**  
@@ -183,6 +185,9 @@ providers:                        # 供应商列表（支持多个回退）
 ## 文档与更新
 
 - [CHANGELOG.md](CHANGELOG.md) – 完整版本记录
+- **架构文档** [docs/zh/ARCHITECTURE.md](docs/zh/ARCHITECTURE.md) – 设计目标、整体分层、请求生命周期、核心模块、适配器体系、人格路由、安全设计等
+- **开发指南** [docs/zh/DEVELOPMENT.md](docs/zh/DEVELOPMENT.md) – 环境准备、新增供应商清单、适配器开发、前端接入、测试规范、发布流程
+- **English README** [docs/en/README.md](docs/en/README.md) – 英文版说明
 - 能力说明书样例：
   - `providers/docs/bailian_qwen_audio_3_0_tts.md`
   - `providers/docs/bailian_qwen_audio_3_1_tts.md`
