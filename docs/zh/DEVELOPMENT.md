@@ -1,7 +1,7 @@
 # TTS Enhancer 开发指南
 
 > 面向插件贡献者与维护者的实操手册。
-> 配套文档：[架构文档](ARCHITECTURE.md) · [英文 README](../en/README.md) · [CHANGELOG](../CHANGELOG.md)
+> 配套文档：[架构文档](ARCHITECTURE.md) · [英文 README](../en/README.md) · [CHANGELOG](../../CHANGELOG.md)
 
 本文以"如何新增一个 TTS 供应商"为主线，串起适配器、能力说明书、配置、前端、测试等全部环节。
 
@@ -42,8 +42,8 @@ astrbot_plugin_tts_enhancer/
 ├── main.py                      # 插件入口：钩子 + Web 路由 + 安全校验
 ├── metadata.yaml                # 插件元信息（name/version/author/repo...）
 ├── _conf_schema.json            # 配置 Schema（含各供应商模板）
-├── README.md / CHANGELOG.md / TEST_REPORT.md
-├── requirements.txt             # 运行时额外依赖（如有）
+├── README.md / CHANGELOG.md
+├── requirements-tests.txt       # 测试依赖（pytest / pytest-asyncio）
 ├── src/
 │   ├── config.py                # TTSEnhancerConfig：配置加载/排序/去重
 │   ├── tts_parser.py            # <tts> 标签解析
