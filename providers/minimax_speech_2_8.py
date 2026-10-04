@@ -118,15 +118,11 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
 
     # ---------- 工具 Schema ----------
     def get_tool_schema(self) -> FunctionTool:
-        """返回 TTS 增强工具的 Schema 定义。
-
-        Returns:
-            FunctionTool: 包含名称、描述和参数定义的工具对象。
-        """
-        return FunctionTool(
-            name="tts_enhance",
-            description="为 MiniMax Speech 2.8 语音合成提供增强参数，支持情感、语速、音量、语调、语言增强及 LaTeX 朗读。",
-            parameters={
+        """返回 TTS 增强工具的 Schema 定义。"""
+        return self.build_enhance_tool(
+            "为 MiniMax Speech 2.8 语音合成提供增强参数，"
+            "支持情感、语速、音量、语调、语言增强及 LaTeX 朗读。",
+            {
                 "type": "object",
                 "properties": {
                     "text": {
@@ -168,7 +164,6 @@ class MinimaxSpeech2_8Adapter(TTSProviderAdapter):
                 },
                 "required": ["text"],
             },
-            handler=None,
         )
 
     # ---------- SubAgent 系统提示 ----------

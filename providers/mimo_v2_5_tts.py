@@ -256,16 +256,10 @@ class MimoV2_5TTSAdapter(TTSProviderAdapter):
     # ———————— 语音合成 ————————
 
     def get_tool_schema(self) -> FunctionTool:
-        """Return the TTS enhancement tool schema.
-
-        Returns:
-            A FunctionTool exposing ``text`` and an optional ``instruction``
-            used for natural-language style control.
-        """
-        return FunctionTool(
-            name="tts_enhance",
-            description="为 MiMo V2.5 TTS 语音合成提供文本与自然语言风格指令。",
-            parameters={
+        """Return the TTS enhancement tool schema."""
+        return self.build_enhance_tool(
+            "为 MiMo V2.5 TTS 语音合成提供文本与自然语言风格指令。",
+            {
                 "type": "object",
                 "properties": {
                     "text": {
@@ -282,7 +276,6 @@ class MimoV2_5TTSAdapter(TTSProviderAdapter):
                 },
                 "required": ["text"],
             },
-            handler=None,
         )
 
     def get_subagent_system_prompt(self) -> str:

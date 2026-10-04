@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
+import json
 import re
 import unicodedata
 
@@ -7,6 +8,7 @@ from typing import Optional
 
 from astrbot.api import logger
 from astrbot.core.agent.tool import FunctionTool
+from mcp.types import CallToolResult, TextContent
 
 
 class TTSProviderAdapter(ABC):
@@ -94,6 +96,41 @@ class TTSProviderAdapter(ABC):
             Optional[FunctionTool]: FunctionTool 实例或 None
         """
         pass
+
+    async def _handle_enhance_tool(self, **kwargs) -> CallToolResult:
+        """tts_enhance 工具的实际 handler。
+
+        由 ``build_enhance_tool`` 挂到 ``FunctionTool.handler``。
+        合法返回 ``isError=False``（清洗后的参数 JSON）；
+        非法返回 ``isError=True``（中文错误提示）。
+        TTSSubAgent 据此驱动重试。
+        """
+        is_valid, err = self.validate_params(kwargs)
+        if is_valid:
+            payload = json.dumps(self.sanitize_params(kwargs), ensure_ascii=False)
+            return CallToolResult(
+                isError=False, content=[TextContent(type="text", text=payload)]
+            )
+        return CallToolResult(
+            isError=True,
+            content=[
+                TextContent(
+                    type="text",
+                    text=f"参数格式错误：{err}。请修正后重新调用 tts_enhance 工具。",
+                )
+            ],
+        )
+
+    def build_enhance_tool(self, description: str, parameters: dict) -> FunctionTool:
+        """构造 tts_enhance 工具并挂上校验 handler。
+
+        统一固定工具名，避免各适配器重复写 FunctionTool 与接线。
+        """
+        tool = FunctionTool(
+            name="tts_enhance", description=description, parameters=parameters
+        )
+        tool.handler = self._handle_enhance_tool
+        return tool
 
     @abstractmethod
     async def call_api(

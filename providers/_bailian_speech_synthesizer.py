@@ -159,18 +159,10 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
 
     # ---------- 1. 定义工具 Schema ----------
     def get_tool_schema(self) -> FunctionTool:
-        """返回用于 TTS 参数增强的 Function Tool。
-        
-        该方法定义了一个名为 "tts_enhance" 的工具，用于接收和结构化语音合成参数。
-        参数包括文本内容、情感指令、音量、语速和语言提示等。
-        
-        Returns:
-            FunctionTool: 配置好的 FunctionTool 对象，包含所有必要的参数定义
-        """
-        return FunctionTool(
-            name="tts_enhance",
-            description="为语音合成提供增强参数，包括文本、指令、音量、语速和语言提示。",
-            parameters={
+        """返回用于 TTS 参数增强的 Function Tool。"""
+        return self.build_enhance_tool(
+            "为语音合成提供增强参数，包括文本、指令、音量、语速和语言提示。",
+            {
                 "type": "object",
                 "properties": {
                     "text": {
@@ -210,9 +202,6 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
                 },
                 "required": ["text"]
             },
-            
-            # 无需执行，只用于让 LLM 输出参数
-            handler=None  
         )
 
     # ---------- 2. 构建 SubAgent 系统提示 ----------
