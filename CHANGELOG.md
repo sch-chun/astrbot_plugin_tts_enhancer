@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.5] - 2026-10-04
+
+### Added
+
+- **文档体系补齐**（此前仅有 README）：
+  - 新增架构文档 `docs/zh/ARCHITECTURE.md`：设计目标与定位、四层整体架构（含 mermaid 流程图）、请求生命周期（标签触发 + 工具触发两条路径）、核心模块分解（`main.py` / `src/*` / `providers/*` / `pages/tts_manager`）、适配器体系（抽象基类接口契约 / `ProviderFactory` 自动发现 / 百炼公共基类 / 能力说明书机制）、多供应商回退与人格路由、SubAgent 增强机制、前端架构、配置系统、安全设计（file_id 白名单 + 路径穿越二次防护 + entry_id 校验 + 上传扩展名白名单 + api_key 脱敏）、数据目录与持久化
+  - 新增开发指南 `docs/zh/DEVELOPMENT.md`：环境准备（AstrBot 运行 / pytest 测试 / 前端免构建）、目录结构、新增供应商 5 步清单、适配器开发详解、`call_api` 的 `voice_id` 覆盖约定、utils 复用、参数校验与清洗、能力说明书编写规范、`_conf_schema.json` 扩展、前端接入（componentMap / providerConfig / bridge / composables）、测试规范（含 xfail 固化缺陷约定）、代码风格、发布流程、常见陷阱
+  - 新增英文 README `docs/en/README.md`（结构对齐中文版，并链接中文架构 / 开发文档）
+  - `README.md`「文档与更新」一节补充指向架构文档、开发指南、英文 README 的导航链接
+  - 中英文 README 页首互链语言切换（`[English](docs/en/README.md) · 简体中文` 与 `[中文](../../README.md) · English`）
+  - 同步修正文档与 0.3.4 的不一致：移除已删除的 `src/file_server.py` 相关描述（Web 路由端点、临时文件服务器章节、安全设计条目）、音色复刻改为管理页浏览器内 Data URL 提交、版本徽章更新；新增 LICENSE（AGPL-3.0）
+
 ## [0.3.4] - 2026-10-02
 
 ### Changed
