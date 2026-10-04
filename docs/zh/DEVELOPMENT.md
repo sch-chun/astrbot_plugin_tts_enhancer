@@ -103,8 +103,12 @@ class ExampleTtsAdapter(TTSProviderAdapter):
         )
 
     def get_tool_schema(self):
-        # 复用基类 FunctionTool 定义 tts_enhance（见 base.py / _bailian_speech_synthesizer.py）
-        ...
+        # 通过基类 build_enhance_tool 构造 tts_enhance 并自动挂上校验 handler
+        # （见 base.py：固定工具名、统一 FunctionTool 构造与 _handle_enhance_tool 接线）
+        return self.build_enhance_tool(
+            description="将文本合成为语音所需的参数",
+            parameters={...},  # 该适配器的参数 schema
+        )
 
     async def call_api(self, text, raw_params, config, voice_id=None) -> str:
         # 1. 合并配置与 raw_params（工具参数优先）
@@ -116,7 +120,7 @@ class ExampleTtsAdapter(TTSProviderAdapter):
 ### 4.2 必实现抽象方法
 
 - `get_subagent_system_prompt() -> str`：拼接能力说明书，指导 SubAgent 产出参数。
-- `get_tool_schema() -> FunctionTool | None`：定义 `tts_enhance` 工具 Schema（参数与范围）。返回 `None` 表示不支持 Function Calling（将走纯文本降级）。
+- `get_tool_schema() -> FunctionTool | None`：通过基类 `build_enhance_tool` 返回 `tts_enhance` 工具（已挂上校验 handler）。返回 `None` 表示不支持 Function Calling（将走纯文本降级）。
 - `call_api(text, raw_params, config, voice_id=None) -> str`：合成核心。返回音频文件路径；**失败返回空串**而非抛异常（主流程据此切换供应商）。`voice_id` 用于预览时显式覆盖音色。
 
 ### 4.3 可选能力（音色 / 文件管理）
@@ -130,7 +134,7 @@ class ExampleTtsAdapter(TTSProviderAdapter):
 
 ### 4.4 参数校验与清洗
 
-- **范围/枚举校验**：覆盖 `validate_params(params) -> (bool, str)`。返回 `(False, msg)` 时主流程会回填上下文让 SubAgent 重试，末次失败转 `sanitize_params`。
+- **范围/枚举校验**：覆盖 `validate_params(params) -> (bool, str)`。返回 `(False, msg)` 时 SubAgent 以 `role:"tool"` 结构化工具结果（含错误文本）回灌给 LLM 重试，末次失败转 `sanitize_params` 清洗兜底。
 - **清洗**：覆盖 `sanitize_params(params) -> dict`，丢弃非法值、保留合法值（如把 LLM 以字符串返回的数字用 `_as_float`/`_as_int` 归一到数值，排除 `bool`）。
 - **通用校验**：直接用基类的 `validate_voice_id()`、`validate_text_length()`（汉字=2 字符，与前端 `useTextValidator` 对齐），避免重复实现。
 - **类型安全**：参数解析一律走 `_as_float` / `_as_int`，避免"拒字符串数字"且"漏掉 bool"。

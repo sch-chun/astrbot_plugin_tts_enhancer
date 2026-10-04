@@ -62,14 +62,11 @@ flowchart TD
     E --> F[供应商分区: 人格专属 + 通用兜底]
     F --> G{是否启用增强 且 有说明书}
     G -- 否 --> H[纯文本 call_api 降级]
-    G -- 是 --> I[SubAgent 生成 tts_enhance 参数]
-    I --> J{参数校验通过?}
-    J -- 否, 末次 --> K[sanitize_params 清洗后合成]
-    J -- 否, 非末次 --> L[回填上下文重试, 最多 2 次]
-    J -- 是 --> M[call_api 合成]
+    G -- 是 --> I[SubAgent 生成 tts_enhance 参数<br/>（内部含 role:"tool" 结构化重试，≤2 次）]
+    I --> J{返回合法参数?}
+    J -- 是（含末次非法清洗兜底） --> M[call_api 合成]
+    J -- 否（工具异常耗尽） --> P[切换下一供应商]
     H --> N[Record 音频消息]
-    K --> M
-    L --> I
     M --> N
     N --> O[返回消息链]
 ```
@@ -148,10 +145,9 @@ flowchart TD
   2. 候选为空时仅 Warning，不静默失败。
   3. 对每个条目：注入 `_data_dir` → `ProviderFactory.get_adapter()` → 判定 `enable_enhance = config.enable_enhance and bool(docs_content)`。
   4. **无增强/无文档**：直接以 `raw_params={}` 纯文本合成（避免白调用一次 LLM）。
-  5. **增强路径**：用 `adapter.get_tool_schema()` 构造 `ToolSet` → 调用 `sub_agent.call()`，最多 `max_attempts=2` 次：
-     - 返回结构经 `adapter.validate_params()` 校验；末次失败则 `sanitize_params()` 清洗后合成；
-     - 非末次失败将"尝试调用/参数错误"回填上下文再试；
-     - 异常同样触发重试。
+    5. **增强路径**：用 `adapter.get_tool_schema()` 构造 `ToolSet` → 调用 `sub_agent.call()`（内部 `max_attempts=2`）：
+       - 返回结构经 `adapter.validate_params()` 校验；校验失败或工具执行异常时，构造 `[assistant(tool_calls), tool(tool_call_id, content)]` 以 `role:"tool"` 结构化工具结果（含错误文本）经 `provider.text_chat(tool_calls_result=...)` 回灌给 LLM 重试；
+       - 末次校验失败且适配器支持清洗时，`sub_agent.call()` 返回 `sanitize_params()` 清洗后的参数；工具异常耗尽则返回 `None`，由上层切换供应商。
   6. SubAgent 返回空 `text` 时保留原文；最终 `call_api()` 成功返回 `Record.fromFileSystem(path, text=...)`，失败切换下一供应商。
 
 ### 4.5 `src/sub_agent.py` — SubAgent
@@ -162,6 +158,7 @@ flowchart TD
 - 拼装用户提示：人格 + 上下文摘要 + 待合成文本。
 - 调用 `provider.text_chat(..., func_tool=tool_set)`；优先解析 `tools_call_name == 'tts_enhance'` 的 `tools_call_args`；
 - 无工具调用时降级从 `completion_text` 提取（仅含 `text`）；最终失败返回 `None`。
+- 重试机制：校验失败或工具执行异常时，构造 `[assistant(tool_calls), tool(tool_call_id, content)]` 经 `tool_calls_result` 结构化回灌（真正的 `role:"tool"` 对象级循环），而非拍平进 prompt；仅当模型未发起工具调用时才以 `role:"user"` 轻量提示其重新调用。
 - 所有异常被捕获并记录，绝不向上抛。
 
 ### 4.6 `src/tools.py` — 主动语音工具
@@ -188,7 +185,7 @@ flowchart TD
 | 方法 | 说明 |
 |------|------|
 | `get_subagent_system_prompt() -> str` | 生成注入 SubAgent 的系统提示（通常拼接能力说明书）。 |
-| `get_tool_schema() -> FunctionTool \| None` | 返回 `tts_enhance` 工具的参数 Schema；不支持 Function Calling 可返回 `None`。 |
+| `get_tool_schema() -> FunctionTool \| None` | 经基类 `build_enhance_tool` 返回 `tts_enhance` 工具（已挂校验 handler）；不支持 Function Calling 可返回 `None`。 |
 | `call_api(text, raw_params, config, voice_id=None) -> str` | 合成并返回音频文件路径（或空串表示失败）。`voice_id` 用于预览时显式覆盖音色。 |
 
 **可选能力（默认 `raise NotImplementedError`）：**
@@ -246,7 +243,7 @@ flowchart TD
 
 1. **人格分区**：根据当前 `persona_id`，将供应商分为 `bound`（绑定该人格）与 `unbound`（未绑定），有序尝试 `bound` 在前。
 2. **回退语义**：`bound` 全部失败且存在 `unbound` 时，Warning 后回退通用音色；无任何可用音色或专属失败且无兜底时，Warning 提示并放弃本次合成（返回 `None`）。
-3. **单供应商内部重试**：SubAgent 参数非法时，回填上下文重试，最多 2 次；`call_api` 异常或返回空同样切换下一供应商。
+3. **单供应商内部重试**：SubAgent 参数非法或工具执行异常时，以 `role:"tool"` 结构化工具结果回灌 LLM 重试（内置最多 2 次）；末次校验失败由 `sanitize_params` 清洗兜底，工具异常耗尽则切换下一供应商。
 4. **纯文本降级**：未启用增强或缺失说明书的供应商，直接以纯文本合成，跳过 SubAgent。
 
 ---
