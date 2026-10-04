@@ -8,7 +8,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v0.3.3-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.3.5-green)](../../CHANGELOG.md)
 
 ---
 
@@ -53,7 +53,7 @@ The SubAgent **reads this document dynamically** at synthesis time and generates
 
 The plugin provides **reusable frontend components** (`components/common/`) that encapsulate the standard voice-management interactions:
 
-- `bailian_speech_synthesizer.js` — upload / URL / design modes, preview, listing, deletion
+- `bailian_speech_synthesizer.js` — clone / design modes (clone audio is encoded as a Data URL in the browser), preview, listing, deletion
 - `voice_preview_modal.js` — voice preview modal with listen / keep / delete
 - `delete_confirm_modal.js` — delete confirmation modal (avoids `confirm()` being blocked in sandboxes)
 

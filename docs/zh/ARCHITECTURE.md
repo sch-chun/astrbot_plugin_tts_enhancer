@@ -34,7 +34,7 @@ AstrBot 的主模型（LLM）默认只能向 TTS 环节传递纯文本。然而�
 │  - on_decorate 解析标签 → 拆分文本段与 TTS 段                           │
 │  - TTSService 编排合成、上下文、人格路由、多供应商回退                    │
 │  - SendVoiceTool 提供 send_voice_to_user 主动语音工具                    │
-│  - Web API 路由（音色/文件管理、上传、临时文件服务器、KV）               │
+│  - Web API 路由（音色/文件管理、上传、KV）                               │
 └───────────────────────────────┬──────────────────────────────────────┘
                                  │
 ┌───────────────────────────────▼──────────────────────────────────────┐
@@ -113,7 +113,6 @@ flowchart TD
   - `GET /providers`：按 `template_key` 分组返回供应商列表，`api_key` 脱敏。
   - `POST /voice/{create,list,delete}`：音色管理，按 `entry_id` 路由到适配器。
   - `POST /upload`：本地上传音频（扩展名白名单）。
-  - `POST /start_file_server` / `stop_file_server`：临时文件服务器。
   - `POST /voice/preview`：音色预览（Base64 返回）。
   - `POST /kv/{set,get,delete}`：通用 KV 存储（前端/适配器存取元数据）。
   - `POST /file/{upload,list,get,delete}`：供应商文件管理（透传 `**kwargs`）。
@@ -172,11 +171,7 @@ flowchart TD
 - 参数：`text`（必填）、`session`（可选，格式 `platform_id:message_type:session_id`）。
 - `__post_init__` 校验 `tts_service` 非空；`call()` 内获取上下文、`synthesize()`、用 `star_context.send_message()` 发送。
 
-### 4.7 `src/file_server.py` — 临时文件服务器
-
-`TempFileServer`（基于 aiohttp）：绑定 `0.0.0.0:internal_port` 提供**单文件** HTTP 下载，按扩展名返回 MIME（`_MIME_MAP`）。全局以 `file_id` 管理 `_servers` 字典（`get/add/remove_server`）。用于前端在沙箱环境里把本地上传的音频暴露成可播放 URL（由前端自行拼接公网地址）。
-
-### 4.8 `providers/` — 适配器体系
+### 4.7 `providers/` — 适配器体系
 
 见第 5 节。
 
@@ -279,7 +274,7 @@ flowchart TD
   - `componentMap`：把 `template_key` 映射到对应 Vue 组件；`getDisplayName()` 提供中文标签。
   - 按 `template_key` 分组渲染 Tabs，当前组件通过 `<component :is>` 动态装载，并传入 `entries / bridge / template-key`。
 - **组件组织**：
-  - `components/common/`：跨供应商共享组件（`bailian_speech_synthesizer.js` 上传/URL/设计三模式、`voice_preview_modal.js` 预览模态框、`delete_confirm_modal.js` 删除确认）。
+  - `components/common/`：跨供应商共享组件（`bailian_speech_synthesizer.js` 复刻/设计两模式（复刻音频经浏览器编码为 Data URL 提交）、`voice_preview_modal.js` 预览模态框、`delete_confirm_modal.js` 删除确认）。
   - `components/*.js`：各供应商薄封装，引用 common 组件并通过 `providerConfig` 配置差异（语言列表、帮助链接、是否支持系统音色等）。
   - `composables/`：`useAudioManager`（全局音频单例/音量）、`useTextValidator`（汉字=2 字符计数与校验）、`useClipboard`、`useToast`。
 - 样式集中在 `style.css`；`eslint.config.mjs` 提供可选 lint（仅开发期）。
@@ -313,7 +308,7 @@ flowchart TD
 - **路由参数校验**：`_parse_entry_id()` 校验类型（排除 `bool`）与越界，非法返回 `None` → 404。
 - **上传扩展名白名单**：`upload_file` 仅允许 `wav/mp3/m4a/aac/ogg/flac`，异常后缀不入盘。
 - **API Key 脱敏**：`/providers` 与适配器初始化均对 `api_key` 做 `***** + 末 5 位` 处理，避免写日志泄露。
-- **临时文件服务器**：仅暴露单文件、绑定内部端口，停止时清理服务器与临时文件。
+- **音频提交方式**：音色复刻音频由管理页在浏览器内编码为 Data URL（Base64）直接提交至创建接口，不暴露公网地址或内部监听端口。
 
 ---
 

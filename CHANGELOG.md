@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
   - 新增英文 README `docs/en/README.md`（结构对齐中文版，并链接中文架构 / 开发文档）
   - `README.md`「文档与更新」一节补充指向架构文档、开发指南、英文 README 的导航链接
   - 中英文 README 页首互链语言切换（`[English](docs/en/README.md) · 简体中文` 与 `[中文](../../README.md) · English`）
+  - 同步修正文档与 0.3.4 的不一致：移除已删除的 `src/file_server.py` 相关描述（Web 路由端点、临时文件服务器章节、安全设计条目）、音色复刻改为管理页浏览器内 Data URL 提交、版本徽章更新；新增 LICENSE（AGPL-3.0）
 
 ## [0.3.4] - 2026-10-02
 

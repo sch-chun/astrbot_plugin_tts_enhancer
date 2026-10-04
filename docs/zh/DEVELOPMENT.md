@@ -49,8 +49,7 @@ astrbot_plugin_tts_enhancer/
 │   ├── tts_parser.py            # <tts> 标签解析
 │   ├── tts_service.py           # 合成编排核心
 │   ├── sub_agent.py             # SubAgent（Function Calling 参数生成）
-│   ├── tools.py                 # send_voice_to_user 主动语音工具
-│   └── file_server.py           # 临时文件服务器（aiohttp）
+│   └── tools.py                 # send_voice_to_user 主动语音工具
 ├── providers/
 │   ├── __init__.py              # ProviderFactory（自动发现）
 │   ├── base.py                  # TTSProviderAdapter 抽象基类
@@ -229,7 +228,7 @@ export default {
 };
 ```
 
-通用组件已封装上传/URL/设计三模式、试听、列表、删除，以及 `voice_preview_modal` / `delete_confirm_modal`（沙箱下替代 `confirm()`）。
+通用组件已封装复刻/设计两模式（复刻音频经浏览器编码为 Data URL 直接提交）、试听、列表、删除，以及 `voice_preview_modal` / `delete_confirm_modal`（沙箱下替代 `confirm()`）。
 
 ### 7.4 bridge API
 
