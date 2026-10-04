@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.6] - 2026-10-05
+
+### Changed
+
+- **SubAgent 校验重试机制重构**：改为通过 `provider.text_chat(tool_calls_result=...)` 传结构化工具结果（真正的 `role:"tool"` 对象级循环：`[assistant(tool_calls), tool(tool_call_id, content)]`），替代此前拍平进 prompt 的半吊子方案——旧方案缺前置 `assistant(tool_calls)` 消息，严格 provider 会拒收。
+  - 校验失败与工具执行异常统一以 `role:"tool"` 结构化回灌，供 LLM 修正后重试；仅当模型未发起工具调用时才以 `role:"user"` 提示其重新调用工具，以区分「工具结果」与「用户侧指令」两种语义。
+  - 抽象 `build_enhance_tool` 进基类 `TTSProviderAdapter`：统一 `FunctionTool` 构造与 handler 接线，固定工具名为 `tts_enhance`；各适配器 `get_tool_schema` 只需声明自己的参数 schema（`minimax_speech_2_8` / `mimo_v2_5_tts` / `_bailian_speech_synthesizer` / `bailian_minimax_speech_2_8` 均已迁移）。
+- 测试：新增 / 修正 SubAgent 重试用例，覆盖结构化回灌与 `build_enhance_tool` 抽象，并保留上游担保 / 设计取舍类的 xfail 观察项。
+
 ## [0.3.5] - 2026-10-04
 
 ### Added
