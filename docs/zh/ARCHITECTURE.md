@@ -62,7 +62,7 @@ flowchart TD
     E --> F[供应商分区: 人格专属 + 通用兜底]
     F --> G{是否启用增强 且 有说明书}
     G -- 否 --> H[纯文本 call_api 降级]
-    G -- 是 --> I[SubAgent 生成 tts_enhance 参数<br/>（内部含 role:"tool" 结构化重试，≤2 次）]
+    G -- 是 --> I[SubAgent 生成 tts_enhance 参数<br/>（内部含 role:tool 结构化重试，≤2 次）]
     I --> J{返回合法参数?}
     J -- 是（含末次非法清洗兜底） --> M[call_api 合成]
     J -- 否（工具异常耗尽） --> Q[降级纯文本合成（原文 + 空参数）]
