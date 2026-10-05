@@ -11,8 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 - **测试 xfail 清理**：原 8 个 `@pytest.mark.xfail(strict=True)` 观察项实跑确认仍全部 xfail（无 XPASS），按性质拆分处置：
   - 设计取舍类（缺陷 #1 / #3 / #5，共 5 条用例）转为断言「已接受实际行为」的普通绿测（`tests/test_tts_parser.py`、`tests/test_main_helpers.py`、`tests/test_config.py`），类改名 `TestKnownDefects` → `TestAcceptedBehavior`，移除 `xfail` 装饰器与不再需要的 `import pytest`。
-  - 不可达 / 上游担保类（缺陷 #6 / #14 / #15，共 3 条用例）直接删除（无法构造真实入参，测不到本仓库代码）；决策与依据记入新建 `docs/zh/KNOWN_LIMITATIONS.md`。
-- 文档：`docs/zh/DEVELOPMENT.md` 8.3 补充「判定为不再修复的观察项不应长期保留 xfail」的处置约定；`TEST_REPORT.md` 结论速览与质量门禁数字更新为当前状态（383 passed / 0 xfailed），并标注观察项已在 0.3.7 按性质处置。
+  - 上游担保 / 不可达类（缺陷 #6 / #14 / #15，共 3 条用例）**保留为绿测守卫**（仍锁定当前行为并保留回归哨兵，未删除）：三条用例均成功构造真实入参、测的是本仓库代码，删除反而丢失对未来行为变更的感知。其中 #14 因「不可达」论证在 `sub_agent` 重构后可能失效，额外在 `src/tts_service.py` 将 `log_enhanced_params` 分支的 `json.dumps` 纳入 `try/except`，消除中断风险；#6 / #15 则不修代码，仅守护当前行为。决策与依据记入新建 `docs/zh/KNOWN_LIMITATIONS.md`。
+- 文档：`docs/zh/DEVELOPMENT.md` 8.3 明确「复核后不应长期保留 xfail」的处置约定（设计取舍转绿测、上游担保/不可达保留为绿测守卫而非删除）；`TEST_REPORT.md` 结论速览与质量门禁数字更新为当前状态（386 passed / 0 xfailed），并标注观察项已在 0.3.7 按性质处置。
 - 版本号与 README / `docs/en/README.md` 版本徽章统一至 `v0.3.7`。
 
 ## [0.3.6] - 2026-10-05

@@ -1,7 +1,7 @@
 # TTS Enhancer 架构文档
 
 > 本文档面向希望深入理解插件内部机制的开发者与维护者。
-> 配套文档：[开发指南](DEVELOPMENT.md) · [英文 README](../en/README.md) · [CHANGELOG](../../CHANGELOG.md)
+> 配套文档：[开发指南](DEVELOPMENT.md) · [已知限制与上游责任](KNOWN_LIMITATIONS.md) · [英文 README](../en/README.md) · [CHANGELOG](../../CHANGELOG.md)
 
 ---
 

@@ -1,5 +1,6 @@
 """src/config.py 单元测试 —— 覆盖排序、去重、命名回退与异常配置。"""
 
+import pytest
 from astrbot_plugin_tts_enhancer.src.config import TTSEnhancerConfig
 
 
@@ -118,11 +119,11 @@ class TestGet:
 
 
 class TestAcceptedBehavior:
-    """已接受的设计取舍 —— 普通绿测，锁定当前契约行为。
+    """已接受的行为 / 上游责任的绿测守卫。
 
-    原 xfail 标记的缺陷#5（设计取舍）经二轮复核降级为观察项，不再计划修复；
-    改为断言已接受的「就地写入调用方配置」行为。缺陷#6（上游担保）不可达，已删除用例，
-    决策见 docs/zh/KNOWN_LIMITATIONS.md。
+    原 xfail 标记的 #5（设计取舍）与 #6（上游担保）经二轮复核判定「不修代码」，
+    但「不修代码 ≠ 删测试」——两条用例都成功构造了入参、测的是本仓库代码，故转为绿测守卫，
+    锁定当前行为并保留回归哨兵。决策与依据见 docs/zh/KNOWN_LIMITATIONS.md。
     """
 
     def test_resolves_name_into_caller_config(self):
@@ -134,3 +135,12 @@ class TestAcceptedBehavior:
         raw = _prov({"display_name": "小明"})
         TTSEnhancerConfig(raw)
         assert raw["providers"][0]["__resolved_name"] == "小明"
+
+    def test_providers_as_dict_raises_attribute_error(self):
+        """上游担保（原缺陷#6）：providers 误配为 dict 时触发 AttributeError。
+
+        该结构被 schema 要求为数组、生产路径由上游挡掉，不修代码；此处锁定当前行为，
+        以便日后若补结构校验时本用例会失败、提示行为变更（不删测试，保留守卫）。
+        """
+        with pytest.raises(AttributeError):
+            TTSEnhancerConfig({"providers": {"a": 1}})

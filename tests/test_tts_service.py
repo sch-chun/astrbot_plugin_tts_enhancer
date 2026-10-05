@@ -343,8 +343,53 @@ class TestSubAgentResultHandling:
         assert len(good.call_api_calls) == 1
 
 
-# 已删除 TestKnownDefects：缺陷#14（不可达）、缺陷#15（上游担保）均非本仓库责任，
-# 决策与依据见 docs/zh/KNOWN_LIMITATIONS.md。
+class TestAcceptedBehavior:
+    """已接受的行为 / 上游责任的绿测守卫。
+
+    原 xfail 标记的 #14 / #15 经二轮复核判定为「生产路径不可达 / 归上游责任，故不修代码」，
+    但「不修代码 ≠ 删测试」——用例都成功构造了入参、测的是本仓库代码，故转为绿测守卫，
+    既锁定当前行为又保留回归哨兵。决策与依据见 docs/zh/KNOWN_LIMITATIONS.md。
+    """
+
+    async def test_unserializable_params_log_does_not_abort(
+        self, monkeypatch, conv_mgr, persona_mgr
+    ):
+        """原缺陷#14（已修代码 + 保留守卫）：log_enhanced_params 开启时 api_params 含
+        不可序列化对象，日志 json.dumps 已纳入 try，不再中断 synthesize。
+
+        守卫意义：#14「不可达」的论证前提是「api_params 三来源均为 JSON 原生类型」，而
+        sub_agent 返回路径重构后该前提可能失效；保留此用例可在新来源引入时报警。
+        """
+        adapter = RecordingAdapter(docs="# docs", return_path="/tmp/x.mp3")
+        service = _make_service(
+            monkeypatch,
+            [{"__template_key": "x"}],
+            {"log_enhanced_params": True},
+            adapter=adapter,
+            conversation_manager=conv_mgr,
+            persona_manager=persona_mgr,
+        )
+        service.sub_agent = FakeSubAgent(results=[{"text": "hi", "junk": object()}])
+        result = await service.synthesize("原始", DummyEvent(), [])
+        assert result is not None
+
+    async def test_bool_context_window_silently_accepted(self, persona_mgr):
+        """上游担保（原缺陷#15）：context_window 用 isinstance(x, int) 校验，
+        bool 是 int 子类故 True 静默通过。该入参来自配置且 schema 声明 int，生产路径由上游挡掉，
+        不修代码；此处锁定「bool 被当作合法窗口」的当前行为以便回归感知。
+        """
+        history = json.dumps([{"role": "user", "content": "u1"}])
+        service = _make_service(
+            pytest.MonkeyPatch(),
+            [],
+            {"context_window": True},
+            conversation_manager=DummyConversationManager(
+                conversation=DummyConversation(history=history)
+            ),
+            persona_manager=persona_mgr,
+        )
+        msgs = await service.get_context_messages(DummyEvent())
+        assert msgs != []  # bool 被当作合法窗口，返回历史而非空
 
 
 class TestRegressionGuards:
