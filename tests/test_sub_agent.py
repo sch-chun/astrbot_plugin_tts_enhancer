@@ -2,9 +2,6 @@
 
 import json
 
-from astrbot.core.agent.tool import FunctionTool, ToolSet
-from mcp.types import CallToolResult, TextContent
-
 from astrbot_plugin_tts_enhancer.src.sub_agent import TTSSubAgent
 from conftest import (
     DummyContext,
@@ -13,6 +10,9 @@ from conftest import (
     DummyResponse,
     RecordingAdapter,
 )
+from mcp.types import CallToolResult, TextContent
+
+from astrbot.core.agent.tool import FunctionTool, ToolSet
 
 
 def _agent(config=None, context=None):
@@ -203,7 +203,9 @@ class TestToolExecutionAndRetry:
         async def handler(**kw):
             return CallToolResult(
                 isError=False,
-                content=[TextContent(type="text", text=json.dumps(kw, ensure_ascii=False))],
+                content=[
+                    TextContent(type="text", text=json.dumps(kw, ensure_ascii=False))
+                ],
             )
 
         agent = _agent({}, DummyContext(provider=provider))
@@ -229,11 +231,15 @@ class TestToolExecutionAndRetry:
             if kw.get("speed") == 99:
                 return CallToolResult(
                     isError=True,
-                    content=[TextContent(type="text", text="speed 必须在 0.5~2.0 之间")],
+                    content=[
+                        TextContent(type="text", text="speed 必须在 0.5~2.0 之间")
+                    ],
                 )
             return CallToolResult(
                 isError=False,
-                content=[TextContent(type="text", text=json.dumps(kw, ensure_ascii=False))],
+                content=[
+                    TextContent(type="text", text=json.dumps(kw, ensure_ascii=False))
+                ],
             )
 
         agent = _agent({}, DummyContext(provider=provider))
@@ -324,7 +330,9 @@ class TestToolExecutionAndRetry:
                 raise RuntimeError("boom")
             return CallToolResult(
                 isError=False,
-                content=[TextContent(type="text", text=json.dumps(kw, ensure_ascii=False))],
+                content=[
+                    TextContent(type="text", text=json.dumps(kw, ensure_ascii=False))
+                ],
             )
 
         agent = _agent({}, DummyContext(provider=provider))
