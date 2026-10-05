@@ -13,9 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
   - 校验失败与工具执行异常统一以 `role:"tool"` 结构化回灌，供 LLM 修正后重试；仅当模型未发起工具调用时才以 `role:"user"` 提示其重新调用工具，以区分「工具结果」与「用户侧指令」两种语义。
   - 抽象 `build_enhance_tool` 进基类 `TTSProviderAdapter`：统一 `FunctionTool` 构造与 handler 接线，固定工具名为 `tts_enhance`；各适配器 `get_tool_schema` 只需声明自己的参数 schema（`minimax_speech_2_8` / `mimo_v2_5_tts` / `_bailian_speech_synthesizer` / `bailian_minimax_speech_2_8` 均已迁移）。
 - 测试：新增 / 修正 SubAgent 重试用例，覆盖结构化回灌与 `build_enhance_tool` 抽象，并保留上游担保 / 设计取舍类的 xfail 观察项。
-
-### Docs
-- 同步 `docs/zh/ARCHITECTURE.md` 与 `docs/zh/DEVELOPMENT.md`：将「回填上下文重试」等旧拍平描述改为「以 `role:"tool"` 结构化工具结果（`tool_calls_result`）回灌重试」，并补充 `build_enhance_tool` 抽象在基类与适配器开发示例中的说明。
+- 文档与徽章：`docs/zh/ARCHITECTURE.md` 与 `docs/zh/DEVELOPMENT.md` 将「回填上下文重试」旧拍平描述改为「以 `role:"tool"` 结构化工具结果（`tool_calls_result`）回灌重试」，并补充 `build_enhance_tool` 抽象说明；README 与 `docs/en/README.md` 版本徽章统一至 `v0.3.6`。
 
 ## [0.3.5] - 2026-10-04
 
