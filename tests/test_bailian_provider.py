@@ -11,7 +11,9 @@ import base64
 
 import httpx
 import pytest
-from astrbot_plugin_tts_enhancer.providers import _bailian_speech_synthesizer as bailian_module
+from astrbot_plugin_tts_enhancer.providers import (
+    _bailian_speech_synthesizer as bailian_module,
+)
 from astrbot_plugin_tts_enhancer.providers._bailian_speech_synthesizer import (
     BailianSpeechSynthesizerAdapter,
     _validate_clone_data_url,
