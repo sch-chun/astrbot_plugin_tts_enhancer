@@ -1,6 +1,5 @@
 """src/config.py 单元测试 —— 覆盖排序、去重、命名回退与异常配置。"""
 
-import pytest
 from astrbot_plugin_tts_enhancer.src.config import TTSEnhancerConfig
 
 
@@ -118,25 +117,20 @@ class TestGet:
         assert cfg.get("missing", "fallback") == "fallback"
 
 
-class TestKnownDefects:
-    """已确认缺陷 —— 以 xfail 固化（均属上游担保 / 设计取舍 / 不可达）。"""
+class TestAcceptedBehavior:
+    """已接受的设计取舍 —— 普通绿测，锁定当前契约行为。
 
-    @pytest.mark.xfail(
-        reason="缺陷#5（二轮复核：设计取舍，降级为观察项）: _load_providers 就地改写 "
-        "调用方传入的 raw_config（写入 __resolved_name）。该字段仅为去重显示名、"
-        "非敏感信息，且 AstrBot 对 schema 外字段宽容不会污染保存流程。"
-        "保留此用例以记录「插件持有并修改上游 dict 引用」这一事实，非必修项",
-        strict=True,
-    )
-    def test_should_not_mutate_caller_config(self):
+    原 xfail 标记的缺陷#5（设计取舍）经二轮复核降级为观察项，不再计划修复；
+    改为断言已接受的「就地写入调用方配置」行为。缺陷#6（上游担保）不可达，已删除用例，
+    决策见 docs/zh/KNOWN_LIMITATIONS.md。
+    """
+
+    def test_resolves_name_into_caller_config(self):
+        """设计取舍（原缺陷#5）：_load_providers 会就地写入调用方传入的 raw_config。
+
+        __resolved_name 仅为去重显示名、非敏感信息，且 AstrBot 对 schema 外字段宽容，
+        不会污染保存流程，故接受该行为。
+        """
         raw = _prov({"display_name": "小明"})
         TTSEnhancerConfig(raw)
-        assert "__resolved_name" not in raw["providers"][0]
-
-    @pytest.mark.xfail(
-        reason="缺陷#6（二轮复核：设计取舍，降级为观察项）: providers 为非空 dict 时触发 AttributeError "
-        "（配置结构被误配时缺乏校验）。但 schema 已要求 providers 为数组，手工误配 dict 属使用者责任，非必修项",
-        strict=True,
-    )
-    def test_providers_as_dict_should_not_raise(self):
-        TTSEnhancerConfig({"providers": {"a": 1}})
+        assert raw["providers"][0]["__resolved_name"] == "小明"

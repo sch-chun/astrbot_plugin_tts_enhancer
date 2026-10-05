@@ -1,6 +1,5 @@
 """src/tts_parser.py 单元测试 —— 重点覆盖标签解析的边界与异常路径。"""
 
-import pytest
 from astrbot_plugin_tts_enhancer.src.tts_parser import split_by_tts_tags
 
 
@@ -63,40 +62,36 @@ class TestMalformedTags:
         ]
 
 
-class TestKnownDefects:
-    """已确认缺陷 —— xfail(strict=True) 固化现状。
+class TestAcceptedBehavior:
+    """已接受的设计取舍 —— 普通绿测，锁定当前契约行为。
 
-    修复后这些用例会 XPASS 并使 CI 失败，以此提醒摘掉标记，
-    而不是永远静默地「绿着不办事」。
+    原 xfail 标记的缺陷（#1 / #1 连带 / #3）经二轮复核判定为设计取舍，降级为观察项，
+    不再计划修复。改为直接断言已接受的实际行为，避免用 xfail 持续发出「这是 bug」
+    的误导信号，也避免 strict=True 在正常重构时误挂 CI。
     """
 
-    @pytest.mark.xfail(
-        reason="缺陷#1（二轮复核：设计取舍，降级为观察项）: 空 <tts></tts> 标签返回空列表，"
-        "上游 _process_tts_text 会丢弃整个 Plain 组件。但空标签本就无内容可念，"
-        "静默移除可接受；仅「整条消息只有一个空标签」时客户端收不到内容，影响面极小",
-        strict=True,
-    )
-    def test_empty_tts_tag_should_preserve_nothing_but_not_break(self):
-        # 期望：不应返回空列表导致整段文本被吞；返回 [] 亦可接受，
-        # 但上游必须有兜底。此处断言「解析结果非空或为纯文本兜底」
-        result = split_by_tts_tags("<tts></tts>")
-        assert result != []  # 当前实际行为为 []，故 xfail
+    def test_empty_tts_tag_yields_empty(self):
+        """设计取舍（原缺陷#1）：空 <tts></tts> 标签无内容可念，解析返回空列表。
 
-    @pytest.mark.xfail(reason="缺陷#1 连带影响: 纯空白标签同样返回空列表", strict=True)
-    def test_whitespace_only_tts_tag(self):
-        assert split_by_tts_tags("<tts>   </tts>") != []
+        上游 _process_tts_text 会据此丢弃整个 Plain 组件；仅当整条消息只有一个
+        空标签时客户端收不到内容，影响面极小，接受该行为。
+        """
+        assert split_by_tts_tags("<tts></tts>") == []
 
-    @pytest.mark.xfail(
-        reason="缺陷#3（二轮复核：设计取舍，降级为观察项）: 嵌套标签未被展开，"
-        "内层 <tts> 残留于 TTS 内容中将被原样发送给 API。"
-        "但 <tts> 是给 LLM 的标记，嵌套属未定义输入，非递归解析器给出未定义输出可接受。"
-        "注：完整产出为 [{'tts':'a<tts>b'}, {'text':'c'}] —— 尾部 c 会被保留为纯文本",
-        strict=True,
-    )
-    def test_nested_tags_should_not_leak_inner_tag(self):
-        result = split_by_tts_tags("<tts>a<tts>b</tts>c</tts>")
-        for seg in result:
-            assert "<tts>" not in seg["content"]
+    def test_whitespace_only_tts_tag_yields_empty(self):
+        """设计取舍（原缺陷#1 连带）：纯空白标签同样返回空列表，接受。"""
+        assert split_by_tts_tags("<tts>   </tts>") == []
+
+    def test_nested_tags_leak_inner_tag(self):
+        """设计取舍（原缺陷#3）：嵌套标签不递归展开，内层 <tts> 残留于 TTS 内容。
+
+        <tts> 是给 LLM 的标记，嵌套属未定义输入，非递归解析器给出未定义输出可接受；
+        尾部 c 仍被保留为纯文本。
+        """
+        assert split_by_tts_tags("<tts>a<tts>b</tts>c</tts>") == [
+            {"type": "tts", "content": "a<tts>b"},
+            {"type": "text", "content": "c"},
+        ]
 
 
 class TestRegressionGuards:

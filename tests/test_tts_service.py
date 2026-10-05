@@ -15,7 +15,6 @@ from conftest import (
 )
 
 
-
 class FakeSubAgent:
     """TTSSubAgent 替身，记录调用并返回预设结果。"""
 
@@ -25,7 +24,14 @@ class FakeSubAgent:
         self.calls: list[dict] = []
 
     async def call(
-        self, event, sys_prompt, user_message, context_messages, persona, tool_set=None, **kwargs
+        self,
+        event,
+        sys_prompt,
+        user_message,
+        context_messages,
+        persona,
+        tool_set=None,
+        **kwargs,
     ):
         self.calls.append({"tool_set": tool_set, "persona": persona})
         if self.raise_exc:
@@ -337,57 +343,8 @@ class TestSubAgentResultHandling:
         assert len(good.call_api_calls) == 1
 
 
-class TestKnownDefects:
-    """已确认缺陷 —— 以 xfail(strict=True) 固化现状。
-
-    这些缺陷经复核判定为「设计取舍 / 上游担保 / 不可达」，暂不修复。
-    strict=True：一旦有人真的修好它们，用例会由 xfail 变 XPASS 并使 CI 失败，
-    以此提醒把标记摘掉，而不是永远静默地「绿着不办事」。
-    """
-
-    @pytest.mark.xfail(
-        reason="缺陷#14（二轮复核：不可达，降级为观察项）: log_enhanced_params "
-        "开启后 json.dumps 不在 try 内，遇到不可序列化对象会中断整个 synthesize。"
-        "但 api_params 的三个来源（sub_agent.py:117/129/131）均为 JSON 原生类型，"
-        "实际无法构造不可序列化入参。此用例保留为行为记录，非必修项",
-        strict=True,
-    )
-    async def test_unserializable_params_should_not_abort_synthesis(
-        self, monkeypatch, conv_mgr, persona_mgr
-    ):
-        adapter = RecordingAdapter(docs="# docs", return_path="/tmp/x.mp3")
-        service = _make_service(
-            monkeypatch,
-            [{"__template_key": "x"}],
-            {"log_enhanced_params": True},
-            adapter=adapter,
-            conversation_manager=conv_mgr,
-            persona_manager=persona_mgr,
-        )
-        service.sub_agent = FakeSubAgent(results=[{"text": "hi", "junk": object()}])
-        result = await service.synthesize("原始", DummyEvent(), [])
-        assert result is not None
-
-    @pytest.mark.xfail(
-        reason="缺陷#15（二轮复核：配置侧归上游担保，降级为观察项）: "
-        "context_window 的类型检查使用 isinstance(x, int)，bool 是 int 子类故 True 会静默通过。"
-        "但该入参来自配置且 schema 声明 int，属 AstrBot 校验范围；且此处已有 isinstance 防护。"
-        "对照 P3-3a：LLM 输出路径的 validate_params 不受上游覆盖，应自行排 bool",
-        strict=True,
-    )
-    async def test_bool_window_should_be_rejected(self, persona_mgr):
-        history = json.dumps([{"role": "user", "content": "u1"}])
-        service = _make_service(
-            pytest.MonkeyPatch(),
-            [],
-            {"context_window": True},
-            conversation_manager=DummyConversationManager(
-                conversation=DummyConversation(history=history)
-            ),
-            persona_manager=persona_mgr,
-        )
-        assert await service.get_context_messages(DummyEvent()) == []
-
+# 已删除 TestKnownDefects：缺陷#14（不可达）、缺陷#15（上游担保）均非本仓库责任，
+# 决策与依据见 docs/zh/KNOWN_LIMITATIONS.md。
 
 
 class TestRegressionGuards:

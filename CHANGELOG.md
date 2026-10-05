@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.7] - 2026-10-05
+
+### Changed
+
+- **测试 xfail 清理**：原 8 个 `@pytest.mark.xfail(strict=True)` 观察项实跑确认仍全部 xfail（无 XPASS），按性质拆分处置：
+  - 设计取舍类（缺陷 #1 / #3 / #5，共 5 条用例）转为断言「已接受实际行为」的普通绿测（`tests/test_tts_parser.py`、`tests/test_main_helpers.py`、`tests/test_config.py`），类改名 `TestKnownDefects` → `TestAcceptedBehavior`，移除 `xfail` 装饰器与不再需要的 `import pytest`。
+  - 不可达 / 上游担保类（缺陷 #6 / #14 / #15，共 3 条用例）直接删除（无法构造真实入参，测不到本仓库代码）；决策与依据记入新建 `docs/zh/KNOWN_LIMITATIONS.md`。
+- 文档：`docs/zh/DEVELOPMENT.md` 8.3 补充「判定为不再修复的观察项不应长期保留 xfail」的处置约定；`TEST_REPORT.md` 结论速览与质量门禁数字更新为当前状态（383 passed / 0 xfailed），并标注观察项已在 0.3.7 按性质处置。
+- 版本号与 README / `docs/en/README.md` 版本徽章统一至 `v0.3.7`。
+
 ## [0.3.6] - 2026-10-05
 
 ### Changed

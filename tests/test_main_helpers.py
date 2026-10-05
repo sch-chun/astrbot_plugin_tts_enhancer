@@ -159,20 +159,21 @@ class TestProcessTtsText:
         assert len(out) == 1
 
 
-class TestKnownDefects:
-    """已确认缺陷 —— 以 xfail 固化。"""
+class TestAcceptedBehavior:
+    """已接受的设计取舍 —— 普通绿测，锁定当前契约行为。
 
-    @pytest.mark.xfail(
-        reason="缺陷#1（与 test_tts_parser.py 的 #1 为同一空标签缺陷，二轮复核：设计取舍，"
-        "降级为观察项）: _process_tts_text 对仅含空标签的文本返回空组件列表，"
-        "使得该消息组件被静默删除，客户端将收不到任何内容。"
-        "但空标签本就无内容可念，静默移除可接受，影响面极小",
-        strict=True,
-    )
-    async def test_only_empty_tts_tag_should_not_vanish(self, tmp_path):
+    原 xfail 标记的缺陷#1（与 test_tts_parser.py 同一条），二轮复核判定为设计取舍、
+    降级为观察项，不再计划修复。改为断言已接受的空标签行为。
+    """
+
+    async def test_only_empty_tts_tag_yields_empty(self, tmp_path):
+        """设计取舍（原缺陷#1）：仅含空标签的文本解析为空组件列表。
+
+        空标签本就无内容可念，整段被静默移除可接受，影响面极小。
+        """
         plugin = _make_plugin(tmp_path)
         out = await plugin._process_tts_text("<tts></tts>", DummyEvent(), [])
-        assert out != []
+        assert out == []
 
 
 class TestFileIdRegexCandidate:
@@ -251,11 +252,14 @@ class TestParseEntryId:
     Web 路由拿到的是未经校验的 JSON 请求体，任何类型都可能出现。
     """
 
-    @pytest.mark.parametrize("entry_id, count, expected", [
-        (0, 3, 0),
-        (1, 3, 1),
-        (2, 3, 2),
-    ])
+    @pytest.mark.parametrize(
+        "entry_id, count, expected",
+        [
+            (0, 3, 0),
+            (1, 3, 1),
+            (2, 3, 2),
+        ],
+    )
     def test_accepts_valid_index(self, entry_id, count, expected):
         assert _parse_entry_id(entry_id, count) == expected
 
