@@ -160,12 +160,14 @@ class DummyResponse(LLMResponse):
         completion_text: str = "",
         tools_call_name=None,
         tools_call_args=None,
+        tools_call_ids=None,
     ):
         super().__init__(
             role="assistant",
             completion_text=completion_text,
             tools_call_name=list(tools_call_name or []),
             tools_call_args=list(tools_call_args or []),
+            tools_call_ids=list(tools_call_ids or []),
         )
 
 
@@ -177,10 +179,17 @@ class DummyProvider(Provider):
     ``func_tools`` 之类的笔误，测试会当场 TypeError，而不是静默通过。
     """
 
-    def __init__(self, response: DummyResponse | None = None, raise_on_call=False):
+    def __init__(
+        self,
+        response: DummyResponse | None = None,
+        raise_on_call=False,
+        responses: list[DummyResponse] | None = None,
+    ):
         self.response = response or DummyResponse()
+        self.responses = responses
         self.raise_on_call = raise_on_call
         self.calls: list[dict] = []
+        self._call_idx = 0
 
     async def text_chat(
         self,
@@ -205,10 +214,15 @@ class DummyProvider(Provider):
                 "func_tool": func_tool,
                 "contexts": contexts,
                 "model": model,
+                "tool_calls_result": tool_calls_result,
             }
         )
         if self.raise_on_call:
             raise RuntimeError("LLM 调用失败")
+        if self.responses:
+            resp = self.responses[min(self._call_idx, len(self.responses) - 1)]
+            self._call_idx += 1
+            return resp
         return self.response
 
     def get_current_key(self) -> str:

@@ -25,7 +25,7 @@ class FakeSubAgent:
         self.calls: list[dict] = []
 
     async def call(
-        self, event, sys_prompt, user_message, context_messages, persona, tool_set=None
+        self, event, sys_prompt, user_message, context_messages, persona, tool_set=None, **kwargs
     ):
         self.calls.append({"tool_set": tool_set, "persona": persona})
         if self.raise_exc:
@@ -256,27 +256,10 @@ class TestSynthesizeSelection:
         assert adapter.call_api_calls[0]["text"] == "增强后的文本"
 
 
-class TestSubAgentRetry:
-    """SubAgent 返回不合规结果时的重试与兜底。"""
+class TestSubAgentResultHandling:
+    """sub_agent 返回结果的处理（重试已下沉到 sub_agent 内部）。"""
 
-    async def test_retries_then_sanitizes_on_invalid_params(
-        self, monkeypatch, conv_mgr, persona_mgr
-    ):
-        adapter = RecordingAdapter(docs="# docs", return_path="/tmp/x.mp3", valid=False)
-        service = _make_service(
-            monkeypatch,
-            [{"__template_key": "x"}],
-            {},
-            adapter=adapter,
-            conversation_manager=conv_mgr,
-            persona_manager=persona_mgr,
-        )
-        sub = FakeSubAgent(results=[{"text": "abc", "speed": 99}])
-        service.sub_agent = sub
-        await service.synthesize("原始", DummyEvent(), [])
-        assert len(sub.calls) >= 2  # 至少重试过一次后放弃（不锁死 max_attempts 的具体值）
-
-    async def test_retries_then_gives_up_when_subagent_returns_none(
+    async def test_subagent_valid_dict_used_as_enhanced(
         self, monkeypatch, conv_mgr, persona_mgr
     ):
         adapter = RecordingAdapter(docs="# docs", return_path="/tmp/x.mp3")
@@ -288,14 +271,31 @@ class TestSubAgentRetry:
             conversation_manager=conv_mgr,
             persona_manager=persona_mgr,
         )
-        sub = FakeSubAgent(results=[None])
-        service.sub_agent = sub
+        service.sub_agent = FakeSubAgent(results=[{"text": "增强文本"}])
+        await service.synthesize("原始文本", DummyEvent(), [])
+        assert adapter.call_api_calls[0]["text"] == "增强文本"
+        # 重试已下沉：sub_agent 每供应商仅被调用一次
+        assert len(service.sub_agent.calls) == 1
+
+    async def test_subagent_none_falls_back_to_raw(
+        self, monkeypatch, conv_mgr, persona_mgr
+    ):
+        adapter = RecordingAdapter(docs="# docs", return_path="/tmp/x.mp3")
+        service = _make_service(
+            monkeypatch,
+            [{"__template_key": "x"}],
+            {},
+            adapter=adapter,
+            conversation_manager=conv_mgr,
+            persona_manager=persona_mgr,
+        )
+        service.sub_agent = FakeSubAgent(results=[None])
         await service.synthesize("原始", DummyEvent(), [])
-        assert len(sub.calls) >= 2
-        # 回退到原始文本
+        # 返回 None → 回退到原始文本（不增强）
         assert adapter.call_api_calls[0]["text"] == "原始"
+        assert len(service.sub_agent.calls) == 1
 
-    async def test_retries_on_subagent_exception(
+    async def test_subagent_exception_falls_back_to_raw(
         self, monkeypatch, conv_mgr, persona_mgr
     ):
         adapter = RecordingAdapter(docs="# docs", return_path="/tmp/x.mp3")
@@ -307,10 +307,10 @@ class TestSubAgentRetry:
             conversation_manager=conv_mgr,
             persona_manager=persona_mgr,
         )
-        sub = FakeSubAgent(raise_exc=RuntimeError("LLM 炸了"))
-        service.sub_agent = sub
+        service.sub_agent = FakeSubAgent(raise_exc=RuntimeError("LLM 炸了"))
         await service.synthesize("原始", DummyEvent(), [])
-        assert len(sub.calls) >= 2
+        assert adapter.call_api_calls[0]["text"] == "原始"
+        assert len(service.sub_agent.calls) == 1
 
     async def test_api_failure_falls_through_to_next_provider(
         self, monkeypatch, conv_mgr, persona_mgr

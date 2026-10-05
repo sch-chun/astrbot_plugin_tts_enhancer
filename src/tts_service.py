@@ -222,78 +222,24 @@ class TTSService:
                     tool_set = ToolSet(tools=[tool])
 
             current_context = context_messages.copy() if context_messages else []
-            api_params = None
-            max_attempts = 2
-            attempt = 0
-
-            while attempt < max_attempts:
-                try:
-                    sys_prompt = adapter.get_subagent_system_prompt()
-                    result = await self.sub_agent.call(
-                        event,
-                        sys_prompt,
-                        raw_text,
-                        current_context,
-                        persona,
-                        tool_set=tool_set,
-                    )
-
-                    if result and isinstance(result, dict):
-                        is_valid, err_msg = adapter.validate_params(result)
-
-                        if is_valid:
-                            api_params = result
-                            break
-                        else:
-                            if attempt == max_attempts - 1:
-                                logger.warning(f"清理非法参数: {err_msg}")
-                                api_params = adapter.sanitize_params(result)
-                                break
-                            else:
-                                current_context.append(
-                                    {
-                                        "role": "assistant",
-                                        "content": f"我尝试调用 tts_enhance，参数为：{json.dumps(result, ensure_ascii=False)}",
-                                    }
-                                )
-                                current_context.append(
-                                    {
-                                        "role": "user",
-                                        "content": f"参数格式错误：{err_msg}。请检查参数范围并仅调用 tts_enhance 工具修正。",
-                                    }
-                                )
-                                attempt += 1
-                                continue
-                    else:
-                        if attempt == max_attempts - 1:
-                            break
-                        else:
-                            current_context.append(
-                                {
-                                    "role": "assistant",
-                                    "content": "我尝试调用 tts_enhance，但未返回有效结构。",
-                                }
-                            )
-                            current_context.append(
-                                {
-                                    "role": "user",
-                                    "content": "请检查你的 tts_enhance 工具调用，并确保返回有效的结构。",
-                                }
-                            )
-                            attempt += 1
-                            continue
-                except Exception as e:
-                    logger.warning(f"SubAgent 调用异常 (尝试 {attempt + 1}): {e}")
-                    if attempt == max_attempts - 1:
-                        break
-                    current_context.append(
-                        {
-                            "role": "user",
-                            "content": f"调用过程中出现异常：{e}，请重新调用 tts_enhance 工具。",
-                        }
-                    )
-                    attempt += 1
-                    continue
+            # SubAgent 内部完成「工具执行 + 校验 + role:tool 重试」；
+            # 成功返回合法（或末轮清洗后）参数 dict，失败兜底返回 None。
+            try:
+                api_params = await self.sub_agent.call(
+                    event,
+                    adapter.get_subagent_system_prompt(),
+                    raw_text,
+                    current_context,
+                    persona,
+                    tool_set=tool_set,
+                    adapter=adapter,
+                    max_attempts=2,
+                )
+            except Exception as e:
+                logger.warning(f"SubAgent 调用异常: {e}")
+                api_params = None
+            if api_params is None or not isinstance(api_params, dict):
+                api_params = None
 
             enhanced_text = raw_text
             # SubAgent 可能返回空 text；此时保留原文，否则会带着空文本去请求 TTS API

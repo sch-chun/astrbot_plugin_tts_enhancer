@@ -1,7 +1,18 @@
 """src/sub_agent.py 单元测试 —— Provider 选择、工具调用解析与降级。"""
 
+import json
+
+from astrbot.core.agent.tool import FunctionTool, ToolSet
+from mcp.types import CallToolResult, TextContent
+
 from astrbot_plugin_tts_enhancer.src.sub_agent import TTSSubAgent
-from conftest import DummyContext, DummyEvent, DummyProvider, DummyResponse
+from conftest import (
+    DummyContext,
+    DummyEvent,
+    DummyProvider,
+    DummyResponse,
+    RecordingAdapter,
+)
 
 
 def _agent(config=None, context=None):
@@ -157,3 +168,172 @@ class TestExceptionIsolation:
         tool_set = ToolSet(tools=[])
         await agent.call(DummyEvent(), "sys", "hi", tool_set=tool_set)
         assert provider.calls[0]["func_tool"] is tool_set
+
+
+def _make_tool(handler) -> FunctionTool:
+    """用给定 handler 构造一个 tts_enhance 工具替身。"""
+    tool = FunctionTool(
+        name="tts_enhance",
+        description="测试工具",
+        parameters={
+            "type": "object",
+            "properties": {
+                "text": {"type": "string"},
+                "speed": {"type": "number"},
+            },
+            "required": ["text"],
+        },
+    )
+    tool.handler = handler
+    return tool
+
+
+class TestToolExecutionAndRetry:
+    """TTSSubAgent 现在会真正执行 tts_enhance 工具 handler，并以 role:'tool' 回灌校验错误。"""
+
+    async def test_valid_params_returned_directly(self):
+        provider = DummyProvider(
+            DummyResponse(
+                tools_call_name=["tts_enhance"],
+                tools_call_args=[{"text": "hi", "speed": 1.2}],
+                tools_call_ids=["c1"],
+            )
+        )
+
+        async def handler(**kw):
+            return CallToolResult(
+                isError=False,
+                content=[TextContent(type="text", text=json.dumps(kw, ensure_ascii=False))],
+            )
+
+        agent = _agent({}, DummyContext(provider=provider))
+        result = await agent.call(
+            DummyEvent(), "sys", "hi", tool_set=ToolSet(tools=[_make_tool(handler)])
+        )
+        assert result == {"text": "hi", "speed": 1.2}
+
+    async def test_invalid_params_triggers_structured_role_tool_retry(self):
+        bad = DummyResponse(
+            tools_call_name=["tts_enhance"],
+            tools_call_args=[{"text": "abc", "speed": 99}],
+            tools_call_ids=["c1"],
+        )
+        good = DummyResponse(
+            tools_call_name=["tts_enhance"],
+            tools_call_args=[{"text": "abc", "speed": 1.0}],
+            tools_call_ids=["c2"],
+        )
+        provider = DummyProvider(responses=[bad, good])
+
+        async def handler(**kw):
+            if kw.get("speed") == 99:
+                return CallToolResult(
+                    isError=True,
+                    content=[TextContent(type="text", text="speed 必须在 0.5~2.0 之间")],
+                )
+            return CallToolResult(
+                isError=False,
+                content=[TextContent(type="text", text=json.dumps(kw, ensure_ascii=False))],
+            )
+
+        agent = _agent({}, DummyContext(provider=provider))
+        result = await agent.call(
+            DummyEvent(), "sys", "hi", tool_set=ToolSet(tools=[_make_tool(handler)])
+        )
+        assert result == {"text": "abc", "speed": 1.0}
+        assert len(provider.calls) == 2
+        # 第二次调用应通过 tool_calls_result 结构化回传
+        tcr = provider.calls[1]["tool_calls_result"]
+        assert tcr is not None
+        # 协议完整：同时携带 assistant 的 tool_calls 与 role:'tool' 的结果
+        assert tcr.tool_calls_info.tool_calls[0].id == "c1"
+        assert tcr.tool_calls_info.tool_calls[0].function.name == "tts_enhance"
+        assert tcr.tool_calls_result[0].tool_call_id == "c1"
+        assert tcr.tool_calls_result[0].content == "speed 必须在 0.5~2.0 之间"
+        # prompt 中不应再出现拍平的错误文本（避免双重信息）
+        assert "speed 必须在 0.5~2.0 之间" not in provider.calls[1]["prompt"]
+
+    async def test_final_invalid_returns_sanitized(self):
+        bad = DummyResponse(
+            tools_call_name=["tts_enhance"],
+            tools_call_args=[{"text": "abc", "speed": 99}],
+            tools_call_ids=["c1"],
+        )
+        provider = DummyProvider(responses=[bad, bad])
+
+        async def handler(**kw):
+            return CallToolResult(
+                isError=True, content=[TextContent(type="text", text="speed 超范围")]
+            )
+
+        agent = _agent({}, DummyContext(provider=provider))
+        # RecordingAdapter.sanitize_params 仅保留 text
+        adapter = RecordingAdapter()
+        result = await agent.call(
+            DummyEvent(),
+            "sys",
+            "hi",
+            tool_set=ToolSet(tools=[_make_tool(handler)]),
+            adapter=adapter,
+        )
+        assert result == {"text": "abc"}
+        assert len(provider.calls) == 2
+
+    async def test_handler_exception_retries_then_none(self):
+        good = DummyResponse(
+            tools_call_name=["tts_enhance"],
+            tools_call_args=[{"text": "hi"}],
+            tools_call_ids=["c1"],
+        )
+        provider = DummyProvider(responses=[good, good])
+
+        async def handler(**kw):
+            raise RuntimeError("boom")
+
+        agent = _agent({}, DummyContext(provider=provider))
+        result = await agent.call(
+            DummyEvent(), "sys", "hi", tool_set=ToolSet(tools=[_make_tool(handler)])
+        )
+        assert result is None
+        assert len(provider.calls) == 2
+
+    async def test_no_tool_call_returns_none_on_empty(self):
+        provider = DummyProvider(DummyResponse())  # 无工具调用、无文本
+        agent = _agent({}, DummyContext(provider=provider))
+        result = await agent.call(DummyEvent(), "sys", "hi")
+        assert result is None
+
+    async def test_handler_exception_uses_structured_tool_result(self):
+        bad = DummyResponse(
+            tools_call_name=["tts_enhance"],
+            tools_call_args=[{"text": "hi"}],
+            tools_call_ids=["c1"],
+        )
+        good = DummyResponse(
+            tools_call_name=["tts_enhance"],
+            tools_call_args=[{"text": "hi", "speed": 1.0}],
+            tools_call_ids=["c2"],
+        )
+        provider = DummyProvider(responses=[bad, good])
+
+        state = {"n": 0}
+
+        async def handler(**kw):
+            state["n"] += 1
+            if state["n"] == 1:
+                raise RuntimeError("boom")
+            return CallToolResult(
+                isError=False,
+                content=[TextContent(type="text", text=json.dumps(kw, ensure_ascii=False))],
+            )
+
+        agent = _agent({}, DummyContext(provider=provider))
+        result = await agent.call(
+            DummyEvent(), "sys", "hi", tool_set=ToolSet(tools=[_make_tool(handler)])
+        )
+        assert result == {"text": "hi", "speed": 1.0}
+        # 工具执行异常同样以 role:'tool' 结构化回灌
+        tcr = provider.calls[1]["tool_calls_result"]
+        assert tcr is not None
+        assert tcr.tool_calls_result[0].tool_call_id == "c1"
+        assert tcr.tool_calls_result[0].content.startswith("工具执行异常：")
