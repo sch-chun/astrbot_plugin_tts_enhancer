@@ -15,7 +15,6 @@ from conftest import (
 )
 
 
-
 class FakeSubAgent:
     """TTSSubAgent 替身，记录调用并返回预设结果。"""
 
@@ -25,7 +24,14 @@ class FakeSubAgent:
         self.calls: list[dict] = []
 
     async def call(
-        self, event, sys_prompt, user_message, context_messages, persona, tool_set=None, **kwargs
+        self,
+        event,
+        sys_prompt,
+        user_message,
+        context_messages,
+        persona,
+        tool_set=None,
+        **kwargs,
     ):
         self.calls.append({"tool_set": tool_set, "persona": persona})
         if self.raise_exc:
@@ -337,24 +343,23 @@ class TestSubAgentResultHandling:
         assert len(good.call_api_calls) == 1
 
 
-class TestKnownDefects:
-    """已确认缺陷 —— 以 xfail(strict=True) 固化现状。
+class TestAcceptedBehavior:
+    """已接受的行为 / 上游责任的绿测守卫。
 
-    这些缺陷经复核判定为「设计取舍 / 上游担保 / 不可达」，暂不修复。
-    strict=True：一旦有人真的修好它们，用例会由 xfail 变 XPASS 并使 CI 失败，
-    以此提醒把标记摘掉，而不是永远静默地「绿着不办事」。
+    原 xfail 标记的 #14 / #15 经二轮复核判定为「生产路径不可达 / 归上游责任，故不修代码」，
+    但「不修代码 ≠ 删测试」——用例都成功构造了入参、测的是本仓库代码，故转为绿测守卫，
+    既锁定当前行为又保留回归哨兵。决策与依据见 docs/zh/KNOWN_LIMITATIONS.md。
     """
 
-    @pytest.mark.xfail(
-        reason="缺陷#14（二轮复核：不可达，降级为观察项）: log_enhanced_params "
-        "开启后 json.dumps 不在 try 内，遇到不可序列化对象会中断整个 synthesize。"
-        "但 api_params 的三个来源（sub_agent.py:117/129/131）均为 JSON 原生类型，"
-        "实际无法构造不可序列化入参。此用例保留为行为记录，非必修项",
-        strict=True,
-    )
-    async def test_unserializable_params_should_not_abort_synthesis(
+    async def test_unserializable_params_log_does_not_abort(
         self, monkeypatch, conv_mgr, persona_mgr
     ):
+        """原缺陷#14（已修代码 + 保留守卫）：log_enhanced_params 开启时 api_params 含
+        不可序列化对象，日志 json.dumps 已纳入 try，不再中断 synthesize。
+
+        守卫意义：#14「不可达」的论证前提是「api_params 三来源均为 JSON 原生类型」，而
+        sub_agent 返回路径重构后该前提可能失效；保留此用例可在新来源引入时报警。
+        """
         adapter = RecordingAdapter(docs="# docs", return_path="/tmp/x.mp3")
         service = _make_service(
             monkeypatch,
@@ -368,14 +373,11 @@ class TestKnownDefects:
         result = await service.synthesize("原始", DummyEvent(), [])
         assert result is not None
 
-    @pytest.mark.xfail(
-        reason="缺陷#15（二轮复核：配置侧归上游担保，降级为观察项）: "
-        "context_window 的类型检查使用 isinstance(x, int)，bool 是 int 子类故 True 会静默通过。"
-        "但该入参来自配置且 schema 声明 int，属 AstrBot 校验范围；且此处已有 isinstance 防护。"
-        "对照 P3-3a：LLM 输出路径的 validate_params 不受上游覆盖，应自行排 bool",
-        strict=True,
-    )
-    async def test_bool_window_should_be_rejected(self, persona_mgr):
+    async def test_bool_context_window_silently_accepted(self, persona_mgr):
+        """上游担保（原缺陷#15）：context_window 用 isinstance(x, int) 校验，
+        bool 是 int 子类故 True 静默通过。该入参来自配置且 schema 声明 int，生产路径由上游挡掉，
+        不修代码；此处锁定「bool 被当作合法窗口」的当前行为以便回归感知。
+        """
         history = json.dumps([{"role": "user", "content": "u1"}])
         service = _make_service(
             pytest.MonkeyPatch(),
@@ -386,8 +388,8 @@ class TestKnownDefects:
             ),
             persona_manager=persona_mgr,
         )
-        assert await service.get_context_messages(DummyEvent()) == []
-
+        msgs = await service.get_context_messages(DummyEvent())
+        assert msgs != []  # bool 被当作合法窗口，返回历史而非空
 
 
 class TestRegressionGuards:

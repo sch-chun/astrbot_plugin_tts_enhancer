@@ -118,25 +118,29 @@ class TestGet:
         assert cfg.get("missing", "fallback") == "fallback"
 
 
-class TestKnownDefects:
-    """已确认缺陷 —— 以 xfail 固化（均属上游担保 / 设计取舍 / 不可达）。"""
+class TestAcceptedBehavior:
+    """已接受的行为 / 上游责任的绿测守卫。
 
-    @pytest.mark.xfail(
-        reason="缺陷#5（二轮复核：设计取舍，降级为观察项）: _load_providers 就地改写 "
-        "调用方传入的 raw_config（写入 __resolved_name）。该字段仅为去重显示名、"
-        "非敏感信息，且 AstrBot 对 schema 外字段宽容不会污染保存流程。"
-        "保留此用例以记录「插件持有并修改上游 dict 引用」这一事实，非必修项",
-        strict=True,
-    )
-    def test_should_not_mutate_caller_config(self):
+    原 xfail 标记的 #5（设计取舍）与 #6（上游担保）经二轮复核判定「不修代码」，
+    但「不修代码 ≠ 删测试」——两条用例都成功构造了入参、测的是本仓库代码，故转为绿测守卫，
+    锁定当前行为并保留回归哨兵。决策与依据见 docs/zh/KNOWN_LIMITATIONS.md。
+    """
+
+    def test_resolves_name_into_caller_config(self):
+        """设计取舍（原缺陷#5）：_load_providers 会就地写入调用方传入的 raw_config。
+
+        __resolved_name 仅为去重显示名、非敏感信息，且 AstrBot 对 schema 外字段宽容，
+        不会污染保存流程，故接受该行为。
+        """
         raw = _prov({"display_name": "小明"})
         TTSEnhancerConfig(raw)
-        assert "__resolved_name" not in raw["providers"][0]
+        assert raw["providers"][0]["__resolved_name"] == "小明"
 
-    @pytest.mark.xfail(
-        reason="缺陷#6（二轮复核：设计取舍，降级为观察项）: providers 为非空 dict 时触发 AttributeError "
-        "（配置结构被误配时缺乏校验）。但 schema 已要求 providers 为数组，手工误配 dict 属使用者责任，非必修项",
-        strict=True,
-    )
-    def test_providers_as_dict_should_not_raise(self):
-        TTSEnhancerConfig({"providers": {"a": 1}})
+    def test_providers_as_dict_raises_attribute_error(self):
+        """上游担保（原缺陷#6）：providers 误配为 dict 时触发 AttributeError。
+
+        该结构被 schema 要求为数组、生产路径由上游挡掉，不修代码；此处锁定当前行为，
+        以便日后若补结构校验时本用例会失败、提示行为变更（不删测试，保留守卫）。
+        """
+        with pytest.raises(AttributeError):
+            TTSEnhancerConfig({"providers": {"a": 1}})

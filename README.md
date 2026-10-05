@@ -8,7 +8,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v0.3.6-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.3.7-green)](CHANGELOG.md)
 
 ---
 
@@ -187,6 +187,7 @@ providers:                        # 供应商列表（支持多个回退）
 - [CHANGELOG.md](CHANGELOG.md) – 完整版本记录
 - **架构文档** [docs/zh/ARCHITECTURE.md](docs/zh/ARCHITECTURE.md) – 设计目标、整体分层、请求生命周期、核心模块、适配器体系、人格路由、安全设计等
 - **开发指南** [docs/zh/DEVELOPMENT.md](docs/zh/DEVELOPMENT.md) – 环境准备、新增供应商清单、适配器开发、前端接入、测试规范、发布流程
+- **已知限制与上游责任** [docs/zh/KNOWN_LIMITATIONS.md](docs/zh/KNOWN_LIMITATIONS.md) – 设计取舍 / 上游担保 / 不可达项的处置与绿测守卫
 - **English README** [docs/en/README.md](docs/en/README.md) – 英文版说明
 - 能力说明书样例：
   - `providers/docs/bailian_qwen_audio_3_0_tts.md`
