@@ -8,7 +8,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v0.3.7-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.3.8-green)](../../CHANGELOG.md)
 
 ---
 
@@ -110,6 +110,9 @@ enhance_llm_provider: ""          # Model used for enhancement (a cheaper/free m
 context_window: 10                # Context window (in turns)
 dual_output: false                # Output both text and voice
 log_enhanced_params: false        # Log generated parameters
+page_background: []               # Management page background image (file type; blank = hidden)
+page_background_opacity: 0.5       # Background opacity (0~1; only applies when an image is set)
+page_background_blur: 0            # Background blur (0~30px; only applies when an image is set)
 providers:                        # Provider list (multiple, with fallback)
   - __template_key: bailian_qwen_audio_3_0_tts
     display_name: "My Voice"

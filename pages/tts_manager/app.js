@@ -54,6 +54,23 @@ const app = createApp({
             }
         }
 
+        async function applyPageBackground() {
+            try {
+                const result = await bridge.apiGet('page-background');
+                const data = result?.data || result;
+                // 未配置背景图（data_url 为空）则不显示，保持默认主题底色
+                if (!data || !data.data_url) return;
+                const img = document.getElementById('page-bg-img');
+                if (!img) return;
+                img.style.backgroundImage = `url("${data.data_url}")`;
+                img.style.opacity = String(data.opacity ?? 1);
+                const blur = Number(data.blur ?? 0);
+                img.style.filter = blur > 0 ? `blur(${blur}px)` : 'none';
+            } catch (e) {
+                console.warn('加载背景图失败:', e);
+            }
+        }
+
         function switchTab(templateKey) {
             const group = groups.value.find(g => g.template_key === templateKey);
             if (!group) return;
@@ -85,6 +102,7 @@ const app = createApp({
 
         onMounted(() => {
             fetchProviders();
+            applyPageBackground();
         });
 
         return {

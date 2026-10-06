@@ -1,5 +1,6 @@
 :root {
     --bg: #ffffff;
+    --bg-rgb: 255, 255, 255;
     --text: #1a1a1a;
     --border: #d0d7de;
     --primary: #2563eb;
@@ -13,6 +14,7 @@
 
 [data-theme="dark"] {
     --bg: #1a1a1a;
+    --bg-rgb: 26, 26, 26;
     --text: #e0e0e0;
     --border: #374151;
     --primary: #3b82f6;
@@ -22,10 +24,30 @@
 
 body {
     font-family: system-ui, -apple-system, sans-serif;
-    background: var(--bg);
+    background: transparent;
     color: var(--text);
     padding: 20px;
     margin: 0;
+}
+
+/* 管理页背景图层：固定铺满视口，置于内容之下。
+   默认仅显示主题底色（--bg），与未配置背景图时外观一致；
+   配置背景图后由 app.js 在 #page-bg-img 上叠加图片 + 透明度/模糊度。 */
+#page-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    background-color: var(--bg);
+}
+#page-bg-img {
+    position: absolute;
+    /* 负 inset 让模糊边缘溢出视口外，避免硬边 */
+    inset: -30px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-color: transparent;
 }
 h1 { font-size: 1.8rem; margin-top: 0; }
 
@@ -39,7 +61,7 @@ h1 { font-size: 1.8rem; margin-top: 0; }
     gap: 10px;
     padding: 10px 16px;
     margin: -20px -20px 16px -20px;
-    background: var(--bg);
+    background: rgba(var(--bg-rgb), 0.85);
     border-bottom: 1px solid var(--border);
     box-shadow: var(--shadow);
 }
@@ -104,20 +126,26 @@ h1 { font-size: 1.8rem; margin-top: 0; }
     font-weight: 600;
 }
 .loading { color: var(--gray); }
-.tab-content {
-    background: var(--bg);
+/* 磨砂内容卡片：把供应商选项卡与表单区整体包起来，统一半透明底色 + 内边距，
+   避免磨砂区贴着内容边缘；无背景图时透出同色 = 视觉无变化。 */
+.content-panel {
+    background: rgba(var(--bg-rgb), 0.82);
     border-radius: var(--radius);
+    padding: 16px;
+}
+.tab-content {
+    background: transparent;
 }
 
 /* 通用表单样式 */
 .form-group { margin-bottom: 16px; }
 .form-group label { display: block; font-weight: 500; margin-bottom: 4px; }
-.form-group input, .form-group select {
+.form-group input, .form-group select, .form-group textarea {
     width: 100%;
     padding: 8px 12px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    background: var(--bg);
+    background: rgba(var(--bg-rgb), 0.6);
     color: var(--text);
     box-sizing: border-box;
 }
@@ -159,7 +187,7 @@ th, td {
     border-bottom: 1px solid var(--border);
     text-align: left;
 }
-th { background: var(--bg); font-weight: 600; }
+th { background: rgba(var(--bg-rgb), 0.6); font-weight: 600; }
 .status-ok { color: var(--success); }
 .status-deploying { color: #f59e0b; }
 .status-undepoyed { color: var(--danger); }
@@ -315,7 +343,7 @@ th { background: var(--bg); font-weight: 600; }
     z-index: 999;
 }
 .modal-content {
-    background: var(--bg);
+    background: rgba(var(--bg-rgb), 0.85);
     color: var(--text);
     padding: 24px;
     border-radius: 8px;
@@ -331,7 +359,7 @@ th { background: var(--bg); font-weight: 600; }
     padding: 8px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    background: var(--bg);
+    background: rgba(var(--bg-rgb), 0.75);
     color: var(--text);
     resize: vertical;
 }

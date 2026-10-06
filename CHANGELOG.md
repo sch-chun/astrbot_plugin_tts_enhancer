@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.8] - 2026-10-06
+
+### Added
+
+- **管理页可配置背景图**：新增 `page_background`（file 类型）配置项，可上传单张背景图；配套 `page_background_opacity`（float，默认 0.5）与 `page_background_blur`（int，默认 0）两个显示参数。背景仅在有图时显示，为空则沿用主题背景。
+  - 后端 `GET /<plugin>/page-background` 路由将上传图片读取为 base64 Data URL 返回，避免二进制穿桥与跨域/外链，保持离线可用；锁定在 `plugin_data` 目录内（防路径穿越），不做硬编码体积上限（由配置 hint 提示图片不宜过大）。
+  - 前端 `applyPageBackground()` 仅在 `data_url` 非空时渲染 `#page-bg` 固定背景层；内容卡片与表单字段改为半透明磨砂，配置背景图后硬刷新即可看到背景透出。
+
 ## [0.3.7] - 2026-10-05
 
 ### Changed
