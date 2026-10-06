@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="./style.css">
 </head>
 <body>
+    <!-- 背景图层：仅在配置了背景图时由 JS 注入图片 + 透明度/模糊度；默认仅显示主题底色 -->
+    <div id="page-bg"><div id="page-bg-img"></div></div>
     <div id="app">
         <!-- 全局音频音量条（所有音色预览/试听共享） -->
         <div class="global-volume-bar">
@@ -30,7 +32,7 @@
 
         <!-- 加载完成 -->
         <template v-else>
-           
+         <div class="content-panel">
             <!-- 有配置时显示 Tabs -->
             <div class="tabs" v-if="groups.length">
                 <button 
@@ -58,6 +60,7 @@
                     :template-key="currentTab"
                 />
             </div>
+         </div>
         </template>
     </div>
     <script src="./static/vue.global.prod.js"></script>

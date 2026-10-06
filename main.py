@@ -4,6 +4,7 @@
 """
 from pathlib import Path
 import base64
+import mimetypes
 import time
 import re
 
@@ -67,6 +68,55 @@ def _parse_entry_id(entry_id, providers_count: int) -> int | None:
     if entry_id < 0 or entry_id >= providers_count:
         return None
     return entry_id
+
+
+def _build_page_background_response(config, plugin_data_path) -> dict:
+    """构造管理页背景图响应数据（纯函数，便于单测）。
+
+    仅当配置了背景图且文件可读时返回 data_url；否则 data_url 为空，前端不渲染背景。
+    图片以 base64 Data URL 返回，避免二进制穿桥与跨域/外链，保持离线可用。
+    路径解析后强制锁定在 plugin_data 目录内，防止路径穿越；不做硬编码体积上限
+    （由配置 hint 提示用户图片不宜过大，避免超大 base64 拖慢页面加载）。
+
+    Args:
+        config: 插件配置（dict 或带 .get 的配置对象），可为 None。
+        plugin_data_path: 插件数据目录（Path 或等价字符串）。
+
+    Returns:
+        包含 data_url / opacity / blur 的响应 dict（尚未包裹 JSONResponse）。
+    """
+    empty = {"code": 0, "data": {"data_url": "", "opacity": 1.0, "blur": 0}}
+    if config is None:
+        return empty
+    background_files = config.get("page_background") or []
+    if not isinstance(background_files, list) or not background_files:
+        return empty
+
+    rel_path = background_files[0]
+    if not isinstance(rel_path, str) or not rel_path:
+        return empty
+
+    # 锁定在 plugin_data 目录内，防止路径穿越
+    base = Path(plugin_data_path).resolve()
+    target = (base / rel_path).resolve()
+    if target != base and base not in target.parents:
+        return empty
+
+    if not target.is_file():
+        return empty
+
+    try:
+        raw = target.read_bytes()
+    except OSError:
+        return empty
+
+    mime, _ = mimetypes.guess_type(target.name)
+    if not mime:
+        mime = "application/octet-stream"
+    data_url = f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
+    opacity = config.get("page_background_opacity", 0.5)
+    blur = config.get("page_background_blur", 0)
+    return {"code": 0, "data": {"data_url": data_url, "opacity": opacity, "blur": blur}}
 
 
 class TTSEnhancerPlugin(Star):
@@ -285,6 +335,26 @@ class TTSEnhancerPlugin(Star):
             get_providers,
             ["GET"],
             "获取分组后的供应商列表"
+        )
+
+        async def get_page_background() -> JSONResponse:
+            """获取管理页背景图（Data URL）与显示参数。
+
+            仅当配置了背景图时返回 data_url；否则 data_url 为空，前端不渲染背景。
+            图片以 base64 Data URL 返回，避免二进制穿桥与跨域/外链，保持离线可用。
+
+            Returns:
+                JSONResponse: 包含 data_url / opacity / blur 的 JSON 响应。
+            """
+            return json_response(
+                _build_page_background_response(self.config, self.plugin_data_path)
+            )
+
+        self.context.register_web_api(
+            f"/{self.name}/page-background",
+            get_page_background,
+            ["GET"],
+            "获取管理页背景图与显示参数"
         )
 
         async def create_voice() -> JSONResponse:

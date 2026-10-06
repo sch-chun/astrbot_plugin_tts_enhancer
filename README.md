@@ -8,7 +8,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v0.3.7-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.3.8-green)](CHANGELOG.md)
 
 ---
 
@@ -117,6 +117,9 @@ enhance_llm_provider: ""          # 用于增强的模型（为了省钱可以�
 context_window: 10                # 上下文轮次
 dual_output: false                # 同时输出文本和语音
 log_enhanced_params: false        # 打印生成的参数
+page_background: []               # 管理页背景图（file 类型，留空=不显示）
+page_background_opacity: 0.5       # 背景图不透明度（0~1，仅配置了背景图时生效）
+page_background_blur: 0            # 背景图模糊度（0~30px，仅配置了背景图时生效）
 providers:                        # 供应商列表（支持多个回退）
   - __template_key: bailian_qwen_audio_3_0_tts
     display_name: "我的语音"

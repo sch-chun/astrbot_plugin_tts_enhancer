@@ -276,6 +276,7 @@ flowchart TD
   - `components/*.js`：各供应商薄封装，引用 common 组件并通过 `providerConfig` 配置差异（语言列表、帮助链接、是否支持系统音色等）。
   - `composables/`：`useAudioManager`（全局音频单例/音量）、`useTextValidator`（汉字=2 字符计数与校验）、`useClipboard`、`useToast`。
 - 样式集中在 `style.css`；`eslint.config.mjs` 提供可选 lint（仅开发期）。
+- **可配置背景图**：管理页支持通过配置项 `page_background`（file 类型）上传单张背景图；后端 `/<plugin>/page-background` 路由将图片读取为 base64 Data URL 返回（避免二进制穿桥与跨域/外链），前端 `applyPageBackground()` 仅在 `data_url` 非空时渲染 `#page-bg` 固定背景层，并按 `page_background_opacity` / `page_background_blur` 应用不透明度与模糊。内容卡片与表单字段均改为半透明磨砂，使背景透出。
 
 > 设计取舍：仅补齐"只有 API、没有 UI"的供应商管理体验；已有官方控制台者直接外链，不重复实现。
 
@@ -293,6 +294,9 @@ flowchart TD
 | `dual_output` | bool | false | 同时输出文本与语音 |
 | `tts_prompt` | text | 触发提示词 | 注入主模型的 TTS 触发说明 |
 | `log_enhanced_params` | bool | false | 打印增强参数 |
+| `page_background` | file | [] | 管理页背景图（留空=不显示） |
+| `page_background_opacity` | float | 0.5 | 背景不透明度（0~1，仅配置了背景图时生效） |
+| `page_background_blur` | int | 0 | 背景模糊度（0~30px，仅配置了背景图时生效） |
 | `providers` | `template_list` | — | 供应商列表（支持多条目回退） |
 
 `providers` 是 `template_list`：每个模板含 `name`/`hint`/`display_item`/`items`。`items` 中支持 `_special`（`select_provider`/`select_persona`）、`secret: true`（密码框遮罩）、`options`、`condition`（按其他字段值条件显示，如 MiMo 按 `model` 切换音色/设计/复刻字段）。框架会为每个条目注入 `__template_key`。
