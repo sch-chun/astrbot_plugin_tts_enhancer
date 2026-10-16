@@ -1,4 +1,4 @@
-const { createApp, ref, shallowRef, onMounted } = Vue;
+const { createApp, ref, shallowRef, onMounted, onUnmounted } = Vue;
 
 // 静态导入所有已知供应商组件
 import BailianQwenAudio3_0 from './components/bailian_qwen_audio_3_0_tts.js';
@@ -82,14 +82,12 @@ const app = createApp({
             }
         }
 
-        // 高亮条基准宽度（px），与 style.css .tab-indicator 的 width 保持一致：
-        // 元素保持基准宽不动，用 translateX + scaleX 换算到目标标签，
-        // 使过渡只跑 transform（合成器线程），背景淡入期切换也不掉帧
-        const INDICATOR_BASE_WIDTH = 100;
-
         // 将高亮滑动条对齐到激活标签：animate=false 时瞬时定位（初始渲染/窗口尺寸变化）。
         // 直接查 DOM 而非模板 ref：v-if 挂载当帧的 ref 绑定晚于 nextTick 回调，取不到。
-        // 用 getBoundingClientRect 取亚像素精度，换算 transform 而非设 left/width。
+        // 用 getBoundingClientRect 取亚像素精度，换算 transform 而非设 left/width——
+        // 过渡只跑 transform（合成器线程），背景淡入期切换也不掉帧。
+        // 基准宽度读 indicator.offsetWidth（布局宽，不受当前 scaleX 影响），
+        // 避免与 CSS width 形成硬编码对偶：CSS 调宽度时 JS 无需跟随。
         function moveTabIndicator(animate = true) {
             const indicator = document.querySelector('.tabs .tab-indicator');
             if (!indicator) return;
@@ -101,8 +99,9 @@ const app = createApp({
             if (!animate) {
                 indicator.style.transition = 'none';
             }
+            const baseWidth = indicator.offsetWidth;
             indicator.style.transform =
-                `translateX(${tabRect.left - tabsRect.left}px) scaleX(${tabRect.width / INDICATOR_BASE_WIDTH})`;
+                `translateX(${tabRect.left - tabsRect.left}px) scaleX(${tabRect.width / baseWidth})`;
             if (!animate) {
                 void indicator.offsetWidth; // 强制回流，恢复过渡供下次平滑平移
                 indicator.style.transition = '';
@@ -142,11 +141,30 @@ const app = createApp({
             return map[key] || key;
         }
 
+        // 窗口尺寸变化会改变标签宽度，重新瞬时对齐高亮条。
+        // rAF 节流：拖窗口时 resize 按帧连发，合并为每帧最多一次对齐；
+        // 卸载时移除监听并取消挂起的帧，避免回调继续打 DOM 查询
+        let resizeRafId = 0;
+        function onResize() {
+            if (resizeRafId) return;
+            resizeRafId = requestAnimationFrame(() => {
+                resizeRafId = 0;
+                moveTabIndicator(false);
+            });
+        }
+
         onMounted(() => {
             fetchProviders();
             applyPageBackground();
-            // 窗口尺寸变化会改变标签宽度，重新瞬时对齐高亮条
-            window.addEventListener('resize', () => moveTabIndicator(false));
+            window.addEventListener('resize', onResize);
+        });
+
+        onUnmounted(() => {
+            window.removeEventListener('resize', onResize);
+            if (resizeRafId) {
+                cancelAnimationFrame(resizeRafId);
+                resizeRafId = 0;
+            }
         });
 
         return {
