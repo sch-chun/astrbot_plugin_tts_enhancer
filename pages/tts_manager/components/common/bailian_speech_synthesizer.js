@@ -623,6 +623,7 @@ export default {
                 >
                     <button 
                         class="tab" 
+                        data-label="📁 声音复刻"
                         :class="{ active: mode === 'clone' }"
                         @click="mode = 'clone'"
                         style="
@@ -635,6 +636,7 @@ export default {
                     >📁 声音复刻</button>
                     <button 
                         class="tab" 
+                        data-label="🎨 声音设计"
                         :class="{ active: mode === 'design' }"
                         @click="mode = 'design'"
                         style="

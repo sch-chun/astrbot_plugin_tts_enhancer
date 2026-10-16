@@ -941,13 +941,13 @@ export default {
 
         <!-- 选项卡 -->
         <div class="tabs" style="border-bottom:2px solid var(--border);margin:12px 0;">
-            <button class="tab" :class="{ active: currentTab === 'clone' }" @click="currentTab = 'clone'">
+            <button class="tab" data-label="📁 上传复刻" :class="{ active: currentTab === 'clone' }" @click="currentTab = 'clone'">
                 📁 上传复刻
             </button>
-            <button class="tab" :class="{ active: currentTab === 'design' }" @click="currentTab = 'design'">
+            <button class="tab" data-label="🎨 声音设计" :class="{ active: currentTab === 'design' }" @click="currentTab = 'design'">
                 🎨 声音设计
             </button>
-            <button class="tab" :class="{ active: currentTab === 'list' }" @click="currentTab = 'list'">
+            <button class="tab" data-label="🗂️ 音色列表" :class="{ active: currentTab === 'list' }" @click="currentTab = 'list'">
                 🗂️ 音色列表
             </button>
         </div>

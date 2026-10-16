@@ -636,6 +636,7 @@ export default {
         >
             <button 
                 class="tab" 
+                data-label="📁 上传音频文件"
                 :class="{ active: currentTab === 'upload' }"
                 @click="currentTab = 'upload'"
                 style="
@@ -648,6 +649,7 @@ export default {
             >📁 上传音频文件</button>
             <button 
                 class="tab" 
+                data-label="🔗 使用音频 URL"
                 :class="{ active: currentTab === 'url' }"
                 @click="currentTab = 'url'"
                 style="
@@ -660,6 +662,7 @@ export default {
             >🔗 使用音频 URL</button>
             <button 
                 class="tab" 
+                data-label="📋 音色列表"
                 :class="{ active: currentTab === 'list' }"
                 @click="currentTab = 'list'"
                 style="
