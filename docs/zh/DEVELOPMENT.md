@@ -255,6 +255,7 @@ export default {
 - **出入场用 `<Transition>` 不用 CSS animation**：Transition 的 enter/leave 类播完即移除，元素回归常态；`animation-fill-mode: both` 会把变换 / 合成层永久留在元素上（上述两类副作用的根源）。
 - **持续性过渡用 transform**：如标签高亮条 `translateX + scaleX` + `will-change`，走合成器，避免主线程逐帧布局。
 - **reduced-motion**：所有动画在 `@media (prefers-reduced-motion: reduce)` 内置 `transition/animation: none`。
+- **主题属性 / CSS 变量只能挂 `html` / `body`，不得挂 `#app`**：Teleport 后的浮层（音量条、全部模态、toast）已脱离 `#app` 子树，能继承的只有 `:root` / `html` 级定义。当前主题变量均在 `:root`，浮层安全；但这是**隐式契约**——将来若把主题属性或变量挪到 `#app` 上，全部浮层会静默丢失主题且不报错。
 
 ---
 
