@@ -556,14 +556,16 @@ export default {
     },
     template: /*html*/ `
         <div class="bailian-tts">
-            <div v-if="toastVisible"
-                class="toast"
-                :class="{'toast-error': toastType === 'error'}"
-                @mouseenter="onToastMouseEnter"
-                @mouseleave="onToastMouseLeave"
-            >
-                {{ toastMessage }}
-            </div>
+            <Teleport to="body">
+                <div v-if="toastVisible"
+                    class="toast"
+                    :class="{'toast-error': toastType === 'error'}"
+                    @mouseenter="onToastMouseEnter"
+                    @mouseleave="onToastMouseLeave"
+                >
+                    {{ toastMessage }}
+                </div>
+            </Teleport>
 
             <!-- 认证配置选择 -->
             <div class="form-group">
@@ -621,6 +623,7 @@ export default {
                 >
                     <button 
                         class="tab" 
+                        data-label="📁 声音复刻"
                         :class="{ active: mode === 'clone' }"
                         @click="mode = 'clone'"
                         style="
@@ -633,6 +636,7 @@ export default {
                     >📁 声音复刻</button>
                     <button 
                         class="tab" 
+                        data-label="🎨 声音设计"
                         :class="{ active: mode === 'design' }"
                         @click="mode = 'design'"
                         style="
@@ -885,37 +889,41 @@ export default {
             </div>
 
             <!-- 预览模态框（设计模式专用 - 内嵌删除确认） -->
-            <div v-if="previewModalVisible" class="modal-overlay">
-                <div class="modal-content" style="max-width:500px;width:90%;">
-                    <h3>🎧 音色预览</h3>
-                    <p><strong>Voice ID:</strong> {{ previewVoiceId }}</p>
-                    <p><strong>预览文本:</strong> {{ previewText }}</p>
-                    <div style="display:flex;gap:12px;margin:16px 0;flex-wrap:wrap;">
-                        <button class="btn" @click="playPreviewAudio"
-                            :class="{'btn-danger': currentPlayingId === 'design_preview_' + previewVoiceId}">
-                            {{ currentPlayingId === 'design_preview_' + previewVoiceId ? '⏹ 停止' : '▶ 试听' }}
-                        </button>
-                    </div>
-                    <div style="border-top:1px solid var(--border);padding-top:16px;">
-                        <div v-if="!previewDeleteConfirm" style="display:flex;gap:12px;justify-content:flex-end;">
-                            <button class="btn btn-success" @click="keepVoice">保留</button>
-                            <button class="btn btn-danger" @click="previewDeleteConfirm = true">删除</button>
-                            <button class="btn btn-sm btn-secondary" @click="closePreviewModal">关闭</button>
-                        </div>
-                        <div v-else style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
-                            <div style="color:var(--danger);font-weight:bold;">
-                                ⚠️ 确定要删除此音色吗？此操作不可恢复。
-                            </div>
-                            <div style="display:flex;gap:12px;">
-                                <button class="btn btn-sm btn-secondary" @click="previewDeleteConfirm = false">
-                                    取消
+            <Teleport to="body">
+                <Transition name="modal">
+                    <div v-if="previewModalVisible" class="modal-overlay">
+                        <div class="modal-content" style="max-width:500px;width:90%;">
+                            <h3>🎧 音色预览</h3>
+                            <p><strong>Voice ID:</strong> {{ previewVoiceId }}</p>
+                            <p><strong>预览文本:</strong> {{ previewText }}</p>
+                            <div style="display:flex;gap:12px;margin:16px 0;flex-wrap:wrap;">
+                                <button class="btn" @click="playPreviewAudio"
+                                    :class="{'btn-danger': currentPlayingId === 'design_preview_' + previewVoiceId}">
+                                    {{ currentPlayingId === 'design_preview_' + previewVoiceId ? '⏹ 停止' : '▶ 试听' }}
                                 </button>
-                                <button class="btn btn-danger" @click="confirmDeletePreview">确认删除</button>
+                            </div>
+                            <div style="border-top:1px solid var(--border);padding-top:16px;">
+                                <div v-if="!previewDeleteConfirm" style="display:flex;gap:12px;justify-content:flex-end;">
+                                    <button class="btn btn-success" @click="keepVoice">保留</button>
+                                    <button class="btn btn-danger" @click="previewDeleteConfirm = true">删除</button>
+                                    <button class="btn btn-sm btn-secondary" @click="closePreviewModal">关闭</button>
+                                </div>
+                                <div v-else style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+                                    <div style="color:var(--danger);font-weight:bold;">
+                                        ⚠️ 确定要删除此音色吗？此操作不可恢复。
+                                    </div>
+                                    <div style="display:flex;gap:12px;">
+                                        <button class="btn btn-sm btn-secondary" @click="previewDeleteConfirm = false">
+                                            取消
+                                        </button>
+                                        <button class="btn btn-danger" @click="confirmDeletePreview">确认删除</button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
+                </Transition>
+            </Teleport>
 
             <!-- 删除确认模态框（公共组件） -->
             <DeleteConfirmModal

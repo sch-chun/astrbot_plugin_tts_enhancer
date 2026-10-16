@@ -41,25 +41,29 @@ export default {
         return { close, handleCancel, handleConfirm };
     },
     template: /* html */ `
-        <div
-            v-if="visible"
-            class="modal-overlay"
-            @mousedown.self="handleCancel"
-        >
-            <div class="modal-content" :style="{ maxWidth: maxWidth, width: '90%' }">
-                <h3>{{ title }}</h3>
-                <div class="delete-confirm-body">
-                    <slot>{{ message }}</slot>
+        <Teleport to="body">
+            <Transition name="modal">
+                <div
+                    v-if="visible"
+                    class="modal-overlay"
+                    @mousedown.self="handleCancel"
+                >
+                    <div class="modal-content" :style="{ maxWidth: maxWidth, width: '90%' }">
+                        <h3>{{ title }}</h3>
+                        <div class="delete-confirm-body">
+                            <slot>{{ message }}</slot>
+                        </div>
+                        <div class="delete-confirm-actions">
+                            <button class="btn btn-sm btn-secondary" @click="handleCancel">
+                                {{ cancelText }}
+                            </button>
+                            <button class="btn btn-danger" @click="handleConfirm">
+                                {{ confirmText }}
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <div class="delete-confirm-actions">
-                    <button class="btn btn-sm btn-secondary" @click="handleCancel">
-                        {{ cancelText }}
-                    </button>
-                    <button class="btn btn-danger" @click="handleConfirm">
-                        {{ confirmText }}
-                    </button>
-                </div>
-            </div>
-        </div>
+            </Transition>
+        </Teleport>
     `
 };

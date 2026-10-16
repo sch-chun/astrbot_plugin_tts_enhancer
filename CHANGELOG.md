@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.9] - 2026-10-16
+
+### Added
+
+- **管理页进场动画**：页面内容与标签页切换淡入（`content-fade-in` / `tab-fade-in`，位移 8px），加载与切换更连贯；`prefers-reduced-motion: reduce` 下自动禁用。
+- **模态框出入场动画**：全部 6 处模态（删除确认 / 音色预览 / 内联设计预览 / 复刻结果 ×2 / 设计结果）统一由 Vue `<Transition name="modal">` 驱动——遮罩 0.2s 淡入，模态盒 `translateY(8px) scale(0.97)` 轻弹入，退场反向 0.15s。选用 `<Transition>` 而非 CSS `animation`：动画类播完即被移除，元素回归无变换常态，不会在 DOM 上留下合成层或单位矩阵变换。
+
+### Changed
+
+- **全局音量条改为固定顶栏**：由页面流内 sticky 元素改为 `<Teleport to="body">` 的 fixed 顶栏（z-index 高于模态遮罩）——试听 / 预览时无需退出模态框即可调节音量；`.page-content` 以 padding 补偿其不再占据流内空间。
+- **标签高亮条改用 transform 动画**：指示条从 `left/width` 逐帧布局改为 `transform: translateX + scaleX` 合成器动画并加 `will-change: transform`，背景图淡入期间切换标签不再掉帧。
+- **模态遮罩与通知 toast 全部 Teleport 到 body**（6 遮罩 + 4 toast），固定层尺寸由 `100%` 改为 `100vw/100vh`（经典滚动条不再留未遮盖竖条）。该架构同时免疫页面级动画对 fixed 后代的包含块 / 层叠副作用，新增浮层时应遵循。
+
+### Fixed
+
+- **修复标签切换瞬时抛错**：`switchTab` 残留的 `nextTick` 调用（对应 import 已在先前重构中移除）会在切换标签时抛 `ReferenceError`，改为 `requestAnimationFrame`（rAF 回调必晚于当帧 DOM 挂载）。
+- **修复模态框「只模糊表单 + 硬边界」**：根因为页面级淡入动画 `animation-fill-mode: both` 结束后 Chrome 保留合成器变换（computed transform 为单位矩阵而非 `none`），使固定遮罩被锚定到动画祖先的盒子而非视口；Teleport 到 body 后恢复全屏覆盖与水平居中。
+- **修复音量条被模态遮罩压住**：根因为 `.page-content` 淡入动画留下的合成层即层叠上下文，将音量条的 z-index 锁死在 `#app` 子树内，body 级遮罩因此压过整个子树；随 Teleport 架构根治，模态打开态命中链恢复 `[滑块, 音量条, 遮罩]`。
+- **修复子标签激活加粗宽度跳变**：8 个未带 `data-label` 的子标签（百炼系复刻 / 设计模式、MiniMax 与百炼 MiniMax 的上传 / URL / 列表页签）补上幽灵文本，预撑激活态加粗宽度——`.tab::after` 是全局规则，此前这些子标签切换时宽度会跳（已发布版本同样存在此现象）。
+- 前三项均为 0.3.9 开发期由同批页面动画引入并同期修复，**未随 0.3.8 及更早版本流出**，已发布版本行为不受影响；子标签宽度问题为既有缺陷，本版顺手修复。
+
 ## [0.3.8] - 2026-10-06
 
 ### Added

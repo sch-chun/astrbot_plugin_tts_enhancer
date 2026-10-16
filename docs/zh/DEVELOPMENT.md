@@ -249,6 +249,14 @@ export default {
 - `useTextValidator`：`countChars`（汉字=2）、`validateText({label,min,max,required})` → `{valid,error,count}`。
 - `useClipboard`、`useToast`：剪贴板与通知。
 
+### 7.6 浮层与动画约定
+
+- **模态 / Toast 一律 Teleport 到 body**：`<Teleport to="body"><Transition name="modal"><div class="modal-overlay">…`。页面级淡入动画（`animation-fill-mode: both`）结束后，Chrome 会在祖先上留下单位矩阵变换（成为 fixed 后代的包含块，把浮层锚到动画祖先的盒子上）与合成层（即层叠上下文，锁死子树 z-index）两类副作用；Teleport 到 body 是唯一稳健解。遮罩尺寸用 `100vw/100vh`，不用 `100%`（经典滚动条）。
+- **出入场用 `<Transition>` 不用 CSS animation**：Transition 的 enter/leave 类播完即移除，元素回归常态；`animation-fill-mode: both` 会把变换 / 合成层永久留在元素上（上述两类副作用的根源）。
+- **持续性过渡用 transform**：如标签高亮条 `translateX + scaleX` + `will-change`，走合成器，避免主线程逐帧布局。
+- **reduced-motion**：所有动画在 `@media (prefers-reduced-motion: reduce)` 内置 `transition/animation: none`。
+- **主题属性 / CSS 变量只能挂 `html` / `body`，不得挂 `#app`**：Teleport 后的浮层（音量条、全部模态、toast）已脱离 `#app` 子树，能继承的只有 `:root` / `html` 级定义。当前主题变量均在 `:root`，浮层安全；但这是**隐式契约**——将来若把主题属性或变量挪到 `#app` 上，全部浮层会静默丢失主题且不报错。
+
 ---
 
 ## 8. 测试规范

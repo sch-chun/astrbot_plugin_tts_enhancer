@@ -121,39 +121,43 @@ export default {
         };
     },
     template: /* html */ `
-        <div v-if="visible" class="modal-overlay" @mousedown.self="close">
-            <div class="modal-content">
-                <h3>{{ title }}</h3>
-                <p><strong>Voice ID:</strong> {{ voiceId }}</p>
-                <div class="form-group">
-                    <label>预览文本</label>
-                    <textarea v-model="text" rows="3" placeholder="输入要试听的文本"></textarea>
+        <Teleport to="body">
+            <Transition name="modal">
+                <div v-if="visible" class="modal-overlay" @mousedown.self="close">
+                    <div class="modal-content">
+                        <h3>{{ title }}</h3>
+                        <p><strong>Voice ID:</strong> {{ voiceId }}</p>
+                        <div class="form-group">
+                            <label>预览文本</label>
+                            <textarea v-model="text" rows="3" placeholder="输入要试听的文本"></textarea>
+                        </div>
+                        <div style="display:flex; gap:12px; justify-content:flex-end;">
+                            <button
+                                class="btn"
+                                @click="doPreview"
+                                :disabled="loading"
+                                :class="{'btn-danger': currentPlayingId === playId}"
+                            >
+                                {{ loading ? '合成中...' : (
+                                    currentPlayingId === playId ? '⏹ 停止' : '试听'
+                                ) }}
+                            </button>
+                            <button class="btn btn-sm btn-secondary" @click="close">关闭</button>
+                        </div>
+                    </div>
                 </div>
-                <div style="display:flex; gap:12px; justify-content:flex-end;">
-                    <button
-                        class="btn"
-                        @click="doPreview"
-                        :disabled="loading"
-                        :class="{'btn-danger': currentPlayingId === playId}"
-                    >
-                        {{ loading ? '合成中...' : (
-                            currentPlayingId === playId ? '⏹ 停止' : '试听'
-                        ) }}
-                    </button>
-                    <button class="btn btn-sm btn-secondary" @click="close">关闭</button>
-                </div>
-            </div>
-        </div>
+            </Transition>
 
-        <!-- 组件内部 toast（与父组件相互独立） -->
-        <div
-            v-if="toastVisible"
-            class="toast"
-            :class="{'toast-error': toastType === 'error'}"
-            @mouseenter="onToastMouseEnter"
-            @mouseleave="onToastMouseLeave"
-        >
-            {{ toastMessage }}
-        </div>
+            <!-- 组件内部 toast（与父组件相互独立） -->
+            <div
+                v-if="toastVisible"
+                class="toast"
+                :class="{'toast-error': toastType === 'error'}"
+                @mouseenter="onToastMouseEnter"
+                @mouseleave="onToastMouseLeave"
+            >
+                {{ toastMessage }}
+            </div>
+        </Teleport>
     `
 };
