@@ -45,6 +45,9 @@ const app = createApp({
                 if (data.length > 0) {
                     currentTab.value = data[0].template_key;
                     switchTab(currentTab.value);
+                    // 初始定位不走过渡，避免高亮条从原点滑入。
+                    // 用 rAF 而非 nextTick：本场景下 nextTick 回调早于 v-else 挂载执行，取不到元素
+                    requestAnimationFrame(() => moveTabIndicator(false));
                 }
             } catch (e) {
                 console.error('获取供应商列表失败:', e);
@@ -62,12 +65,47 @@ const app = createApp({
                 if (!data || !data.data_url) return;
                 const img = document.getElementById('page-bg-img');
                 if (!img) return;
-                img.style.backgroundImage = `url("${data.data_url}")`;
-                img.style.opacity = String(data.opacity ?? 1);
+                const opacity = String(data.opacity ?? 1);
                 const blur = Number(data.blur ?? 0);
-                img.style.filter = blur > 0 ? `blur(${blur}px)` : 'none';
+                // 预加载图片，解码完成后再设置背景并提升透明度：
+                // CSS 中 #page-bg-img 默认 opacity 0 且带 transition，
+                // 此处赋值即触发从 0 到目标值的淡入；图片加载失败则保持透明不显示
+                const preload = new Image();
+                preload.onload = () => {
+                    img.style.backgroundImage = `url("${data.data_url}")`;
+                    img.style.filter = blur > 0 ? `blur(${blur}px)` : 'none';
+                    img.style.opacity = opacity;
+                };
+                preload.src = data.data_url;
             } catch (e) {
                 console.warn('加载背景图失败:', e);
+            }
+        }
+
+        // 高亮条基准宽度（px），与 style.css .tab-indicator 的 width 保持一致：
+        // 元素保持基准宽不动，用 translateX + scaleX 换算到目标标签，
+        // 使过渡只跑 transform（合成器线程），背景淡入期切换也不掉帧
+        const INDICATOR_BASE_WIDTH = 100;
+
+        // 将高亮滑动条对齐到激活标签：animate=false 时瞬时定位（初始渲染/窗口尺寸变化）。
+        // 直接查 DOM 而非模板 ref：v-if 挂载当帧的 ref 绑定晚于 nextTick 回调，取不到。
+        // 用 getBoundingClientRect 取亚像素精度，换算 transform 而非设 left/width。
+        function moveTabIndicator(animate = true) {
+            const indicator = document.querySelector('.tabs .tab-indicator');
+            if (!indicator) return;
+            const tabs = indicator.parentElement;
+            const activeTab = tabs.querySelector('.tab.active');
+            if (!activeTab) return;
+            const tabsRect = tabs.getBoundingClientRect();
+            const tabRect = activeTab.getBoundingClientRect();
+            if (!animate) {
+                indicator.style.transition = 'none';
+            }
+            indicator.style.transform =
+                `translateX(${tabRect.left - tabsRect.left}px) scaleX(${tabRect.width / INDICATOR_BASE_WIDTH})`;
+            if (!animate) {
+                void indicator.offsetWidth; // 强制回流，恢复过渡供下次平滑平移
+                indicator.style.transition = '';
             }
         }
 
@@ -85,6 +123,10 @@ const app = createApp({
                 console.warn(`未找到 ${templateKey} 对应的组件，将显示空占位。`);
                 currentComponent.value = null;
             }
+
+            // 等 DOM 更新后把高亮条平滑滑到新标签位置。
+            // 用 rAF 而非 nextTick：本场景下 nextTick 回调早于 v-else 挂载执行，取不到元素
+            requestAnimationFrame(() => moveTabIndicator(true));
         }
 
         function getDisplayName(key) {
@@ -103,6 +145,8 @@ const app = createApp({
         onMounted(() => {
             fetchProviders();
             applyPageBackground();
+            // 窗口尺寸变化会改变标签宽度，重新瞬时对齐高亮条
+            window.addEventListener('resize', () => moveTabIndicator(false));
         });
 
         return {

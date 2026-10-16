@@ -879,16 +879,18 @@ export default {
     template: /* html */ `
     <div class="minimax-tts">
 
-        <!-- Toast -->
-        <div
-            v-if="toastVisible"
-            class="toast"
-            :class="{'toast-error': toastType === 'error'}"
-            @mouseenter="onToastMouseEnter"
-            @mouseleave="onToastMouseLeave"
-        >
-            {{ toastMessage }}
-        </div>
+        <Teleport to="body">
+            <!-- Toast -->
+            <div
+                v-if="toastVisible"
+                class="toast"
+                :class="{'toast-error': toastType === 'error'}"
+                @mouseenter="onToastMouseEnter"
+                @mouseleave="onToastMouseLeave"
+            >
+                {{ toastMessage }}
+            </div>
+        </Teleport>
 
         <!-- 认证配置 -->
         <div class="form-group">
@@ -1218,27 +1220,31 @@ export default {
             </fieldset>
 
             <!-- 复刻结果模态框 -->
-            <div v-if="cloneResultModalVisible" class="modal-overlay" @mousedown.self="closeCloneResult">
-                <div class="modal-content" style="max-width:500px;">
-                    <h3>✅ 复刻成功</h3>
-                    <p><strong>Voice ID:</strong> {{ cloneResult.voice_id }}</p>
-                    <p style="color:var(--gray);font-size:0.85rem;">
-                        音色当前处于未激活状态，需要在语音合成接口中正式调用一次方可激活。
-                    </p>
-                    <button class="btn" @click="playDemoAudio"
-                        :class="{'btn-danger': currentPlayingId === 'demo_audio'}">
-                        {{ currentPlayingId === 'demo_audio' ? '⏹ 停止' : '▶ 播放试听音频' }}
-                    </button>
-                    <div style="margin-top:16px;display:flex;gap:12px;justify-content:flex-end;">
-                        <button class="btn btn-danger" @click="showDeleteUnactivatedConfirm(cloneResult.voice_id)">
-                            删除
-                        </button>
-                        <button class="btn btn-success" @click="keepUnactivatedVoice(cloneResult, 'voice_cloning')">
-                            保留
-                        </button>
+            <Teleport to="body">
+                <Transition name="modal">
+                    <div v-if="cloneResultModalVisible" class="modal-overlay" @mousedown.self="closeCloneResult">
+                        <div class="modal-content" style="max-width:500px;">
+                            <h3>✅ 复刻成功</h3>
+                            <p><strong>Voice ID:</strong> {{ cloneResult.voice_id }}</p>
+                            <p style="color:var(--gray);font-size:0.85rem;">
+                                音色当前处于未激活状态，需要在语音合成接口中正式调用一次方可激活。
+                            </p>
+                            <button class="btn" @click="playDemoAudio"
+                                :class="{'btn-danger': currentPlayingId === 'demo_audio'}">
+                                {{ currentPlayingId === 'demo_audio' ? '⏹ 停止' : '▶ 播放试听音频' }}
+                            </button>
+                            <div style="margin-top:16px;display:flex;gap:12px;justify-content:flex-end;">
+                                <button class="btn btn-danger" @click="showDeleteUnactivatedConfirm(cloneResult.voice_id)">
+                                    删除
+                                </button>
+                                <button class="btn btn-success" @click="keepUnactivatedVoice(cloneResult, 'voice_cloning')">
+                                    保留
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </div>
+                </Transition>
+            </Teleport>
         </div>
 
         <!-- ========== 声音设计选项卡 ========== -->
@@ -1289,29 +1295,33 @@ export default {
             </fieldset>
 
             <!-- 设计结果模态框 -->
-            <div v-if="designResultModalVisible" class="modal-overlay" @mousedown.self="closeDesignResult">
-                <div class="modal-content" style="max-width:500px;">
-                    <h3>✅ 设计成功</h3>
-                    <p><strong>Voice ID:</strong> {{ designResult.voice_id }}</p>
-                    <p style="color:var(--gray);font-size:0.85rem;">
-                        音色当前处于未激活状态，需要在语音合成接口中正式调用一次方可激活。
-                    </p>
-                    <div v-if="designResult.trial_audio">
-                        <button class="btn" @click="playTrialAudio"
-                            :class="{'btn-danger': currentPlayingId === 'trial_audio'}">
-                            {{ currentPlayingId === 'trial_audio' ? '⏹ 停止' : '▶ 播放试听音频' }}
-                        </button>
+            <Teleport to="body">
+                <Transition name="modal">
+                    <div v-if="designResultModalVisible" class="modal-overlay" @mousedown.self="closeDesignResult">
+                        <div class="modal-content" style="max-width:500px;">
+                            <h3>✅ 设计成功</h3>
+                            <p><strong>Voice ID:</strong> {{ designResult.voice_id }}</p>
+                            <p style="color:var(--gray);font-size:0.85rem;">
+                                音色当前处于未激活状态，需要在语音合成接口中正式调用一次方可激活。
+                            </p>
+                            <div v-if="designResult.trial_audio">
+                                <button class="btn" @click="playTrialAudio"
+                                    :class="{'btn-danger': currentPlayingId === 'trial_audio'}">
+                                    {{ currentPlayingId === 'trial_audio' ? '⏹ 停止' : '▶ 播放试听音频' }}
+                                </button>
+                            </div>
+                            <div style="margin-top:16px;display:flex;gap:12px;justify-content:flex-end;">
+                                <button class="btn btn-danger" @click="showDeleteUnactivatedConfirm(designResult.voice_id)">
+                                    删除
+                                </button>
+                                <button class="btn btn-success" @click="keepUnactivatedVoice(designResult, 'voice_generation')">
+                                    保留
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <div style="margin-top:16px;display:flex;gap:12px;justify-content:flex-end;">
-                        <button class="btn btn-danger" @click="showDeleteUnactivatedConfirm(designResult.voice_id)">
-                            删除
-                        </button>
-                        <button class="btn btn-success" @click="keepUnactivatedVoice(designResult, 'voice_generation')">
-                            保留
-                        </button>
-                    </div>
-                </div>
-            </div>
+                </Transition>
+            </Teleport>
         </div>
 
         <!-- ========== 音色列表选项卡 ========== -->

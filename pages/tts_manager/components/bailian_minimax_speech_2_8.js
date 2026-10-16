@@ -579,15 +579,17 @@ export default {
     template: /*html*/ `
 <div class="bailian-tts">
 
-    <!-- Toast -->
-    <div v-if="toastVisible"
-        class="toast"
-        :class="{'toast-error': toastType === 'error'}"
-        @mouseenter="onToastMouseEnter"
-        @mouseleave="onToastMouseLeave"
-    >
-        {{ toastMessage }}
-    </div>
+    <Teleport to="body">
+        <!-- Toast -->
+        <div v-if="toastVisible"
+            class="toast"
+            :class="{'toast-error': toastType === 'error'}"
+            @mouseenter="onToastMouseEnter"
+            @mouseleave="onToastMouseLeave"
+        >
+            {{ toastMessage }}
+        </div>
+    </Teleport>
 
     <!-- 认证配置选择 -->
     <div class="form-group">
@@ -1069,29 +1071,33 @@ export default {
     </fieldset>
 
     <!-- 复刻结果试听模态框 -->
-    <div v-if="cloneResultModalVisible" class="modal-overlay" @mousedown.self="closeCloneResult">
-        <div class="modal-content" style="max-width:500px;">
-            <h3>✅ 克隆成功</h3>
-            <p><strong>Voice ID:</strong> {{ cloneResult.voice_id }}</p>
-            <p style="color:var(--gray);font-size:0.85rem;">
-                音色当前处于未激活状态，需要在语音合成接口中正式调用一次方可激活。
-            </p>
-            <div v-if="cloneResult.demo_audio">
-                <button class="btn" @click="playDemoAudio"
-                    :class="{'btn-danger': currentPlayingId === 'demo_audio'}">
-                    {{ currentPlayingId === 'demo_audio' ? '⏹ 停止' : '▶ 播放试听音频' }}
-                </button>
+    <Teleport to="body">
+        <Transition name="modal">
+            <div v-if="cloneResultModalVisible" class="modal-overlay" @mousedown.self="closeCloneResult">
+                <div class="modal-content" style="max-width:500px;">
+                    <h3>✅ 克隆成功</h3>
+                    <p><strong>Voice ID:</strong> {{ cloneResult.voice_id }}</p>
+                    <p style="color:var(--gray);font-size:0.85rem;">
+                        音色当前处于未激活状态，需要在语音合成接口中正式调用一次方可激活。
+                    </p>
+                    <div v-if="cloneResult.demo_audio">
+                        <button class="btn" @click="playDemoAudio"
+                            :class="{'btn-danger': currentPlayingId === 'demo_audio'}">
+                            {{ currentPlayingId === 'demo_audio' ? '⏹ 停止' : '▶ 播放试听音频' }}
+                        </button>
+                    </div>
+                    <div style="margin-top:16px;display:flex;gap:12px;justify-content:flex-end;">
+                        <button class="btn btn-danger" @click="showDeleteUnactivatedConfirm(cloneResult.voice_id)">
+                            删除
+                        </button>
+                        <button class="btn btn-success" @click="keepUnactivatedVoice(cloneResult)">
+                            保留
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div style="margin-top:16px;display:flex;gap:12px;justify-content:flex-end;">
-                <button class="btn btn-danger" @click="showDeleteUnactivatedConfirm(cloneResult.voice_id)">
-                    删除
-                </button>
-                <button class="btn btn-success" @click="keepUnactivatedVoice(cloneResult)">
-                    保留
-                </button>
-            </div>
-        </div>
-    </div>
+        </Transition>
+    </Teleport>
 
     <!-- 预览模态框 -->
     <VoicePreviewModal

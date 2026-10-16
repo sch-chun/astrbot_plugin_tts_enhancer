@@ -8,7 +8,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v0.3.8-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.3.9-green)](../../CHANGELOG.md)
 
 ---
 
@@ -65,6 +65,12 @@ Shared logic is extracted into `composables/`:
 - `useTextValidator.js` — text length validation (CJK char = 2 units)
 - `useClipboard.js` — clipboard operations
 - `useToast.js` — notifications
+
+Page-level interaction details:
+
+- **Global volume bar** — a fixed top bar that stays adjustable while a modal is open (tweak volume during preview without closing the modal)
+- **Enter/leave animations** — page and tab fade-ins, modal pop-in/out; all disabled under `prefers-reduced-motion`
+- **Floating-layer architecture** — modal overlays and toasts are always teleported to `body` and sized with `vw/vh`, immune to the containing-block / stacking side effects of page-level animations
 
 Per provider:
 

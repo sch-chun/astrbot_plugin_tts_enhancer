@@ -48,22 +48,34 @@ body {
     background-position: center;
     background-repeat: no-repeat;
     background-color: transparent;
+    /* 默认透明；图片解码后由 app.js 提升到目标透明度，配合 transition 实现淡入 */
+    opacity: 0;
+    transition: opacity 0.6s ease;
+    /* 提前提升为独立合成层：模糊滤镜只栅格化一次，淡入期间每帧仅做合成，
+       避免与标签切换动画（尤其指示条平移）争抢主线程导致掉帧 */
+    will-change: opacity;
 }
 h1 { font-size: 1.8rem; margin-top: 0; }
 
 /* 全局音量条（页面顶部 sticky，仅音量，无停止按钮） */
+/* 全局音量条：fixed 顶栏（经 Teleport 挂到 body），z-index 高于模态遮罩与 toast，
+   试听时可直接调音量。自带淡入与内容同步；高度 44px 由 .page-content 的
+   padding-top 补偿（条不再占流内空间） */
 .global-volume-bar {
-    position: sticky;
+    position: fixed;
     top: 0;
+    left: 0;
+    right: 0;
+    height: 44px;
     z-index: 1001;
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 16px;
-    margin: -20px -20px 16px -20px;
+    padding: 0 16px;
     background: rgba(var(--bg-rgb), 0.85);
     border-bottom: 1px solid var(--border);
     box-shadow: var(--shadow);
+    animation: content-fade-in 0.35s ease both;
 }
 .global-volume-icon { font-size: 1.1rem; }
 .global-volume-slider {
@@ -108,6 +120,25 @@ h1 { font-size: 1.8rem; margin-top: 0; }
     gap: 4px;
     border-bottom: 2px solid var(--border);
     margin-bottom: 20px;
+    position: relative;
+}
+/* 标签高亮滑动条：贴在 tabs 底边框上，切换时平滑平移。
+   用 transform（translateX + scaleX）而非 left/width 过渡：
+   布局属性每帧走主线程，与背景图模糊层淡入同现时必掉帧；
+   transform 走合成器线程，位移期间不触发重排重绘。
+   基准宽度 100px 不变，由 app.js 按目标标签宽换算 scaleX（INDICATOR_BASE_WIDTH）。
+   初始 scaleX(0) 不可见，首次定位由 JS 以无过渡方式瞬间完成。 */
+.tab-indicator {
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 100px;
+    height: 2px;
+    background: var(--primary);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 0.2s ease;
+    will-change: transform;
 }
 .tab {
     padding: 10px 20px;
@@ -120,12 +151,32 @@ h1 { font-size: 1.8rem; margin-top: 0; }
     transition: 0.2s;
 }
 .tab:hover { color: var(--text); }
+/* 加粗幽灵文本：用不可见的加粗副本把标签盒子撑到加粗宽度，
+   激活时只改颜色不改宽度，避免字体度量重排导致高亮条测到漂移中的布局 */
+.tab::after {
+    content: attr(data-label);
+    display: block;
+    height: 0;
+    font-weight: 600;
+    visibility: hidden;
+}
 .tab.active {
     color: var(--primary);
-    border-bottom-color: var(--primary);
     font-weight: 600;
 }
 .loading { color: var(--gray); }
+/* 加载完成后的页面内容容器：音量条 + 标题 + 内容卡片整体包在一起。
+   随 loading 结束才挂载，动画恰在此刻播放，实现加载完成后淡入；
+   template 内不预渲染，Vue 挂载前无 mustache 闪现。 */
+.page-content {
+    animation: content-fade-in 0.35s ease both;
+    /* 音量条 fixed 后不再占流内空间：44px 条高 − 20px body 内边距 + 16px 原间距 */
+    padding-top: 40px;
+}
+@keyframes content-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
 /* 磨砂内容卡片：把供应商选项卡与表单区整体包起来，统一半透明底色 + 内边距，
    避免磨砂区贴着内容边缘；无背景图时透出同色 = 视觉无变化。 */
 .content-panel {
@@ -135,6 +186,14 @@ h1 { font-size: 1.8rem; margin-top: 0; }
 }
 .tab-content {
     background: transparent;
+}
+/* 切换供应商标签时的内容动画：tab-pane 带 :key 随标签重挂载，动画随每次切换重播 */
+.tab-pane {
+    animation: tab-fade-in 0.2s ease both;
+}
+@keyframes tab-fade-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
 }
 
 /* 通用表单样式 */
@@ -279,7 +338,8 @@ th { background: rgba(var(--bg-rgb), 0.6); font-weight: 600; }
 .toast {
     position: fixed;
     bottom: 20px;
-    left: 50%;
+    /* 50vw 而非 50%：经典滚动条下 50% 会偏左约 7px */
+    left: 50vw;
     transform: translateX(-50%);
     background: var(--primary);
     color: white;
@@ -297,19 +357,6 @@ th { background: rgba(var(--bg-rgb), 0.6); font-weight: 600; }
     font-size: 0.85rem;
     margin-top: 2px;
 }
-.toast {
-    position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--primary);
-    color: white;
-    padding: 10px 20px;
-    border-radius: var(--radius);
-    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-    z-index: 1000;
-    font-size: 0.9rem;
-}
 .toast-error {
     background: var(--danger);
 }
@@ -326,15 +373,16 @@ th { background: rgba(var(--bg-rgb), 0.6); font-weight: 600; }
 .tab:hover { color: var(--text); }
 .tab.active {
     color: var(--primary);
-    border-bottom-color: var(--primary);
     font-weight: 600;
 }
 .modal-overlay {
     position: fixed;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
+    /* 用 vw/vh 而非 100%：经典滚动条会占掉约 15px，
+       100% 会在右侧留下未变暗的竖条，模态框中心也会随之偏左 */
+    width: 100vw;
+    height: 100vh;
     background: rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(4px);
     display: flex;
@@ -350,6 +398,31 @@ th { background: rgba(var(--bg-rgb), 0.6); font-weight: 600; }
     max-width: 500px;
     width: 90%;
     box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+/* 模态框出入场：由模板里的 <Transition name="modal"> 驱动。
+   动画类播放完毕即被 Vue 移除，元素回归无变换/无过渡的常态，
+   不会像 animation-fill-mode: both 那样留下合成层（层叠上下文）
+   或单位矩阵变换（包含块）——那是模态框被祖先锚定、z-index 失效的根源 */
+.modal-enter-active {
+    transition: opacity 0.2s ease;
+}
+.modal-leave-active {
+    transition: opacity 0.15s ease;
+}
+.modal-enter-from,
+.modal-leave-to {
+    opacity: 0;
+}
+.modal-enter-active .modal-content {
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.modal-leave-active .modal-content {
+    transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.modal-enter-from .modal-content,
+.modal-leave-to .modal-content {
+    transform: translateY(8px) scale(0.97);
+    opacity: 0;
 }
 .modal-content h3 {
     margin-top: 0;
@@ -396,4 +469,17 @@ th { background: rgba(var(--bg-rgb), 0.6); font-weight: 600; }
     border-top: 1px solid var(--border);
     padding-top: 16px;
     margin-top: 16px;
+}
+
+/* 减少动态效果偏好：关闭内容淡入动画与背景图淡入过渡，直接呈现 */
+@media (prefers-reduced-motion: reduce) {
+    .page-content { animation: none; }
+    .tab-pane { animation: none; }
+    .tab-indicator { transition: none; }
+    #page-bg-img { transition: none; }
+    .global-volume-bar { animation: none; }
+    .modal-enter-active, .modal-leave-active,
+    .modal-enter-active .modal-content, .modal-leave-active .modal-content {
+        transition: none;
+    }
 }
