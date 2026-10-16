@@ -277,6 +277,8 @@ flowchart TD
   - `composables/`：`useAudioManager`（全局音频单例/音量）、`useTextValidator`（汉字=2 字符计数与校验）、`useClipboard`、`useToast`。
 - 样式集中在 `style.css`；`eslint.config.mjs` 提供可选 lint（仅开发期）。
 - **可配置背景图**：管理页支持通过配置项 `page_background`（file 类型）上传单张背景图；后端 `/<plugin>/page-background` 路由将图片读取为 base64 Data URL 返回（避免二进制穿桥与跨域/外链），前端 `applyPageBackground()` 仅在 `data_url` 非空时渲染 `#page-bg` 固定背景层，并按 `page_background_opacity` / `page_background_blur` 应用不透明度与模糊。内容卡片与表单字段均改为半透明磨砂，使背景透出。
+- **浮层架构（模态 / Toast / 音量条）**：全局音量条与全部模态遮罩、通知 toast 均以 `<Teleport to="body">` 挂载到 body 下（fixed + `100vw/100vh`）。页面级淡入动画使用 `animation-fill-mode: both`，结束后会在祖先元素上留下两类持久副作用——合成器变换（computed transform 为单位矩阵而非 `none`，成为 `position: fixed` 后代的包含块）与合成层（即层叠上下文，锁死子树内 z-index）；Teleport 到 body 是免疫这两类副作用的稳健架构，新增浮层时应遵循。
+- **动画约定**：一次性出入场（模态、页面 / 标签进场）一律用 `<Transition>`——动画类播完即移除，无残留；持续性过渡（标签高亮条）用 transform 合成器动画 + `will-change`，避免逐帧布局。`@media (prefers-reduced-motion: reduce)` 下全部禁用。
 
 > 设计取舍：仅补齐"只有 API、没有 UI"的供应商管理体验；已有官方控制台者直接外链，不重复实现。
 
