@@ -557,14 +557,16 @@ export default {
     template: /*html*/ `
         <div class="bailian-tts">
             <Teleport to="body">
-                <div v-if="toastVisible"
-                    class="toast"
-                    :class="{'toast-error': toastType === 'error'}"
-                    @mouseenter="onToastMouseEnter"
-                    @mouseleave="onToastMouseLeave"
-                >
-                    {{ toastMessage }}
-                </div>
+                <Transition name="toast">
+                    <div v-if="toastVisible"
+                        class="toast"
+                        :class="{'toast-error': toastType === 'error'}"
+                        @mouseenter="onToastMouseEnter"
+                        @mouseleave="onToastMouseLeave"
+                    >
+                        {{ toastMessage }}
+                    </div>
+                </Transition>
             </Teleport>
 
             <!-- 认证配置选择 -->

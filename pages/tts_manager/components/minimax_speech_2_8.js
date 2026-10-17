@@ -881,15 +881,17 @@ export default {
 
         <Teleport to="body">
             <!-- Toast -->
-            <div
-                v-if="toastVisible"
-                class="toast"
-                :class="{'toast-error': toastType === 'error'}"
-                @mouseenter="onToastMouseEnter"
-                @mouseleave="onToastMouseLeave"
-            >
-                {{ toastMessage }}
-            </div>
+            <Transition name="toast">
+                <div
+                    v-if="toastVisible"
+                    class="toast"
+                    :class="{'toast-error': toastType === 'error'}"
+                    @mouseenter="onToastMouseEnter"
+                    @mouseleave="onToastMouseLeave"
+                >
+                    {{ toastMessage }}
+                </div>
+            </Transition>
         </Teleport>
 
         <!-- 认证配置 -->

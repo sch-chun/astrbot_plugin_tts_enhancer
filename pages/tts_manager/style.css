@@ -424,6 +424,21 @@ th { background: rgba(var(--bg-rgb), 0.6); font-weight: 600; }
     transform: translateY(8px) scale(0.97);
     opacity: 0;
 }
+/* Toast 出入场：同样由 <Transition name="toast"> 驱动。
+   注意 .toast 常态 transform: translateX(-50%) 承担水平居中（left: 50vw 方案），
+   动画端点必须写成 translateX(-50%) translateY(...) 的组合形式，
+   只写 translateY 会把常态居中变换整个覆盖掉、动画结束后 toast 偏右半屏 */
+.toast-enter-active {
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.toast-leave-active {
+    transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.toast-enter-from,
+.toast-leave-to {
+    transform: translateX(-50%) translateY(16px);
+    opacity: 0;
+}
 .modal-content h3 {
     margin-top: 0;
 }
@@ -480,6 +495,9 @@ th { background: rgba(var(--bg-rgb), 0.6); font-weight: 600; }
     .global-volume-bar { animation: none; }
     .modal-enter-active, .modal-leave-active,
     .modal-enter-active .modal-content, .modal-leave-active .modal-content {
+        transition: none;
+    }
+    .toast-enter-active, .toast-leave-active {
         transition: none;
     }
 }
