@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.10] - 2026-10-17
+
+### Added
+
+- **通知 toast 出入场动画**：全部 4 处 toast（音色预览 / 百炼合成器 / 百炼 MiniMax / MiniMax 的复制、删除、上传等操作反馈）统一由 Vue `<Transition name="toast">` 驱动——0.2s 淡入并自下方 16px 升起，退场反向 0.15s，与 0.3.9 的模态框动画同一套节奏。toast 常态 `transform: translateX(-50%)` 承担水平居中，动画端点以 `translateX(-50%) translateY(16px)` 组合形式书写，避免覆盖居中变换；`prefers-reduced-motion: reduce` 下自动禁用。
+
 ## [0.3.9] - 2026-10-16
 
 ### Added

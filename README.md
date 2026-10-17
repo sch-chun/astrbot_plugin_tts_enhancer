@@ -8,7 +8,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v0.3.9-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.3.10-green)](CHANGELOG.md)
 
 ---
 
@@ -69,7 +69,7 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 页面级交互细节：
 
 - **全局音量条** – 固定顶栏，模态框打开时仍可调节音量，试听无需退出模态框
-- **进出场动画** – 页面 / 标签淡入、模态盒轻弹入出；`prefers-reduced-motion` 下全部禁用
+- **进出场动画** – 页面 / 标签淡入、模态盒与 toast 轻弹入出；`prefers-reduced-motion` 下全部禁用
 - **浮层架构** – 模态遮罩与 toast 一律 Teleport 到 body 并以 `vw/vh` 全屏，免疫页面动画的包含块 / 层叠副作用
 
 具体到每个供应商：
