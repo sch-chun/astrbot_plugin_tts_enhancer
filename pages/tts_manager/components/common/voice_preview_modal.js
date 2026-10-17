@@ -149,15 +149,17 @@ export default {
             </Transition>
 
             <!-- 组件内部 toast（与父组件相互独立） -->
-            <div
-                v-if="toastVisible"
-                class="toast"
-                :class="{'toast-error': toastType === 'error'}"
-                @mouseenter="onToastMouseEnter"
-                @mouseleave="onToastMouseLeave"
-            >
-                {{ toastMessage }}
-            </div>
+            <Transition name="toast">
+                <div
+                    v-if="toastVisible"
+                    class="toast"
+                    :class="{'toast-error': toastType === 'error'}"
+                    @mouseenter="onToastMouseEnter"
+                    @mouseleave="onToastMouseLeave"
+                >
+                    {{ toastMessage }}
+                </div>
+            </Transition>
         </Teleport>
     `
 };
