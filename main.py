@@ -134,6 +134,29 @@ def _build_page_background_response(config, plugin_data_path) -> tuple[dict, str
     return {"code": 0, "data": {"data_url": data_url, "opacity": opacity, "blur": blur}}, etag
 
 
+def _if_none_match_matches(if_none_match: str | None, etag: str) -> bool:
+    """按 RFC 7232 弱比较判断 If-None-Match 头是否命中 etag。
+
+    请求头按规范可能是逗号分隔的多值列表，列表项也可带 W/ 弱验证器前缀；
+    If-None-Match 语义上使用弱比较（弱验证器与强验证器等价），逐项剥离
+    W/ 后与 etag 比对，任一项相同即命中。头缺失或全不命中返回 False。
+
+    Args:
+        if_none_match: 请求头 If-None-Match 的值，可为 None。
+        etag: 服务端生成的强 ETag（带引号的十六进制串）。
+
+    Returns:
+        命中返回 True，否则 False。
+    """
+    if not if_none_match:
+        return False
+    for candidate in if_none_match.split(","):
+        candidate = candidate.strip().removeprefix("W/")
+        if candidate == etag:
+            return True
+    return False
+
+
 class TTSEnhancerPlugin(Star):
     """TTS Enhancer —— 多供应商智能语音合成插件
 
@@ -352,7 +375,7 @@ class TTSEnhancerPlugin(Star):
             "获取分组后的供应商列表"
         )
 
-        async def get_page_background() -> JSONResponse:
+        async def get_page_background() -> Response:
             """获取管理页背景图（Data URL）与显示参数。
 
             仅当配置了背景图时返回 data_url；否则 data_url 为空，前端不渲染背景。
@@ -362,7 +385,8 @@ class TTSEnhancerPlugin(Star):
             已存 base64 由 HTTP 缓存透明复用，大图不再每次进入页面全量重传。
 
             Returns:
-                JSONResponse: 包含 data_url / opacity / blur 的 JSON 响应。
+                Response: 包含 data_url / opacity / blur 的 JSON 响应；
+                条件请求命中时为 304 空响应。
             """
             payload, etag = _build_page_background_response(
                 self.config, self.plugin_data_path
@@ -370,7 +394,7 @@ class TTSEnhancerPlugin(Star):
             if not etag:
                 return json_response(payload)
             cache_headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
-            if request.headers.get("if-none-match") == etag:
+            if _if_none_match_matches(request.headers.get("if-none-match"), etag):
                 return Response(status_code=304, headers=cache_headers)
             response = json_response(payload)
             response.headers.update(cache_headers)
