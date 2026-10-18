@@ -3,17 +3,31 @@
 直接驱动 ``_build_page_background_response`` 纯函数，覆盖非 happy path：
 配置缺失 / 类型异常 / 路径穿越 / 文件缺失，正常返回 Data URL，
 以及 ETag 语义（稳定 / 随内容变化 / 空响应无 ETag）。
+
+路由闭包 ``get_page_background`` 写在 ``_register_routes`` 里，经替身
+context 捕获真实注册的 handler 后驱动，覆盖缓存头附加、If-None-Match
+解析（RFC 7232 弱比较：多值列表 / W/ 前缀）与 304 分支。
 无需启动 AstrBot 主程序。
 """
 
 import base64
+import json
 import re
+from pathlib import Path
 
 import pytest
+from starlette.datastructures import Headers
 
 pytest.importorskip("astrbot.api.star")
 
-from astrbot_plugin_tts_enhancer.main import _build_page_background_response
+from astrbot_plugin_tts_enhancer.main import (
+    TTSEnhancerPlugin,
+    _build_page_background_response,
+    _if_none_match_matches,
+)
+from astrbot_plugin_tts_enhancer.src.config import TTSEnhancerConfig
+
+from astrbot.api import web as web_mod
 
 
 def _data_url_bytes(data_url: str) -> bytes:
@@ -185,3 +199,184 @@ class TestEtagForConditionalRequests:
     def test_etag_none_when_not_configured(self, tmp_path):
         _, etag = _build_page_background_response({}, tmp_path)
         assert etag is None
+
+
+class TestIfNoneMatchParsing:
+    """If-None-Match 解析：按 RFC 7232 弱比较，兼容多值与 W/ 前缀。"""
+
+    def test_missing_header_does_not_match(self):
+        assert _if_none_match_matches(None, '"abc"') is False
+
+    def test_empty_header_does_not_match(self):
+        assert _if_none_match_matches("", '"abc"') is False
+
+    def test_exact_match(self):
+        assert _if_none_match_matches('"abc"', '"abc"') is True
+
+    def test_different_etag_does_not_match(self):
+        assert _if_none_match_matches('"xyz"', '"abc"') is False
+
+    def test_matches_inside_comma_separated_list(self):
+        """规范允许头为逗号分隔多值：任一项命中即命中。"""
+        inm = '"other", "abc" , "third"'
+        assert _if_none_match_matches(inm, '"abc"') is True
+
+    def test_no_match_inside_comma_separated_list(self):
+        inm = '"other", "third"'
+        assert _if_none_match_matches(inm, '"abc"') is False
+
+    def test_matches_weak_validator_prefix(self):
+        """If-None-Match 用弱比较：W/ 前缀的弱验证器与强 ETag 等价。"""
+        assert _if_none_match_matches('W/"abc"', '"abc"') is True
+
+    def test_weak_validator_inside_list(self):
+        inm = '"other", W/"abc"'
+        assert _if_none_match_matches(inm, '"abc"') is True
+
+    def test_unquoted_value_does_not_match(self):
+        """etag 恒带引号；未加引号的裸值不得误命中。"""
+        assert _if_none_match_matches("abc", '"abc"') is False
+
+
+class RecordingRouteContext:
+    """register_web_api 替身：捕获全部注册项，按路径取出 handler。"""
+
+    def __init__(self):
+        self.routes = {}
+
+    def register_web_api(self, path, handler, methods=None, desc=""):
+        self.routes[path] = handler
+
+
+class FakeHeaderRequest:
+    """Web API 请求替身，只提供背景图 handler 用到的 headers。
+
+    用 starlette 的 Headers 而非普通 dict：HTTP 头名大小写不敏感，
+    与生产环境 PluginRequest 包装的真实 Headers 行为一致。
+    """
+
+    def __init__(self, headers=None):
+        self.headers = Headers(headers or {})
+
+
+def _make_route_plugin(tmp_path, raw_config=None):
+    """构造插件并抓取已注册的 page-background 路由 handler。
+
+    用 ``object.__new__`` 绕过 __init__ 的副作用（建目录、注册 Tool、
+    全量路由初始化），只单独驱动 ``_register_routes()``：闭包在注册时才
+    创建，由替身 context 捕获后按路径取回——驱动的就是线上同一个 handler。
+    """
+    plugin = object.__new__(TTSEnhancerPlugin)
+    plugin.config = TTSEnhancerConfig(raw_config or {})
+    plugin.providers = plugin.config.get_providers()
+    plugin.plugin_data_path = Path(tmp_path)
+    plugin.name = "astrbot_plugin_tts_enhancer"
+    ctx = RecordingRouteContext()
+    plugin.context = ctx
+    plugin._register_routes()
+    suffix = f"/{plugin.name}/page-background"
+    handler = next((h for p, h in ctx.routes.items() if p.endswith(suffix)), None)
+    assert handler is not None, "page-background 路由未注册"
+    return plugin, handler
+
+
+async def _call_page_background(handler, headers=None):
+    """在绑好请求上下文的前提下调用背景图接口。"""
+    token = web_mod._request_var.set(FakeHeaderRequest(headers))
+    try:
+        return await handler()
+    finally:
+        web_mod._request_var.reset(token)
+
+
+class TestPageBackgroundRouteConditionalRequest:
+    """路由层：ETag/Cache-Control 响应头与 If-None-Match → 304 的端到端行为。"""
+
+    async def test_route_attaches_etag_and_cache_headers(self, tmp_path):
+        (tmp_path / "bg.png").write_bytes(b"\x89PNG\r\n\x1a\nROUTE")
+        _, handler = _make_route_plugin(
+            tmp_path, {"page_background": ["bg.png"], "page_background_opacity": 0.4}
+        )
+        resp = await _call_page_background(handler)
+        expected_etag = _build_page_background_response(
+            {"page_background": ["bg.png"], "page_background_opacity": 0.4},
+            tmp_path,
+        )[1]
+        assert resp.status_code == 200
+        assert resp.headers["cache-control"] == "private, no-cache"
+        assert resp.headers["etag"] == expected_etag
+        body = json.loads(resp.body)
+        assert body["data"]["data_url"].startswith("data:image/png;base64,")
+
+    async def test_route_returns_304_on_matching_if_none_match(self, tmp_path):
+        (tmp_path / "bg.png").write_bytes(b"\x89PNG\r\n\x1a\nROUTE")
+        _, handler = _make_route_plugin(tmp_path, {"page_background": ["bg.png"]})
+        first = await _call_page_background(handler)
+        etag = first.headers["etag"]
+        second = await _call_page_background(handler, {"If-None-Match": etag})
+        assert second.status_code == 304
+        assert second.headers["etag"] == etag
+        assert second.body == b""
+
+    async def test_route_returns_304_on_multi_value_if_none_match(self, tmp_path):
+        """If-None-Match 可能是逗号分隔多值：任一项含当前 etag 即回 304。"""
+        (tmp_path / "bg.png").write_bytes(b"\x89PNG\r\n\x1a\nROUTE")
+        _, handler = _make_route_plugin(tmp_path, {"page_background": ["bg.png"]})
+        first = await _call_page_background(handler)
+        etag = first.headers["etag"]
+        second = await _call_page_background(
+            handler, {"If-None-Match": f'"other-tag", {etag}'}
+        )
+        assert second.status_code == 304
+        assert second.body == b""
+
+    async def test_route_returns_304_on_weak_if_none_match(self, tmp_path):
+        """If-None-Match 弱比较：W/ 前缀的弱验证器与强 ETag 等价。"""
+        (tmp_path / "bg.png").write_bytes(b"\x89PNG\r\n\x1a\nROUTE")
+        _, handler = _make_route_plugin(tmp_path, {"page_background": ["bg.png"]})
+        first = await _call_page_background(handler)
+        etag = first.headers["etag"]
+        second = await _call_page_background(handler, {"If-None-Match": f"W/{etag}"})
+        assert second.status_code == 304
+        assert second.body == b""
+
+    async def test_route_304_does_not_resend_payload(self, tmp_path):
+        """304 响应不得带 body：省流量正是条件请求的目的。"""
+        (tmp_path / "bg.png").write_bytes(b"\x89PNG\r\n\x1a\nROUTE")
+        _, handler = _make_route_plugin(tmp_path, {"page_background": ["bg.png"]})
+        first = await _call_page_background(handler)
+        second = await _call_page_background(
+            handler, {"If-None-Match": first.headers["etag"]}
+        )
+        assert len(first.body) > 0
+        assert second.body == b""
+
+    async def test_route_omits_cache_headers_when_unconfigured(self, tmp_path):
+        _, handler = _make_route_plugin(tmp_path, {})
+        resp = await _call_page_background(handler)
+        assert resp.status_code == 200
+        assert resp.headers.get("etag") is None
+        assert resp.headers.get("cache-control") is None
+        assert json.loads(resp.body)["data"]["data_url"] == ""
+
+    async def test_route_serves_new_params_after_opacity_change(self, tmp_path):
+        """调完透明度重进页面，不得被 304 旧响应挡住。
+
+        首次请求拿到 ETag（含旧 opacity）→ 配置改透明度 → 带旧 If-None-Match
+        再请求：ETag 已随参数变化，必须回 200 新值而非 304 旧值。
+        """
+        (tmp_path / "bg.png").write_bytes(b"\x89PNG\r\n\x1a\nROUTE")
+        plugin, handler = _make_route_plugin(
+            tmp_path, {"page_background": ["bg.png"], "page_background_opacity": 0.2}
+        )
+        first = await _call_page_background(handler)
+        old_etag = first.headers["etag"]
+
+        plugin.config = TTSEnhancerConfig(
+            {"page_background": ["bg.png"], "page_background_opacity": 0.6}
+        )
+        second = await _call_page_background(handler, {"If-None-Match": old_etag})
+
+        assert second.status_code == 200
+        assert second.headers["etag"] != old_etag
+        assert json.loads(second.body)["data"]["opacity"] == 0.6
