@@ -147,6 +147,34 @@ class TestEtagForConditionalRequests:
         _, etag_after = _build_page_background_response(cfg, tmp_path)
         assert etag_before != etag_after
 
+    def test_etag_changes_when_opacity_changes(self, tmp_path):
+        """只调透明度不换图：ETag 必须变，否则 304 会把旧透明度发给前端。"""
+        f = tmp_path / "bg.png"
+        f.write_bytes(b"\x89PNG")
+        _, etag_before = _build_page_background_response(
+            {"page_background": ["bg.png"], "page_background_opacity": 0.2},
+            tmp_path,
+        )
+        _, etag_after = _build_page_background_response(
+            {"page_background": ["bg.png"], "page_background_opacity": 0.6},
+            tmp_path,
+        )
+        assert etag_before != etag_after
+
+    def test_etag_changes_when_blur_changes(self, tmp_path):
+        """只调模糊度不换图：ETag 同样必须变。"""
+        f = tmp_path / "bg.png"
+        f.write_bytes(b"\x89PNG")
+        _, etag_before = _build_page_background_response(
+            {"page_background": ["bg.png"], "page_background_blur": 0},
+            tmp_path,
+        )
+        _, etag_after = _build_page_background_response(
+            {"page_background": ["bg.png"], "page_background_blur": 12},
+            tmp_path,
+        )
+        assert etag_before != etag_after
+
     def test_etag_is_quoted_hex(self, tmp_path):
         f = tmp_path / "bg.png"
         f.write_bytes(b"\x89PNG")
