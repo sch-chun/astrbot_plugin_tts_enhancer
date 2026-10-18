@@ -1,11 +1,13 @@
 """管理页背景图路由（get_page_background）的单元测试。
 
 直接驱动 ``_build_page_background_response`` 纯函数，覆盖非 happy path：
-配置缺失 / 类型异常 / 路径穿越 / 文件缺失，以及正常返回 Data URL。
+配置缺失 / 类型异常 / 路径穿越 / 文件缺失，正常返回 Data URL，
+以及 ETag 语义（稳定 / 随内容变化 / 空响应无 ETag）。
 无需启动 AstrBot 主程序。
 """
 
 import base64
+import re
 
 import pytest
 
@@ -22,42 +24,51 @@ def _data_url_bytes(data_url: str) -> bytes:
 
 class TestNoBackgroundReturnsEmpty:
     def test_none_config(self):
-        resp = _build_page_background_response(None, "/tmp/x")
+        resp, etag = _build_page_background_response(None, "/tmp/x")
         assert resp["data"]["data_url"] == ""
         assert resp["data"]["opacity"] == 1.0
+        assert etag is None
 
     def test_missing_key(self):
-        assert _build_page_background_response({}, "/tmp/x")["data"]["data_url"] == ""
+        resp, _ = _build_page_background_response({}, "/tmp/x")
+        assert resp["data"]["data_url"] == ""
 
     def test_non_list_value(self):
         cfg = {"page_background": "not-a-list"}
-        assert _build_page_background_response(cfg, "/tmp/x")["data"]["data_url"] == ""
+        resp, _ = _build_page_background_response(cfg, "/tmp/x")
+        assert resp["data"]["data_url"] == ""
 
     def test_empty_list(self):
         cfg = {"page_background": []}
-        assert _build_page_background_response(cfg, "/tmp/x")["data"]["data_url"] == ""
+        resp, _ = _build_page_background_response(cfg, "/tmp/x")
+        assert resp["data"]["data_url"] == ""
 
     def test_first_element_not_str(self):
         cfg = {"page_background": [None]}
-        assert _build_page_background_response(cfg, "/tmp/x")["data"]["data_url"] == ""
+        resp, _ = _build_page_background_response(cfg, "/tmp/x")
+        assert resp["data"]["data_url"] == ""
 
 
 class TestPathTraversalBlocked:
     def test_escapes_plugin_data_dir(self, tmp_path):
         cfg = {"page_background": ["../../../escape.png"]}
-        resp = _build_page_background_response(cfg, tmp_path)
+        resp, etag = _build_page_background_response(cfg, tmp_path)
         assert resp["data"]["data_url"] == ""
+        assert etag is None
 
     def test_absolute_path_outside(self, tmp_path):
         cfg = {"page_background": ["/etc/passwd"]}
-        resp = _build_page_background_response(cfg, tmp_path)
+        resp, etag = _build_page_background_response(cfg, tmp_path)
         assert resp["data"]["data_url"] == ""
+        assert etag is None
 
 
 class TestMissingFile:
     def test_missing_file(self, tmp_path):
         cfg = {"page_background": ["does_not_exist.png"]}
-        assert _build_page_background_response(cfg, tmp_path)["data"]["data_url"] == ""
+        resp, etag = _build_page_background_response(cfg, tmp_path)
+        assert resp["data"]["data_url"] == ""
+        assert etag is None
 
 
 class TestNoHardSizeLimit:
@@ -66,8 +77,9 @@ class TestNoHardSizeLimit:
         f = tmp_path / "big.png"
         f.write_bytes(b"\x89PNG" + b"x" * (5 * 1024 * 1024))
         cfg = {"page_background": ["big.png"]}
-        data = _build_page_background_response(cfg, tmp_path)["data"]
-        assert data["data_url"].startswith("data:image/png;base64,")
+        resp, etag = _build_page_background_response(cfg, tmp_path)
+        assert resp["data"]["data_url"].startswith("data:image/png;base64,")
+        assert etag is not None
 
 
 class TestValidBackground:
@@ -75,7 +87,7 @@ class TestValidBackground:
         f = tmp_path / "bg.png"
         f.write_bytes(b"\x89PNG\r\n\x1a\nFAKE")
         cfg = {"page_background": ["bg.png"]}
-        resp = _build_page_background_response(cfg, tmp_path)
+        resp, _ = _build_page_background_response(cfg, tmp_path)
         data = resp["data"]
         assert data["data_url"].startswith("data:image/png;base64,")
         assert _data_url_bytes(data["data_url"]) == b"\x89PNG\r\n\x1a\nFAKE"
@@ -90,9 +102,9 @@ class TestValidBackground:
             "page_background_opacity": 0.3,
             "page_background_blur": 5,
         }
-        data = _build_page_background_response(cfg, tmp_path)["data"]
-        assert data["opacity"] == 0.3
-        assert data["blur"] == 5
+        resp, _ = _build_page_background_response(cfg, tmp_path)
+        assert resp["data"]["opacity"] == 0.3
+        assert resp["data"]["blur"] == 5
 
     def test_no_extension_falls_back_to_octet_stream(self, tmp_path):
         # 无扩展名在任何平台都让 mimetypes 返回 None，稳定走 octet-stream 兜底；
@@ -100,8 +112,10 @@ class TestValidBackground:
         f = tmp_path / "bg"
         f.write_bytes(b"abc")
         cfg = {"page_background": ["bg"]}
-        data = _build_page_background_response(cfg, tmp_path)["data"]
-        assert data["data_url"].startswith("data:application/octet-stream;base64,")
+        resp, _ = _build_page_background_response(cfg, tmp_path)
+        assert resp["data"]["data_url"].startswith(
+            "data:application/octet-stream;base64,"
+        )
 
     def test_subdir_relative_path_allowed(self, tmp_path):
         sub = tmp_path / "files" / "page_background"
@@ -109,5 +123,37 @@ class TestValidBackground:
         f = sub / "nested.png"
         f.write_bytes(b"\x89PNG")
         cfg = {"page_background": ["files/page_background/nested.png"]}
-        data = _build_page_background_response(cfg, tmp_path)["data"]
-        assert data["data_url"].startswith("data:image/png;base64,")
+        resp, _ = _build_page_background_response(cfg, tmp_path)
+        assert resp["data"]["data_url"].startswith("data:image/png;base64,")
+
+
+class TestEtagForConditionalRequests:
+    """ETag 供路由应答 If-None-Match：内容不变则稳定，内容变则失效。"""
+
+    def test_etag_stable_across_calls(self, tmp_path):
+        f = tmp_path / "bg.png"
+        f.write_bytes(b"\x89PNG\r\n\x1a\nFAKE")
+        cfg = {"page_background": ["bg.png"]}
+        _, etag1 = _build_page_background_response(cfg, tmp_path)
+        _, etag2 = _build_page_background_response(cfg, tmp_path)
+        assert etag1 == etag2
+
+    def test_etag_changes_when_file_content_changes(self, tmp_path):
+        f = tmp_path / "bg.png"
+        f.write_bytes(b"\x89PNG-A")
+        cfg = {"page_background": ["bg.png"]}
+        _, etag_before = _build_page_background_response(cfg, tmp_path)
+        f.write_bytes(b"\x89PNG-B")
+        _, etag_after = _build_page_background_response(cfg, tmp_path)
+        assert etag_before != etag_after
+
+    def test_etag_is_quoted_hex(self, tmp_path):
+        f = tmp_path / "bg.png"
+        f.write_bytes(b"\x89PNG")
+        cfg = {"page_background": ["bg.png"]}
+        _, etag = _build_page_background_response(cfg, tmp_path)
+        assert re.fullmatch(r'"[0-9a-f]{16}"', etag)
+
+    def test_etag_none_when_not_configured(self, tmp_path):
+        _, etag = _build_page_background_response({}, tmp_path)
+        assert etag is None
