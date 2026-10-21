@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.12] - 2026-10-21
+
+### Fixed
+
+- **百炼复刻 / 设计适配文档变更并修复部署就绪竞态**：复刻与声音设计两种创建方式均改用 `audio` 字段携带参考音频（脱离已废弃的 `url`），`safe_payload` 脱敏键同步更名。创建后新增 `query_voice` 轮询（`_wait_voice_ready`，间隔 3s、上限 120s），等待 `DEPLOYING → OK` 才返回 `voice_id`，避免紧接着的合成因音色未就绪而失败；`UNDEPLOYED` 或超时直接抛出明确错误。轮询对网络抖动容错：单次 `query_voice` 的网关 5xx / 连接中断 / 超时仅记录并在下一轮重试，不会因偶发网络错误作废整轮等待；耗时改用 `time.monotonic()` 真实计时，不再累加常量。`_create_voice_by_design` 此前缺少轮询（设计路径创建完立即返回），现已补齐。新增 `TestVoiceDeploymentPolling` 与声音设计路径轮询测试，覆盖 OK / 失败终态 / 超时 / 网络抖动重试四态，并修正既有断言 `"url"` → `"audio"`。
+
 ## [0.3.11] - 2026-10-18
 
 ### Changed
