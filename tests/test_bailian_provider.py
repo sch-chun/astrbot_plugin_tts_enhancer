@@ -260,12 +260,13 @@ class TestCreateVoiceWithDataUrl:
         assert all(audio_data_url not in message for message in debug_messages)
         assert any("<Data URL audio/wav" in message for message in debug_messages)
 
-        # 部署轮询确实发起了 query_voice 请求。
-        query_request = next(
+        # 后端创建即返回初始状态 DEPLOYING，不再轮询 query_voice（进度交由前端）。
+        assert result["status"] == "DEPLOYING"
+        query_requests = [
             r for r in recorder["requests"]
             if r["json"]["input"]["action"] == "query_voice"
-        )
-        assert query_request["json"]["input"]["voice_id"] == result["voice_id"]
+        ]
+        assert query_requests == [], "create_voice 不应发起 query_voice 轮询"
 
     async def test_redacts_data_url_from_upstream_error(
         self, clone_adapter, monkeypatch
@@ -312,65 +313,34 @@ class TestCreateVoiceWithDataUrl:
         assert "request" not in recorder
 
 
-class TestVoiceDeploymentPolling:
-    """_create_voice_by_clone 创建后需轮询 query_voice 直到 OK。"""
+    async def test_create_returns_initial_status_without_querying(
+        self, clone_adapter, monkeypatch
+    ):
+        """创建即返回初始 DEPLOYING 状态，且不发起 query_voice 轮询。"""
+        recorder = {}
+        _install_fake_httpx(monkeypatch, recorder)
+        query_spy = AsyncMock()
+        monkeypatch.setattr(clone_adapter, "query_voice", query_spy)
 
-    @pytest.fixture
-    def clone_adapter(self):
-        return BailianQwenAudio3_0TTSAdapter(
+        result = await clone_adapter.create_voice(
             {
-                "__template_key": "bailian_qwen_audio_3_0_tts",
-                "workspace_id": "workspace-test",
-                "api_key": "sk-test",
+                "mode": "clone",
+                "audio_data_url": _data_url(),
+                "prefix": "sample",
                 "model": "flash",
             }
         )
 
-    async def test_returns_when_status_becomes_ok(self, clone_adapter, monkeypatch):
-        """DEPLOYING → OK 时应立即返回，且只查询两次。"""
-        mock_query = AsyncMock(side_effect=["DEPLOYING", "OK"])
-        monkeypatch.setattr(clone_adapter, "query_voice", mock_query)
-        monkeypatch.setattr(bailian_module, "_VOICE_DEPLOY_POLL_INTERVAL", 0.001)
+        # 后端不阻塞等待部署，也不主动查询状态；真实进度由前端轮询 /voice/query。
+        assert query_spy.await_count == 0, "create_voice 不应查询音色状态"
+        assert result["voice_id"] == "qwen-audio-3.0-tts-flash-test-123456"
+        assert result["status"] == "DEPLOYING"
+        query_requests = [
+            r for r in recorder["requests"]
+            if r["json"]["input"]["action"] == "query_voice"
+        ]
+        assert query_requests == [], "create_voice 不应发起 query_voice 请求"
 
-        await clone_adapter._wait_voice_ready("vid-test")
-
-        assert mock_query.await_count == 2
-
-    async def test_raises_on_failed_state(self, clone_adapter, monkeypatch):
-        """进入失败终态 UNDEPLOYED 时直接抛出。"""
-        mock_query = AsyncMock(return_value="UNDEPLOYED")
-        monkeypatch.setattr(clone_adapter, "query_voice", mock_query)
-        monkeypatch.setattr(bailian_module, "_VOICE_DEPLOY_POLL_INTERVAL", 0.001)
-
-        with pytest.raises(RuntimeError, match="部署失败"):
-            await clone_adapter._wait_voice_ready("vid-test")
-
-        assert mock_query.await_count == 1
-
-    async def test_raises_on_timeout(self, clone_adapter, monkeypatch):
-        """始终 DEPLOYING 且超过上限时抛出部署超时。"""
-        mock_query = AsyncMock(return_value="DEPLOYING")
-        monkeypatch.setattr(clone_adapter, "query_voice", mock_query)
-        monkeypatch.setattr(bailian_module, "_VOICE_DEPLOY_POLL_INTERVAL", 0.02)
-
-        # timeout 是函数默认参数（定义时绑定），必须以实参形式传入以覆盖。
-        with pytest.raises(RuntimeError, match="部署超时"):
-            await clone_adapter._wait_voice_ready("vid-test", timeout=0.05)
-
-        assert mock_query.await_count >= 1
-
-    async def test_retries_on_transient_network_error(self, clone_adapter, monkeypatch):
-        """query_voice 偶发网络异常时不应作废整轮等待，下一轮重试至 OK。"""
-        # 第一次抛出连接错误（网络抖动），第二次返回 OK。
-        mock_query = AsyncMock(
-            side_effect=[httpx.ConnectError("simulated jitter"), "OK"]
-        )
-        monkeypatch.setattr(clone_adapter, "query_voice", mock_query)
-        monkeypatch.setattr(bailian_module, "_VOICE_DEPLOY_POLL_INTERVAL", 0.001)
-
-        await clone_adapter._wait_voice_ready("vid-test")
-
-        assert mock_query.await_count == 2
 
 
 class TestVoiceDesignDeploymentPolling:
@@ -387,7 +357,7 @@ class TestVoiceDesignDeploymentPolling:
             }
         )
 
-    async def test_design_creates_then_polls_to_ok(self, design_adapter, monkeypatch):
+    async def test_design_creates_without_polling(self, design_adapter, monkeypatch):
         recorder = {}
         _install_fake_httpx(monkeypatch, recorder)
 
@@ -403,6 +373,7 @@ class TestVoiceDesignDeploymentPolling:
         )
 
         assert result["voice_id"] == "qwen-audio-3.0-tts-flash-test-123456"
+        assert result["status"] == "DEPLOYING"
 
         # 设计路径创建请求体不含 audio 字段（参考音频只用于复刻）。
         create_request = next(
@@ -412,9 +383,38 @@ class TestVoiceDesignDeploymentPolling:
         assert "audio" not in create_request["json"]["input"]
         assert create_request["json"]["input"]["voice_prompt"] == "温柔清晰的中文女声"
 
-        # 设计路径创建后同样发起了 query_voice 轮询。
-        query_request = next(
+        # 设计路径创建后同样不发起 query_voice（进度交由前端轮询 /voice/query）。
+        query_requests = [
             r for r in recorder["requests"]
             if r["json"]["input"]["action"] == "query_voice"
+        ]
+        assert query_requests == [], "设计路径 create_voice 不应发起 query_voice"
+
+    async def test_design_create_returns_initial_status_without_querying(
+        self, design_adapter, monkeypatch
+    ):
+        """设计路径同样创建即返回 DEPLOYING，不发起 query_voice，且带回预览音频。"""
+        recorder = {}
+        _install_fake_httpx(monkeypatch, recorder)
+        query_spy = AsyncMock()
+        monkeypatch.setattr(design_adapter, "query_voice", query_spy)
+
+        result = await design_adapter.create_voice(
+            {
+                "mode": "design",
+                "voice_prompt": "温柔清晰的中文女声",
+                "preview_text": "预览文本",
+                "prefix": "design",
+                "language_hints": ["zh"],
+                "model": "flash",
+            }
         )
-        assert query_request["json"]["input"]["voice_id"] == result["voice_id"]
+        assert query_spy.await_count == 0, "create_voice 不应查询音色状态"
+        assert result["voice_id"] == "qwen-audio-3.0-tts-flash-test-123456"
+        assert result["status"] == "DEPLOYING"
+        assert "preview_audio" in result
+        query_requests = [
+            r for r in recorder["requests"]
+            if r["json"]["input"]["action"] == "query_voice"
+        ]
+        assert query_requests == [], "设计路径 create_voice 不应发起 query_voice"

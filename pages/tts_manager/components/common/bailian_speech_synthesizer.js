@@ -1,4 +1,4 @@
-const { ref, reactive, watch, computed } = Vue;
+const { ref, reactive, watch, computed, onUnmounted } = Vue;
 
 
 import { useClipboard } from '../../composables/useClipboard.js';
@@ -90,6 +90,12 @@ export default {
             response_format: 'wav',
         });
         const designing = ref(false);
+
+        // ----- 复刻 / 设计进度展示 -----
+        // creatingPhase：复刻或设计过程中的阶段文案（动态显示在按钮与进度行）
+        const creatingPhase = ref('');
+        // pollState：前端轮询审核状态的开关与定时器句柄
+        const pollState = ref({ active: false, timer: null });
 
         // ----- 删除确认模态框 -----
         const deleteModalVisible = ref(false);
@@ -286,6 +292,76 @@ export default {
             }
         }
 
+        // ----- 前端轮询审核进度（后端不再阻塞，状态交由前端查询）-----
+        function upsertVoiceItem(voice) {
+            const list = voiceList.value;
+            const idx = list.findIndex(v => v.voice_id === voice.voice_id);
+            if (idx >= 0) {
+                list[idx] = { ...list[idx], ...voice };
+            } else {
+                list.unshift(voice);
+            }
+        }
+
+        function stopVoicePoll() {
+            if (pollState.value.timer) {
+                clearTimeout(pollState.value.timer);
+                pollState.value.timer = null;
+            }
+            pollState.value.active = false;
+        }
+
+        // 轮询 /voice/query 直到 OK / UNDEPLOYED / 超时。返回 Promise，终态时 resolve。
+        function pollVoiceStatus(entryId, voiceId, callbacks = {}) {
+            return new Promise((resolve) => {
+                const deadline = Date.now() + 125000; // 略大于后端 120s 部署预算
+                const tick = async () => {
+                    if (!pollState.value.active) { resolve(); return; }
+                    try {
+                        const res = await props.bridge.apiPost('voice/query', {
+                            entry_id: entryId,
+                            voice_id: voiceId,
+                        });
+                        const status = res && res.status;
+                        if (callbacks.onUpdate) callbacks.onUpdate(status);
+                        if (status === 'OK') {
+                            stopVoicePoll();
+                            if (callbacks.onDone) callbacks.onDone('OK');
+                            resolve();
+                            return;
+                        }
+                        if (status === 'UNDEPLOYED') {
+                            stopVoicePoll();
+                            if (callbacks.onError) callbacks.onError('UNDEPLOYED');
+                            resolve();
+                            return;
+                        }
+                    } catch (e) {
+                        const code = e.response && e.response.status;
+                        if (code === 501) {
+                            // 供应商不支持查询：停止轮询并提示
+                            stopVoicePoll();
+                            if (callbacks.onUnsupported) callbacks.onUnsupported();
+                            resolve();
+                            return;
+                        }
+                        console.warn('查询音色状态失败，将重试:', e);
+                    }
+                    if (Date.now() > deadline) {
+                        stopVoicePoll();
+                        if (callbacks.onTimeout) callbacks.onTimeout();
+                        resolve();
+                        return;
+                    }
+                    if (pollState.value.active) {
+                        pollState.value.timer = setTimeout(tick, 3000);
+                    }
+                };
+                pollState.value.active = true;
+                tick();
+            });
+        }
+
         async function cloneFromFile() {
             if (selectedEntryId.value === null || selectedEntryId.value === undefined) {
                 showError('请先选择认证配置');
@@ -297,9 +373,11 @@ export default {
             }
 
             cloning.value = true;
+            creatingPhase.value = '上传音频中…';
             try {
                 const mimeType = validateCloneAudioFile(cloneForm.file);
                 const audioDataUrl = await encodeAudioAsDataUrl(cloneForm.file, mimeType);
+                creatingPhase.value = '提交复刻请求…';
                 const payload = {
                     entry_id: selectedEntryId.value,
                     mode: 'clone',
@@ -316,8 +394,44 @@ export default {
                 const result = await callCreateVoice(payload);
                 if (result) {
                     const voiceId = result.voice_id || result.voice;
-                    showSuccess('音色创建成功！Voice ID: ' + voiceId);
-                    await fetchVoices();
+                    const initialStatus = result.status; // 可能 undefined（部分供应商不返回）
+                    // 立即在列表中展示该音色（含初始状态），避免等待期间列表无反馈
+                    upsertVoiceItem({ voice_id: voiceId, status: initialStatus || 'DEPLOYING', created_at: '' });
+                    const reconcile = async () => { try { await fetchVoices(); } catch {} };
+                    if (initialStatus === 'OK') {
+                        showSuccess('音色创建成功！Voice ID: ' + voiceId);
+                        await reconcile();
+                    } else if (initialStatus === 'DEPLOYING' || initialStatus === 'UNDEPLOYED') {
+                        creatingPhase.value = '等待审核中…';
+                        await pollVoiceStatus(selectedEntryId.value, voiceId, {
+                            onUpdate: (status) => {
+                                upsertVoiceItem({ voice_id: voiceId, status });
+                                creatingPhase.value = status === 'OK'
+                                    ? '审核通过，可正常使用'
+                                    : (status === 'UNDEPLOYED' ? '审核未通过，不可使用' : '等待审核中…');
+                            },
+                            onDone: async () => {
+                                showSuccess('音色创建成功！Voice ID: ' + voiceId);
+                                await reconcile();
+                            },
+                            onError: async () => {
+                                showError('音色审核未通过，不可使用：' + voiceId);
+                                await reconcile();
+                            },
+                            onTimeout: async () => {
+                                showError('审核超时，请稍后刷新列表查看状态：' + voiceId);
+                                await reconcile();
+                            },
+                            onUnsupported: async () => {
+                                showError('该供应商不支持进度查询，请稍后刷新列表');
+                                await reconcile();
+                            },
+                        });
+                    } else {
+                        // 供应商未返回状态（如 MiniMax）：沿用原行为，视为成功并刷新列表
+                        showSuccess('音色创建成功！Voice ID: ' + voiceId);
+                        await reconcile();
+                    }
                     cloneForm.file = null;
                     if (fileInputRef.value) {
                         fileInputRef.value.value = '';
@@ -328,6 +442,7 @@ export default {
                 showError('复刻失败: ' + error.message);
             } finally {
                 cloning.value = false;
+                creatingPhase.value = '';
             }
         }
 
@@ -358,6 +473,7 @@ export default {
             }
 
             designing.value = true;
+            creatingPhase.value = '提交设计请求…';
             try {
                 const payload = {
                     entry_id: selectedEntryId.value,
@@ -372,18 +488,60 @@ export default {
                 };
                 const result = await callCreateVoice(payload);
                 if (result) {
-                    previewVoiceId.value = result.voice_id;
-                    previewAudioBase64.value = result.preview_audio?.data || '';
-                    previewAudioFormat.value = result.preview_audio?.response_format || 'wav';
-                    previewText.value = designForm.preview_text;
-                    previewModalVisible.value = true;
+                    const voiceId = result.voice_id || result.voice;
+                    const initialStatus = result.status; // 可能 undefined
+                    upsertVoiceItem({ voice_id: voiceId, status: initialStatus || 'DEPLOYING', created_at: '' });
+                    const reconcile = async () => { try { await fetchVoices(); } catch {} };
+                    if (initialStatus === 'OK') {
+                        openDesignPreview(result);
+                    } else if (initialStatus === 'DEPLOYING' || initialStatus === 'UNDEPLOYED') {
+                        creatingPhase.value = '等待审核中…';
+                        await pollVoiceStatus(selectedEntryId.value, voiceId, {
+                            onUpdate: (status) => {
+                                upsertVoiceItem({ voice_id: voiceId, status });
+                                creatingPhase.value = status === 'OK'
+                                    ? '审核通过，可正常使用'
+                                    : (status === 'UNDEPLOYED' ? '审核未通过，不可使用' : '等待审核中…');
+                            },
+                            onDone: async () => { openDesignPreview(result); await reconcile(); },
+                            onError: async () => {
+                                showError('音色审核未通过，不可使用：' + voiceId);
+                                await reconcile();
+                            },
+                            onTimeout: async () => {
+                                showError('审核超时，请稍后刷新列表查看状态：' + voiceId);
+                                await reconcile();
+                            },
+                            onUnsupported: async () => {
+                                showError('该供应商不支持进度查询，请稍后刷新列表');
+                                await reconcile();
+                            },
+                        });
+                    } else {
+                        // 供应商未返回状态（如 MiniMax）：沿用原行为，有预览则直接打开
+                        if (result.preview_audio) {
+                            openDesignPreview(result);
+                        } else {
+                            showSuccess('音色创建成功！Voice ID: ' + voiceId);
+                        }
+                        await reconcile();
+                    }
                 }
             } catch (e) {
                 console.error('设计模式创建失败:', e);
                 showError('创建失败: ' + e.message);
             } finally {
                 designing.value = false;
+                creatingPhase.value = '';
             }
+        }
+
+        function openDesignPreview(result) {
+            previewVoiceId.value = result.voice_id;
+            previewAudioBase64.value = result.preview_audio?.data || '';
+            previewAudioFormat.value = result.preview_audio?.response_format || 'wav';
+            previewText.value = designForm.preview_text;
+            previewModalVisible.value = true;
         }
 
         // ----- 预览模态框 -----
@@ -510,6 +668,9 @@ export default {
             return prefixOK && lengthOK && fileOK;
         });
 
+        // 组件卸载时停止可能的进度轮询，避免泄漏定时器
+        onUnmounted(() => stopVoicePoll());
+
         return {
 
             // 通知框
@@ -518,7 +679,7 @@ export default {
 
             // 数据
             selectedEntryId, currentEntry, voiceList, loading, designing, mode,
-            currentForm, cloneForm, cloning, designForm, availableModels,
+            currentForm, cloneForm, cloning, designForm, availableModels, creatingPhase,
             deleteModalVisible, deleteTargetId, languages,
 
             // 预览
@@ -816,7 +977,7 @@ export default {
                     @click="cloneFromFile"
                     :disabled="!isFormValid || cloning"
                 >
-                    {{ cloning ? '复刻中...' : '📁 复刻音色' }}
+                    {{ cloning ? (creatingPhase || '复刻中...') : '📁 复刻音色' }}
                 </button>
                 <button
                     v-else-if="mode === 'design'"
@@ -824,8 +985,9 @@ export default {
                     @click="createFromDesign"
                     :disabled="!isDesignFormValid || designing"
                 >
-                    {{ designing ? '创建中...' : '🎨 设计音色' }}
+                    {{ designing ? (creatingPhase || '创建中...') : '🎨 设计音色' }}
                 </button>
+                <p v-if="cloning || designing" style="margin:6px 0 0;color:var(--accent,#2563eb);font-size:0.85rem;">{{ creatingPhase }}</p>
             </fieldset>
 
             <!-- 音色列表 -->

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 - **百炼 Qwen Audio 3.1 TTS 放开 `plus` 模型版本**：适配阿里云百炼文档变更（`qwen-audio-3.1-tts-plus` 已上线，与 3.0-plus 同级，支持 instruction 指令、情感与富语言标签，复刻 / 设计音色均可用）。前端 `availableModels` 由 `['flash']` 改为 `['flash', 'plus']`，配置 schema 的 `model` 选项同步放开（默认仍为 `flash`），与 3.0 提供商保持一致。后端 `call_api` / `create_voice` / `_extract_model_from_voice_id` 本就以 `flash`/`plus` 后缀统一拼装目标模型，本次仅解除前端与配置层对 `plus` 的隐藏；复刻 / 设计的 `target_model` 与合成 `model` 一致性校验不受影响。注意：3.1-plus 响应虽返回 `input_tokens`/`output_tokens`/`total_tokens`，但计费口径按**字符**而非 token（与 3.1-flash 不同）；本插件当前不解析用量字段，故无计费误判风险，若后续接入用量统计须按模型名映射计费方式，不可依赖字段存在性判断。
 
+- **复刻 / 设计音色改为前端轮询审核进度，后端创建即返回初始状态**：`/voice/create` 不再阻塞等待部署，创建即返回 `voice_id` 与初始状态 `DEPLOYING`（无 `wait` 参数，无最长 120s 阻塞）。新增 `POST /voice/query` 路由（仅转发到适配器的 `query_voice`，适配器未实现时返回 501，不耦合任何供应商特有逻辑）。前端 `cloneFromFile` / `createFromDesign` 据此实时展示「上传音频中 → 提交请求 → 等待审核中 → 审核通过 / 审核未通过」阶段，并在音色列表即时落出新建音色行、按真实状态更新；设计模式审核通过后才打开预览模态框。轮询每 3s 一次、上限约 125s，组件卸载即清理定时器。非百炼供应商（不返回 `status` 或不支持查询）沿用原行为，创建成功后按原逻辑刷新列表。
+
 ## [0.3.12] - 2026-10-21
 
 ### Fixed
