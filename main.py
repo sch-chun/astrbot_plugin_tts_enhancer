@@ -336,6 +336,7 @@ class TTSEnhancerPlugin(Star):
         包含以下路由：
             - GET  /providers: 获取分组后的供应商列表。
             - POST /voice/create: 创建音色。
+            - POST /voice/query: 查询音色部署状态（前端轮询审核进度）。
             - POST /voice/list: 查询音色列表。
             - POST /voice/delete: 删除音色。
             - POST /upload: 上传音频文件。
@@ -446,6 +447,47 @@ class TTSEnhancerPlugin(Star):
             create_voice,
             ["POST"],
             "创建音色（请求体包含 entry_id 及供应商特定参数）"
+        )
+
+        async def query_voice_status() -> JSONResponse:
+            """查询音色部署状态（前端轮询审核进度用）。
+
+            仅做转发：按 entry_id 取出适配器后调用其 ``query_voice``，
+            不在此耦合任何供应商特有的查询逻辑；适配器未实现时返回 501。
+            """
+            payload = await request.json(default={})
+            if not payload:
+                return error_response("payload required", status_code=400)
+            entry_id = payload.get("entry_id")
+            voice_id = payload.get("voice_id")
+            if entry_id is None:
+                return error_response("entry_id required", status_code=400)
+            if not voice_id:
+                return error_response("voice_id required", status_code=400)
+            providers_raw = self.config.get_providers()
+            entry_idx = _parse_entry_id(entry_id, len(providers_raw))
+            if entry_idx is None:
+                return error_response("entry not found", status_code=404)
+            entry = providers_raw[entry_idx]
+            adapter = ProviderFactory.get_adapter(entry)
+            if not adapter:
+                return error_response("无法创建适配器，请检查配置", status_code=500)
+            try:
+                status = await adapter.query_voice(voice_id)
+                return json_response(
+                    {"code": 0, "data": {"voice_id": voice_id, "status": status}}
+                )
+            except (NotImplementedError, AttributeError):
+                return error_response("该供应商不支持查询音色状态", status_code=501)
+            except Exception as e:
+                logger.error(f"查询音色状态失败: {e}")
+                return error_response(str(e), status_code=500)
+
+        self.context.register_web_api(
+            f"/{self.name}/voice/query",
+            query_voice_status,
+            ["POST"],
+            "查询音色部署状态（前端轮询审核进度，请求体含 entry_id 与 voice_id）"
         )
 
         async def list_voices() -> JSONResponse:

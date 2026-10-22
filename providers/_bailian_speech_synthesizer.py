@@ -27,11 +27,8 @@ _DATA_URL_RE = re.compile(
     re.IGNORECASE,
 )
 
-# 复刻与声音设计音色创建后，百炼均会异步部署（DEPLOYING → OK）。合成前必须等
-# 部署完成，否则紧接着的 call_api 会因音色未就绪而报错。以下为轮询上限。
-_VOICE_DEPLOY_POLL_INTERVAL = 3.0  # 每次 query_voice 之间的间隔（秒）
-_VOICE_DEPLOY_POLL_TIMEOUT = 120.0  # 最长等待部署完成的总时长（秒）
-_VOICE_DEPLOY_FAILED_STATES = frozenset({"UNDEPLOYED"})  # 审核未通过等终态失败
+# 复刻与声音设计音色创建后，百炼均会异步部署（DEPLOYING → OK）。状态查询交由
+# 前端轮询 /voice/query（见 main.py），后端创建即返回初始状态，不阻塞等待部署。
 
 
 def _redact_data_urls(value: Any) -> Any:
@@ -533,7 +530,7 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
                 mode = "design"
             else:
                 mode = "clone"
-        
+
         if mode == "design":
 
             # 声音设计分支
@@ -556,7 +553,7 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
                 voice_prompt=voice_prompt,
                 preview_text=preview_text,
                 sample_rate=sample_rate,
-                response_format=response_format
+                response_format=response_format,
             )
         elif mode == "clone":
 
@@ -575,7 +572,7 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
                 audio_data_url=audio_data_url,
                 enable_volume_normalization=enable_volume_normalization,
                 enable_preprocess=enable_preprocess,
-                max_prompt_audio_length=max_prompt_audio_length
+                max_prompt_audio_length=max_prompt_audio_length,
             )
         else:
             raise ValueError("未知模式的声音创建请求")
@@ -588,7 +585,7 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
         audio_data_url: str,
         enable_volume_normalization: bool,
         enable_preprocess: bool,
-        max_prompt_audio_length: float | None
+        max_prompt_audio_length: float | None,
     ) -> dict:
         """通过 Data URL 方式复刻音色。
 
@@ -674,11 +671,10 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
             safe_data = _redact_data_urls(data)
             raise RuntimeError(f"创建音色失败: {safe_data}")
 
-        # 百炼复刻音色创建后处于 DEPLOYING，需轮询至 OK 才能用于合成。
-        # 超时或进入失败终态（UNDEPLOYED）时抛出，避免紧接着的合成因音色未就绪而失败。
-        await self._wait_voice_ready(voice_id)
-
-        return {"voice_id": voice_id, "extra": data.get("output", {})}
+        # 百炼复刻音色创建后处于 DEPLOYING，部署为异步过程。后端创建即返回初始
+        # 状态 DEPLOYING，由前端轮询 /voice/query 展示真实审核进度，后端不阻塞
+        # 等待部署（避免最长 120s 的请求阻塞，也不耦合供应商特有轮询逻辑）。
+        return {"voice_id": voice_id, "status": "DEPLOYING", "extra": data.get("output", {})}
 
     async def query_voice(self, voice_id: str) -> str:
         """查询单个百炼音色的部署状态。
@@ -690,7 +686,8 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
             voice_id (str): 待查询的音色 ID
 
         Returns:
-            str: 音色状态字符串，取值参考 ``_VOICE_DEPLOY_FAILED_STATES`` 与 ``OK`` / ``DEPLOYING``
+            str: 音色状态字符串，取值如 ``OK``（部署完成）/ ``DEPLOYING``（部署中）
+            / ``UNDEPLOYED``（审核未通过等终态失败）
 
         Raises:
             ValueError: 如果 workspace_id、api_key 或 voice_id 为空
@@ -720,71 +717,6 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
             )
         return status
 
-    async def _wait_voice_ready(
-        self, voice_id: str, timeout: float = _VOICE_DEPLOY_POLL_TIMEOUT
-    ) -> None:
-        """轮询 ``query_voice``，直到音色部署完成或进入失败 / 超时状态。
-
-        百炼复刻与声音设计音色创建后均处于 ``DEPLOYING``，必须等到 ``OK``
-        才能用于合成。本方法按固定间隔轮询，遇到 ``OK`` 立即返回；遇到失败终态
-        （``UNDEPLOYED``）或超时则抛出，避免调用方在音色未就绪时发起合成而失败。
-
-        轮询对网络抖动容错：单次 ``query_voice`` 抛出的瞬时错误（连接中断、
-        网关 5xx 等）仅记录日志并在下一轮重试，不会因此作废整轮等待；只有
-        失败终态或超时才是终态。耗时以 ``time.monotonic()`` 真实计时，不受
-        轮询间隔与单次请求耗时累计误差影响。
-
-        Args:
-            voice_id (str): 待部署的音色 ID
-            timeout (float): 最长等待秒数，超过则视为超时并抛出
-
-        Raises:
-            RuntimeError: 部署超时，或音色进入失败终态（如审核未通过）
-        """
-        deadline = time.monotonic() + timeout
-        attempt = 0
-        while time.monotonic() < deadline:
-            try:
-                status = await self.query_voice(voice_id)
-            except httpx.HTTPStatusError as exc:
-                status_code = exc.response.status_code if exc.response else 0
-                if 500 <= status_code <= 599:
-                    # 网关瞬时错误可重试，4xx 等确定性错误直接抛出
-                    attempt += 1
-                    logger.warning(
-                        f"查询音色 {voice_id} 部署状态遇网关错误（第 {attempt} 次，"
-                        f"将重试）: HTTP {status_code}"
-                    )
-                    await asyncio.sleep(_VOICE_DEPLOY_POLL_INTERVAL)
-                    continue
-                raise
-            except (httpx.TransportError, httpx.TimeoutException) as exc:
-                # 网络抖动 / 超时：重试而非终止整轮等待
-                attempt += 1
-                logger.warning(
-                    f"查询音色 {voice_id} 部署状态失败（第 {attempt} 次，"
-                    f"将重试）: {_redact_data_urls(str(exc))}"
-                )
-                await asyncio.sleep(_VOICE_DEPLOY_POLL_INTERVAL)
-                continue
-
-            if status == "OK":
-                return
-            if status in _VOICE_DEPLOY_FAILED_STATES:
-                raise RuntimeError(
-                    f"音色 {voice_id} 部署失败，状态: {status}（审核未通过，不可使用）"
-                )
-            logger.debug(
-                f"音色 {voice_id} 部署中，状态: {status}，"
-                f"{_VOICE_DEPLOY_POLL_INTERVAL:.0f}s 后重试"
-            )
-            await asyncio.sleep(_VOICE_DEPLOY_POLL_INTERVAL)
-
-        raise RuntimeError(
-            f"音色 {voice_id} 部署超时（>{timeout:.0f}s 仍为 DEPLOYING）。"
-            f"音色已创建，请稍后重新查询状态或重试合成。"
-        )
-
     async def _create_voice_by_design(
         self,
         target_model: str,
@@ -793,7 +725,7 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
         voice_prompt: str,
         preview_text: str,
         sample_rate: int,
-        response_format: str
+        response_format: str,
     ) -> dict:
         """通过声音设计方式创建音色。
 
@@ -854,13 +786,13 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
         if not voice_id:
             raise RuntimeError(f"创建音色失败，未返回 voice_id: {data}")
 
-        # 百炼声音设计音色创建后同样处于 DEPLOYING，需轮询至 OK 才能用于合成，
-        # 与复刻路径一致。超时或进入失败终态（UNDEPLOYED）时抛出。
-        await self._wait_voice_ready(voice_id)
-
+        # 百炼声音设计音色创建后同样处于 DEPLOYING，部署为异步过程。后端创建即
+        # 返回初始状态 DEPLOYING，由前端轮询 /voice/query 展示真实审核进度，
+        # 后端不阻塞等待部署。
         return {
             "voice_id": voice_id,
-            "preview_audio": preview_audio,   # 包含 data (base64), sample_rate, response_format
+            "preview_audio": preview_audio,
+            "status": "DEPLOYING",
             "extra": data.get("output", {})
         }
 
