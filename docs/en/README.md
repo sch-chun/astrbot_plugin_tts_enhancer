@@ -87,7 +87,7 @@ Per provider:
 | Provider | Model | Emotion | System Voice | Clone | Design | Dialect | Languages | LaTeX |
 |---|---|---|---|---|---|---|---|---|
 | **Bailian Qwen Audio 3.0 TTS** | Flash / Plus | Rich tags + NL instruction | ✅ | ✅ | ✅ | 21 | 16 | ❌ |
-| **Bailian Qwen Audio 3.1 TTS** | Flash | Rich tags + NL instruction | ✅ | ✅ | ✅ | 21 | 16 | ❌ |
+| **Bailian Qwen Audio 3.1 TTS** | Flash / Plus | Rich tags + NL instruction | ✅ | ✅ | ✅ | 21 | 16 | ❌ |
 | **Bailian CosyVoice v3.5** | Flash / Plus | NL instruction | ❌ | ✅ | ✅ | 17 | 11 | ✅ |
 | **MiniMax Speech 2.8** | HD / Turbo | Inline interjections | ✅ | ✅ | ✅ | Cantonese | 39 | ✅ |
 | **Bailian MiniMax Speech 2.8** | HD / Turbo | Inline interjections | ✅ | ✅ | ✅ | Cantonese | 39 | ✅ |

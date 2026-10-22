@@ -194,9 +194,9 @@
           "model": {
             "description": "模型版本",
             "type": "string",
-            "options": ["flash"],
+            "options": ["flash", "plus"],
             "default": "flash",
-            "hint": "3.1 版本当前仅支持 flash 模型"
+            "hint": "3.1 版本支持 flash（按 token 计费）与 plus（按字符计费，响应虽返回 token 字段但计费用字符）"
           },
           "voice": {
             "description": "音色 ID",

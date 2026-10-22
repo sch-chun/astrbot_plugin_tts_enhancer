@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.13] - 2026-10-23
+
+### Changed
+
+- **百炼 Qwen Audio 3.1 TTS 放开 `plus` 模型版本**：适配阿里云百炼文档变更（`qwen-audio-3.1-tts-plus` 已上线，与 3.0-plus 同级，支持 instruction 指令、情感与富语言标签，复刻 / 设计音色均可用）。前端 `availableModels` 由 `['flash']` 改为 `['flash', 'plus']`，配置 schema 的 `model` 选项同步放开（默认仍为 `flash`），与 3.0 提供商保持一致。后端 `call_api` / `create_voice` / `_extract_model_from_voice_id` 本就以 `flash`/`plus` 后缀统一拼装目标模型，本次仅解除前端与配置层对 `plus` 的隐藏；复刻 / 设计的 `target_model` 与合成 `model` 一致性校验不受影响。注意：3.1-plus 响应虽返回 `input_tokens`/`output_tokens`/`total_tokens`，但计费口径按**字符**而非 token（与 3.1-flash 不同）；本插件当前不解析用量字段，故无计费误判风险，若后续接入用量统计须按模型名映射计费方式，不可依赖字段存在性判断。
+
 ## [0.3.12] - 2026-10-21
 
 ### Fixed

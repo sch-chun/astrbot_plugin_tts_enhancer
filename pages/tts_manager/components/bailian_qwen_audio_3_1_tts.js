@@ -10,7 +10,7 @@ export default {
             supportedLanguages: [
                 'zh','en','fr','de','ja','ko','ru','pt','th','id','vi','es','it','ms','fil','ar'
             ],
-            availableModels: ['flash'],  // 当前仅支持 Flash
+            availableModels: ['flash', 'plus'],  // 与 3.0 一致：plus 与 flash 同级（指令/情感标签），按字符计费
             supportsSystemVoices: true,
             systemVoiceHelpLink: 'https://help.aliyun.com/zh/model-studio/qwen-audio-tts-voice-list',
             designHelpLink: 'https://help.aliyun.com/zh/model-studio/voice-design-user-guide',

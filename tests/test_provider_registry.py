@@ -5,6 +5,7 @@
 """
 
 from pathlib import Path
+import json
 
 import pytest
 from astrbot_plugin_tts_enhancer.providers import ProviderFactory
@@ -119,3 +120,50 @@ class TestDocsDiscovery:
             if not expected.exists():
                 missing.append((key, str(expected)))
         assert missing == [], f"以下供应商缺少能力文档: {missing}"
+
+
+class TestBailian3_1ModelWhitelist:
+    """文档变更回归：qwen-audio-3.1-tts-plus 已上线，3.1 提供商模型白名单必须包含 plus。
+
+    此前 3.1 刻意隐藏 plus（仅暴露 flash），plus 上线后若白名单仍硬编码 flash，
+    用户即使配置 plus 也会被插件拦截。本组用例直接校验配置 schema 与前端组件，
+    不依赖网络或 astrbot 运行时。
+    """
+
+    _REPO_ROOT = Path(__file__).parents[1]
+
+    def test_conf_schema_3_1_model_options_include_plus(self):
+        schema = json.loads(
+            (self._REPO_ROOT / "_conf_schema.json").read_text(encoding="utf-8")
+        )
+        tmpl = schema["providers"]["templates"]["bailian_qwen_audio_3_1_tts"]
+        model_opts = tmpl["items"]["model"]["options"]
+        assert "plus" in model_opts, f"3.1 模型选项缺少 plus: {model_opts}"
+
+    def test_frontend_3_1_component_exposes_plus(self):
+        js_path = (
+            self._REPO_ROOT
+            / "pages"
+            / "tts_manager"
+            / "components"
+            / "bailian_qwen_audio_3_1_tts.js"
+        )
+        content = js_path.read_text(encoding="utf-8")
+        assert (
+            "availableModels: ['flash', 'plus']" in content
+        ), "3.1 前端组件 availableModels 未放开 plus"
+
+    def test_3_1_plus_composes_full_model_name(self):
+        """后端按 MODEL_NAME + 后缀拼装，plus 应得到 qwen-audio-3.1-tts-plus。"""
+        from astrbot_plugin_tts_enhancer.providers.bailian_qwen_audio_3_1_tts import (
+            BailianQwenAudio3_1TTSAdapter,
+        )
+
+        adapter = BailianQwenAudio3_1TTSAdapter(
+            {"__template_key": "bailian_qwen_audio_3_1_tts", "model": "plus"}
+        )
+        assert adapter.MODEL_NAME == "qwen-audio-3.1-tts"
+        version = adapter._extract_model_from_voice_id(
+            "qwen-audio-3.1-tts-plus-myprefix-abc123"
+        )
+        assert version == "plus"
