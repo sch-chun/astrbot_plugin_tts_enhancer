@@ -472,16 +472,23 @@ class TTSEnhancerPlugin(Star):
             adapter = ProviderFactory.get_adapter(entry)
             if not adapter:
                 return error_response("无法创建适配器，请检查配置", status_code=500)
+            # 适配器根本未实现 query_voice（方法缺失）即视为「供应商不支持」，
+            # 与显式抛 NotImplementedError 等价，统一返回 501。
+            if not callable(getattr(adapter, "query_voice", None)):
+                return error_response("该供应商不支持查询音色状态", status_code=501)
             try:
                 status = await adapter.query_voice(voice_id)
                 return json_response(
                     {"code": 0, "data": {"voice_id": voice_id, "status": status}}
                 )
-            except (NotImplementedError, AttributeError):
+            except NotImplementedError:
+                # 仅「明确未实现」视为供应商不支持；其它异常（含真实 bug 抛出的
+                # AttributeError）不应被误判为不支持，应交由下方通用分支如实记录。
                 return error_response("该供应商不支持查询音色状态", status_code=501)
             except Exception as e:
                 logger.error(f"查询音色状态失败: {e}")
-                return error_response(str(e), status_code=500)
+                # 不把原始异常字符串回传前端（可能泄漏 workspace_id 等内部信息）
+                return error_response("查询音色状态失败，请稍后重试", status_code=500)
 
         self.context.register_web_api(
             f"/{self.name}/voice/query",
