@@ -155,8 +155,10 @@ class FakeAsyncClient:
 
 
 def _install_fake_httpx(monkeypatch, recorder, response=None):
+    # 默认桩模拟「创建即返回 voice_id、尚未带部署状态」的真实响应：部署状态
+    # 应在 query_voice 中查询，而非出现在 create 响应里。
     response = response or FakeResponse(
-        {"output": {"voice_id": "qwen-audio-3.0-tts-flash-test-123456", "status": "OK"}}
+        {"output": {"voice_id": "qwen-audio-3.0-tts-flash-test-123456"}}
     )
 
     def factory(*args, **kwargs):
@@ -341,6 +343,35 @@ class TestCreateVoiceWithDataUrl:
         ]
         assert query_requests == [], "create_voice 不应发起 query_voice 请求"
 
+    async def test_create_returns_upstream_status_when_present(
+        self, clone_adapter, monkeypatch
+    ):
+        """若 create 响应已带 output.status（如秒回 OK），应原样返回，不盲等一轮。"""
+        recorder = {}
+        response = FakeResponse(
+            {"output": {"voice_id": "qwen-audio-3.0-tts-flash-test-123456", "status": "OK"}}
+        )
+        _install_fake_httpx(monkeypatch, recorder, response)
+        query_spy = AsyncMock()
+        monkeypatch.setattr(clone_adapter, "query_voice", query_spy)
+
+        result = await clone_adapter.create_voice(
+            {
+                "mode": "clone",
+                "audio_data_url": _data_url(),
+                "prefix": "sample",
+                "model": "flash",
+            }
+        )
+
+        assert query_spy.await_count == 0, "create_voice 不应查询音色状态"
+        assert result["voice_id"] == "qwen-audio-3.0-tts-flash-test-123456"
+        assert result["status"] == "OK", "应原样返回 create 响应的 output.status"
+        query_requests = [
+            r for r in recorder["requests"]
+            if r["json"]["input"]["action"] == "query_voice"
+        ]
+        assert query_requests == [], "create_voice 不应发起 query_voice 请求"
 
 
 class TestVoiceDesignDeploymentPolling:
@@ -418,3 +449,36 @@ class TestVoiceDesignDeploymentPolling:
             if r["json"]["input"]["action"] == "query_voice"
         ]
         assert query_requests == [], "设计路径 create_voice 不应发起 query_voice"
+
+    async def test_design_create_returns_upstream_status_when_present(
+        self, design_adapter, monkeypatch
+    ):
+        """设计路径同样应原样返回 create 响应的 output.status（如秒回 OK）。"""
+        recorder = {}
+        response = FakeResponse(
+            {
+                "output": {
+                    "voice_id": "qwen-audio-3.0-tts-flash-test-123456",
+                    "preview_audio": "https://example.com/preview.mp3",
+                    "status": "OK",
+                }
+            }
+        )
+        _install_fake_httpx(monkeypatch, recorder, response)
+        query_spy = AsyncMock()
+        monkeypatch.setattr(design_adapter, "query_voice", query_spy)
+
+        result = await design_adapter.create_voice(
+            {
+                "mode": "design",
+                "voice_prompt": "温柔清晰的中文女声",
+                "preview_text": "预览文本",
+                "prefix": "design",
+                "language_hints": ["zh"],
+                "model": "flash",
+            }
+        )
+        assert query_spy.await_count == 0, "create_voice 不应查询音色状态"
+        assert result["voice_id"] == "qwen-audio-3.0-tts-flash-test-123456"
+        assert result["status"] == "OK", "应原样返回 create 响应的 output.status"
+        assert result["preview_audio"] == "https://example.com/preview.mp3"

@@ -94,8 +94,11 @@ export default {
         // ----- 复刻 / 设计进度展示 -----
         // creatingPhase：复刻或设计过程中的阶段文案（动态显示在按钮与进度行）
         const creatingPhase = ref('');
-        // pollState：前端轮询审核状态的开关与定时器句柄
-        const pollState = ref({ active: false, timer: null });
+        // pollToken：每次发起轮询自增作为「当前轮询令牌」。tick 只在令牌仍匹配时继续，
+        // 避免复刻 / 设计并发（或中途停止）互相踩掉对方的定时器或提前 resolve；
+        // 定时器句柄改用 currentTimer 共享（同一时刻仅一个轮询活跃）。
+        let pollToken = 0;
+        let currentTimer = null;
 
         // ----- 删除确认模态框 -----
         const deleteModalVisible = ref(false);
@@ -304,19 +307,22 @@ export default {
         }
 
         function stopVoicePoll() {
-            if (pollState.value.timer) {
-                clearTimeout(pollState.value.timer);
-                pollState.value.timer = null;
+            // 使任何在途轮询失效（令牌自增），并清掉待触发的定时器
+            pollToken++;
+            if (currentTimer) {
+                clearTimeout(currentTimer);
+                currentTimer = null;
             }
-            pollState.value.active = false;
         }
 
-        // 轮询 /voice/query 直到 OK / UNDEPLOYED / 超时。返回 Promise，终态时 resolve。
+        // 轮询 /voice/query 直到 OK / UNDEPLOYED / 超时 / 供应商不支持。返回 Promise，终态时 resolve。
         function pollVoiceStatus(entryId, voiceId, callbacks = {}) {
             return new Promise((resolve) => {
+                const myToken = ++pollToken; // 使任何先前轮询失效
                 const deadline = Date.now() + 125000; // 略大于后端 120s 部署预算
                 const tick = async () => {
-                    if (!pollState.value.active) { resolve(); return; }
+                    // 令牌不匹配说明已被新轮询或 stopVoicePoll 取代，立即退出，避免互相踩踏
+                    if (myToken !== pollToken) { resolve(); return; }
                     try {
                         const res = await props.bridge.apiPost('voice/query', {
                             entry_id: entryId,
@@ -337,9 +343,12 @@ export default {
                             return;
                         }
                     } catch (e) {
-                        const code = e.response && e.response.status;
-                        if (code === 501) {
-                            // 供应商不支持查询：停止轮询并提示
+                        // 后端对「不支持查询的供应商」返回 501，错误信息含「不支持查询音色状态」。
+                        // AstrBot 桥接失败时只 reject 一个裸 Error（无 .response 属性），故以
+                        // message 匹配识别，正确上浮「不支持进度查询」文案，而非盲目重试到 125s
+                        // 后才误报「审核超时」。
+                        const msg = (e && e.message) ? e.message : '';
+                        if (msg.indexOf('不支持查询音色状态') !== -1) {
                             stopVoicePoll();
                             if (callbacks.onUnsupported) callbacks.onUnsupported();
                             resolve();
@@ -353,11 +362,10 @@ export default {
                         resolve();
                         return;
                     }
-                    if (pollState.value.active) {
-                        pollState.value.timer = setTimeout(tick, 3000);
+                    if (myToken === pollToken) {
+                        currentTimer = setTimeout(tick, 3000);
                     }
                 };
-                pollState.value.active = true;
                 tick();
             });
         }

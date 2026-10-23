@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 - **复刻 / 设计音色改为前端轮询审核进度，后端创建即返回初始状态**：`/voice/create` 不再阻塞等待部署，创建即返回 `voice_id` 与初始状态 `DEPLOYING`（无 `wait` 参数，无最长 120s 阻塞）。新增 `POST /voice/query` 路由（仅转发到适配器的 `query_voice`，适配器未实现时返回 501，不耦合任何供应商特有逻辑）。前端 `cloneFromFile` / `createFromDesign` 据此实时展示「上传音频中 → 提交请求 → 等待审核中 → 审核通过 / 审核未通过」阶段，并在音色列表即时落出新建音色行、按真实状态更新；设计模式审核通过后才打开预览模态框。轮询每 3s 一次、上限约 125s，组件卸载即清理定时器。非百炼供应商（不返回 `status` 或不支持查询）沿用原行为，创建成功后按原逻辑刷新列表。
 
+### Fixed
+
+- **前端轮询的 501 分支此前为死代码**：`pollVoiceStatus` 原先依赖 `e.response.status` 判断供应商不支持，但 AstrBot 桥接失败时只 `reject` 一个裸 `Error`（无 `response` 属性），所以该分支永不触发——遇到「供应商不支持查询」时前端会盲目重试到 125s 才误报「审核超时」。改为按 `e.message` 匹配后端 501 文案（含「不支持查询音色状态」），正确上浮「不支持进度查询」提示（callbacks.onUnsupported 早已在两端接线，仅此前无路触达）。
+
+- **`pollState` 共享单例改为每轮独立令牌**：`pollState`（`{ active, timer }`）原先由复刻与设计两条链路共用，并发时可能互相踩掉对方的定时器、或先发的那一轮被下一次 tick 的 `!active` 提前 resolve。改为模块级 `pollToken` 自增令牌 + `currentTimer` 句柄，tick 仅在令牌仍匹配时继续，天然互斥且卸载即失效。
+
+- **`POST /voice/query` 异常捕获收窄且不再泄漏内部信息**：原先 `except (NotImplementedError, AttributeError)` 过宽——`query_voice` 内部真实 bug 抛出的 `AttributeError` 也会被误判为「供应商不支持」返回 501，误导排查。现改为：适配器缺失 `query_voice` 方法或显式抛 `NotImplementedError` 才视为不支持（返回 501）；方法体内部抛出的 `AttributeError` 等真实异常落到通用分支（记录日志、返回通用文案），不再被误判为不支持。通用 `except Exception` 不再把原始异常字符串回传前端（可能泄漏 `workspace_id` 等内部信息）。
+
+- **创建音色优先采用百炼真实 `output.status`**：`_create_voice_by_clone` / `_create_voice_by_design` 原先把 `status` 写死为 `DEPLOYING`；若百炼 `create` 响应已带终态（如秒回 `OK`），前端仍会多空等一轮 3s。现改为读取 `data.output.status`，缺省才退化为 `DEPLOYING`，保持「创建即轮询」契约不变。
+
+- **清理死导入**：删除 `providers/_bailian_speech_synthesizer.py` 中因移除 `_wait_voice_ready` 而失效的 `import asyncio` 与 `import time`（ruff F401）。
+
+- **同步版本徽标**：`README.md` 与 `docs/en/README.md` 的版本徽标由 `v0.3.12` / `v0.3.10` 统一更新为 `v0.3.13`，与 `metadata.yaml` / `CHANGELOG` 三处一致。
+
 ## [0.3.12] - 2026-10-21
 
 ### Fixed

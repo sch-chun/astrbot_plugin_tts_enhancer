@@ -1,11 +1,9 @@
 """百炼 Speech Synthesizer 适配器"""
 
-import asyncio
 import base64
 import binascii
 from pathlib import Path
 import re
-import time
 import traceback
 
 import httpx
@@ -674,7 +672,13 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
         # 百炼复刻音色创建后处于 DEPLOYING，部署为异步过程。后端创建即返回初始
         # 状态 DEPLOYING，由前端轮询 /voice/query 展示真实审核进度，后端不阻塞
         # 等待部署（避免最长 120s 的请求阻塞，也不耦合供应商特有轮询逻辑）。
-        return {"voice_id": voice_id, "status": "DEPLOYING", "extra": data.get("output", {})}
+        # 优先采用百炼 create 响应里的真实状态（秒回 OK 时无需空等多一轮），缺省
+        # 退化为 DEPLOYING 以维持「创建即轮询」的前端契约。
+        return {
+            "voice_id": voice_id,
+            "status": data.get("output", {}).get("status", "DEPLOYING"),
+            "extra": data.get("output", {}),
+        }
 
     async def query_voice(self, voice_id: str) -> str:
         """查询单个百炼音色的部署状态。
@@ -788,12 +792,12 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
 
         # 百炼声音设计音色创建后同样处于 DEPLOYING，部署为异步过程。后端创建即
         # 返回初始状态 DEPLOYING，由前端轮询 /voice/query 展示真实审核进度，
-        # 后端不阻塞等待部署。
+        # 后端不阻塞等待部署。优先采用百炼真实状态，缺省退化为 DEPLOYING。
         return {
             "voice_id": voice_id,
             "preview_audio": preview_audio,
-            "status": "DEPLOYING",
-            "extra": data.get("output", {})
+            "status": data.get("output", {}).get("status", "DEPLOYING"),
+            "extra": data.get("output", {}),
         }
 
     async def list_voice(self, **kwargs) -> dict:
