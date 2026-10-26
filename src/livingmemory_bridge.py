@@ -15,6 +15,8 @@
 from __future__ import annotations
 
 import re
+import time
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 from astrbot.api import logger
@@ -23,6 +25,12 @@ if TYPE_CHECKING:
     from astrbot.core.star.context import Context
 
 GLOBAL_MEMORY_SCOPE = "livingmemory:global"
+
+# 检索缓存上限与时效：命中率本就极低（user_message 策略每次文本不同），但若不封顶，
+# 每条合成都会写入完整检索结果而永不回收，跑一天几百条语音就是几百个 entry；封顶 + 时间
+# 失效兼顾内存可控与 prefix 策略的记忆新鲜度（记忆更新后定期刷新）。
+_CACHE_MAX_ENTRIES = 64
+_CACHE_TTL_SECONDS = 600.0
 
 
 def _lm_section(config: Any, section: str, default: Any = None) -> Any:
@@ -107,10 +115,17 @@ class _UmoEvent:
         return ""
 
 
-def _resolve_event_identity(ac: dict, umo: str) -> str:
-    """复刻 LivingMemory resolve_event_identity：按 identity_aliases 归并出规范身份。"""
+def _resolve_event_identity(
+    ac: dict, umo: str, sender_id: str | None = None
+) -> str:
+    """复刻 LivingMemory resolve_event_identity：按 identity_aliases 归并出规范身份。
+
+    sender_id 为可选覆盖：群聊时 unified_msg_origin 只含群 ID、取不到真实发送者，调用方
+    应从事件对象取得真实 sender_id 后传入，避免 user 模式作用域退化为群 umo 而静默失效。
+    """
     ev = _UmoEvent(umo)
-    sender_id = ev.get_sender_id()
+    if not sender_id:
+        sender_id = ev.get_sender_id()
     sender_name = ev.get_sender_name()
     platform = ev.get_platform_name().casefold()
     aliases = _parse_identity_aliases(ac.get("identity_aliases", ""))
@@ -125,7 +140,9 @@ def _resolve_event_identity(ac: dict, umo: str) -> str:
     return sender_id or sender_name or umo
 
 
-def resolve_memory_scope(lm_config: Any, umo: str) -> str | None:
+def resolve_memory_scope(
+    lm_config: Any, umo: str, sender_id: str | None = None
+) -> str | None:
     """复刻 LivingMemory core/memory_scope.py:128 resolve_memory_scope 的会话侧解析。
 
     入参为 LivingMemory 配置（dict 或 ConfigManager），内部读取 filtering_settings 与
@@ -147,7 +164,7 @@ def resolve_memory_scope(lm_config: Any, umo: str) -> str | None:
         return GLOBAL_MEMORY_SCOPE
     if mode == "user":
         platform = ev.get_platform_name().casefold()
-        identity = _resolve_event_identity(ac, umo).casefold()
+        identity = _resolve_event_identity(ac, umo, sender_id).casefold()
         return f"livingmemory:user:{platform or 'unknown'}:{identity}"
     use_session = bool(filtering.get("use_session_filtering", True))
     if use_session:
@@ -155,7 +172,9 @@ def resolve_memory_scope(lm_config: Any, umo: str) -> str | None:
     return GLOBAL_MEMORY_SCOPE if isolated else None
 
 
-def is_event_memory_allowed(lm_config: Any, umo: str) -> bool:
+def is_event_memory_allowed(
+    lm_config: Any, umo: str, sender_id: str | None = None
+) -> bool:
     """复刻 LivingMemory core/memory_scope.py:98 的白名单候选匹配。
 
     入参为 LivingMemory 配置（dict 或 ConfigManager）。候选集覆盖：
@@ -170,11 +189,12 @@ def is_event_memory_allowed(lm_config: Any, umo: str) -> bool:
     if not allowed:
         return False
     ev = _UmoEvent(umo)
-    sender_id = ev.get_sender_id()
+    if not sender_id:
+        sender_id = ev.get_sender_id()
     platform = ev.get_platform_name()
     session_id = umo
     group_id = ev.get_group_id()
-    identity = _resolve_event_identity(ac, umo)
+    identity = _resolve_event_identity(ac, umo, sender_id)
     candidates = {
         sender_id,
         identity,
@@ -226,16 +246,45 @@ def _format_results(results: list[Any]) -> str:
     return "【LivingMemory 长期记忆参考】\n" + "\n".join(lines)
 
 
+class _CacheEntry:
+    """检索缓存条目：绑定写入时刻，便于 TTL 惰性淘汰。"""
+
+    __slots__ = ("value", "expires_at")
+
+    def __init__(self, value: list, expires_at: float) -> None:
+        self.value = value
+        self.expires_at = expires_at
+
+
 class LivingMemoryBridge:
     """封装 TTS Enhancer 调用 LivingMemory 检索的全部决策逻辑，对调用方只暴露一个方法。"""
 
     def __init__(self, context: Context) -> None:
         self._context = context
-        self._cache: dict[tuple, list] = {}
+        # 有界 + 时效缓存：OrderedDict 实现 LRU 封顶，过期项在 get 时惰性淘汰。
+        # 命中率本就极低（user_message 策略每次待合成文本不同），封顶防止无限增长；
+        # TTL 让 prefix 策略的记忆保持新鲜（记忆更新后定期刷新，不会一直复用陈旧结果）。
+        self._cache: OrderedDict[tuple, _CacheEntry] = OrderedDict()
 
     def clear_cache(self) -> None:
-        """清空检索缓存（当前每次合成独立检索，保留接口以备后续批量场景复用）。"""
+        """清空检索缓存（有界 + TTL：LRU 封顶、过期自动淘汰，通常无需调用方主动清）。"""
         self._cache.clear()
+
+    def _cache_get(self, key: tuple) -> list | None:
+        entry = self._cache.get(key)
+        if entry is None:
+            return None
+        if entry.expires_at <= time.monotonic():
+            self._cache.pop(key, None)
+            return None
+        self._cache.move_to_end(key)
+        return entry.value
+
+    def _cache_set(self, key: tuple, value: list) -> None:
+        self._cache[key] = _CacheEntry(value, time.monotonic() + _CACHE_TTL_SECONDS)
+        self._cache.move_to_end(key)
+        while len(self._cache) > _CACHE_MAX_ENTRIES:
+            self._cache.popitem(last=False)
 
     async def _get_engine(self) -> tuple[Any, Any]:
         """拿到 LivingMemory 的 MemoryEngine；未就绪则惰性等待初始化。
@@ -298,19 +347,27 @@ class LivingMemoryBridge:
         if top_k <= 0:  # 配置为 0 表示关闭长期记忆参考
             return ""
 
-        cfg = lm.config_manager
+        cfg = getattr(lm, "config_manager", None)
+        if cfg is None:
+            logger.debug(
+                "[tts_enhancer] LivingMemory 配置未就绪（无 config_manager），跳过记忆召回"
+            )
+            return ""
         fs = _as_dict(_lm_section(cfg, "filtering_settings"))
         ac = _as_dict(_lm_section(cfg, "access_control"))
         wl_on = bool(ac.get("whitelist_enabled", False))
         lm_persona_filter = bool(fs.get("use_persona_filtering", True))
 
         umo = event.unified_msg_origin
+        # 群聊时 unified_msg_origin 只含群 ID，_UmoEvent.get_sender_id 取不到真实发送者；
+        # 传入真实 sender_id 让 user 模式作用域 / 白名单能正确命中，避免静默失效。
+        sender_id = event.get_sender_id()
 
         # 作用域：与 LivingMemory 自身一致——解析失败（legacy 未开会话过滤）回退到当前会话
-        session_id = resolve_memory_scope(cfg, umo) or umo
+        session_id = resolve_memory_scope(cfg, umo, sender_id) or umo
 
         # 白名单闸门：当前会话不在白名单内则跳过
-        if wl_on and not is_event_memory_allowed(cfg, umo):
+        if wl_on and not is_event_memory_allowed(cfg, umo, sender_id):
             logger.debug(
                 "[tts_enhancer] LivingMemory 白名单未覆盖当前会话，跳过记忆召回"
             )
@@ -326,9 +383,9 @@ class LivingMemoryBridge:
                 )
                 return ""
 
-        # 检索（按条件缓存，避免同查询重复命中引擎）
-        cache_key = (query, session_id, persona_id)
-        cached = self._cache.get(cache_key)
+        # 检索（按条件缓存，避免同查询重复命中引擎；有界 + TTL 防止无限增长）
+        cache_key = (query, session_id, persona_id, top_k)
+        cached = self._cache_get(cache_key)
         if cached is not None:
             results = cached
         else:
@@ -339,6 +396,6 @@ class LivingMemoryBridge:
             except Exception as exc:  # noqa: BLE001
                 logger.error(f"[tts_enhancer] 召回 LivingMemory 失败: {exc}")
                 return ""
-            self._cache[cache_key] = results
+            self._cache_set(cache_key, results)
 
         return _format_results(results)

@@ -70,8 +70,12 @@ class FakeEngine:
 
 
 class FakeEvent:
-    def __init__(self, umo):
+    def __init__(self, umo, sender_id=None):
         self.unified_msg_origin = umo
+        self._sender_id = sender_id
+
+    def get_sender_id(self):
+        return self._sender_id if self._sender_id is not None else ""
 
 
 def make_bridge(config, engine):
@@ -434,3 +438,145 @@ async def test_recall_for_tts_caches(monkeypatch):
     await b.recall_for_tts(event=ev, query="x", top_k=5)
     await b.recall_for_tts(event=ev, query="x", top_k=5)
     assert len(engine.calls) == 1  # 第二次命中缓存
+
+
+async def test_cache_key_includes_top_k(monkeypatch):
+    # 缓存键含 top_k：先 5 后 3 不应命中 5 条的结果（P3 #3）
+    engine = FakeEngine()
+    cfg = {
+        "filtering_settings": {
+            "memory_scope_mode": "global",
+            "use_persona_filtering": False,
+        },
+        "access_control": {},
+    }
+    b, engine = make_bridge(cfg, engine)
+    monkeypatch.setattr(bridge, "get_lm_persona_id", _persona_none)
+    ev = FakeEvent("qq:friend:123")
+    await b.recall_for_tts(event=ev, query="x", top_k=5)
+    await b.recall_for_tts(event=ev, query="x", top_k=3)
+    assert len(engine.calls) == 2  # 不同 top_k 视为不同缓存键
+
+
+async def test_cache_ttl_expiry_refetches(monkeypatch):
+    # TTL 即时过期：第二次同查询应重新检索，而非命中陈旧缓存（P2 时效）
+    monkeypatch.setattr(bridge, "_CACHE_TTL_SECONDS", -1.0)
+    engine = FakeEngine()
+    cfg = {
+        "filtering_settings": {
+            "memory_scope_mode": "global",
+            "use_persona_filtering": False,
+        },
+        "access_control": {},
+    }
+    b, engine = make_bridge(cfg, engine)
+    monkeypatch.setattr(bridge, "get_lm_persona_id", _persona_none)
+    ev = FakeEvent("qq:friend:123")
+    await b.recall_for_tts(event=ev, query="x", top_k=5)
+    await b.recall_for_tts(event=ev, query="x", top_k=5)
+    assert len(engine.calls) == 2  # 首次写入即过期，再次检索
+
+
+async def test_cache_lru_cap_evicts(monkeypatch):
+    # LRU 封顶：上限压到 2，第三次写入淘汰最早键，重放最早查询会重新检索（P2 封顶）
+    monkeypatch.setattr(bridge, "_CACHE_MAX_ENTRIES", 2)
+    engine = FakeEngine()
+    cfg = {
+        "filtering_settings": {
+            "memory_scope_mode": "global",
+            "use_persona_filtering": False,
+        },
+        "access_control": {},
+    }
+    b, engine = make_bridge(cfg, engine)
+    monkeypatch.setattr(bridge, "get_lm_persona_id", _persona_none)
+    ev = FakeEvent("qq:friend:123")
+    await b.recall_for_tts(event=ev, query="a", top_k=5)  # 写 a
+    await b.recall_for_tts(event=ev, query="b", top_k=5)  # 写 b（满）
+    await b.recall_for_tts(event=ev, query="c", top_k=5)  # 写 c，淘汰 a
+    await b.recall_for_tts(event=ev, query="a", top_k=5)  # a 已淘汰 → 重检索
+    assert len(engine.calls) == 4
+    assert len(b._cache) <= 2
+
+
+# ---------------------------------------------------------------------------
+# P3 #1：群聊真实发送者 ID 透传
+# ---------------------------------------------------------------------------
+
+
+def test_scope_user_mode_group_with_sender_id():
+    # 群聊 umo 只含群 ID，透传真实 sender_id 才能解析出 user:qq:<sender>
+    cfg = {"filtering_settings": {"memory_scope_mode": "user"}}
+    umo = "qq:group:gid"
+    assert (
+        resolve_memory_scope(cfg, umo, sender_id="123") == "livingmemory:user:qq:123"
+    )
+    # 不传 sender_id（旧行为）退化为群 umo，证明修复前后差异
+    assert (
+        resolve_memory_scope(cfg, umo) == "livingmemory:user:qq:qq:group:gid"
+    )
+
+
+def test_whitelist_group_uses_passed_sender_id():
+    # 白名单按真实发送者 ID 配置：传入 sender_id 命中，否则群聊静默漏判
+    cfg = {"access_control": {"whitelist_enabled": True, "allowed_ids": "123"}}
+    umo = "qq:group:gid"
+    assert is_event_memory_allowed(cfg, umo, sender_id="123") is True
+    assert is_event_memory_allowed(cfg, umo) is False  # 旧行为：取不到 sender
+
+
+async def test_recall_for_tts_group_sender_id_reaches_whitelist(monkeypatch):
+    # 群聊且真实发送者在白名单 / user 作用域内 → 召回正常绑定到真实身份（P3 #1）
+    engine = FakeEngine()
+    cfg = {
+        "filtering_settings": {
+            "memory_scope_mode": "user",
+            "use_persona_filtering": False,
+        },
+        "access_control": {"whitelist_enabled": True, "allowed_ids": "123"},
+    }
+    b, engine = make_bridge(cfg, engine)
+    monkeypatch.setattr(bridge, "get_lm_persona_id", _persona_none)
+    out = await b.recall_for_tts(
+        event=FakeEvent("qq:group:gid", sender_id="123"), query="x", top_k=5
+    )
+    assert "记忆A" in out
+    assert engine.calls[0][2] == "livingmemory:user:qq:123"
+
+
+# ---------------------------------------------------------------------------
+# P3 #2：config_manager 兜底
+# ---------------------------------------------------------------------------
+
+
+class FakeLMNoCfg:
+    def __init__(self, engine):
+        self.initializer = FakeInitializer(engine)
+        # 故意不设置 config_manager 属性
+
+
+async def test_recall_for_tts_missing_config_manager_skips(monkeypatch):
+    # star_cls 无 config_manager 属性：应优雅返回空串，不抛异常、不误导 warning
+    engine = FakeEngine()
+    lm = FakeLMNoCfg(engine)
+    star = FakeStar("astrbot_plugin_livingmemory", "LivingMemory", star_cls=lm)
+    b = LivingMemoryBridge(FakeContext([star]))
+    monkeypatch.setattr(bridge, "get_lm_persona_id", _persona_none)
+    out = await b.recall_for_tts(
+        event=FakeEvent("qq:friend:123"), query="x", top_k=5
+    )
+    assert out == ""
+    assert engine.calls == []
+
+
+async def test_recall_for_tts_none_config_manager_skips(monkeypatch):
+    # config_manager 显式为 None 同样应优雅降级
+    engine = FakeEngine()
+    lm = FakeLM(config=None, engine=engine)
+    star = FakeStar("astrbot_plugin_livingmemory", "LivingMemory", star_cls=lm)
+    b = LivingMemoryBridge(FakeContext([star]))
+    monkeypatch.setattr(bridge, "get_lm_persona_id", _persona_none)
+    out = await b.recall_for_tts(
+        event=FakeEvent("qq:friend:123"), query="x", top_k=5
+    )
+    assert out == ""
