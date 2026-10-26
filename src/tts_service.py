@@ -10,6 +10,7 @@ from astrbot.api.star import Context
 
 from ..providers import ProviderFactory
 from .config import TTSEnhancerConfig
+from .livingmemory_bridge import LivingMemoryBridge
 from .sub_agent import TTSSubAgent
 
 
@@ -40,6 +41,8 @@ class TTSService:
         self.config = config
         self.audio_data_dir = audio_data_dir
         self.sub_agent = TTSSubAgent(context, config.raw_config)
+        # LivingMemory 桥接：合成前召回长期记忆作为 SubAgent 上下文（未安装时自动降级）
+        self.lm_bridge = LivingMemoryBridge(context)
 
     async def get_context_messages(self, event: AstrMessageEvent) -> list[dict]:
         """获取上下文消息（按对话轮次，即 user 消息的条数）
@@ -162,6 +165,32 @@ class TTSService:
             persona, persona_id = "", ""
         logger.debug(f"persona: {persona}")
 
+        # 长期记忆检索：合成前召回 LivingMemory 相关上下文，供 SubAgent 判断语音风格。
+        # 召回条数 top_k <= 0 即视为关闭；任何失败都降级为空，不阻塞 TTS 合成。
+        memory_context = ""
+        top_k = int(self.config.get("memory_retrieval_top_k", 0) or 0)
+        if top_k > 0:
+            try:
+                strategy = str(
+                    self.config.get("memory_retrieval_query_strategy", "user_message")
+                    or "user_message"
+                ).strip()
+                prefix = str(
+                    self.config.get("memory_retrieval_prefix", "") or ""
+                ).strip()
+                if strategy == "prefix":
+                    query = prefix
+                else:
+                    query = raw_text
+                recalled = await self.lm_bridge.recall_for_tts(
+                    event=event, query=query, top_k=top_k
+                )
+                if recalled:
+                    memory_context = recalled
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"TTS 长期记忆检索失败（已降级）: {exc}")
+                memory_context = ""
+
         # 人格专属音色：绑定了当前 persona_id 的供应商
         bound = [
             e
@@ -234,6 +263,7 @@ class TTSService:
                     tool_set=tool_set,
                     adapter=adapter,
                     max_attempts=2,
+                    memory_context=memory_context,
                 )
             except Exception as e:
                 logger.warning(f"SubAgent 调用异常: {e}")

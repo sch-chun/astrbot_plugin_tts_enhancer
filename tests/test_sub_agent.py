@@ -345,3 +345,34 @@ class TestToolExecutionAndRetry:
         assert tcr is not None
         assert tcr.tool_calls_result[0].tool_call_id == "c1"
         assert tcr.tool_calls_result[0].content.startswith("工具执行异常：")
+
+
+class TestMemoryContext:
+    async def test_call_forwards_memory_to_prompt(self):
+        """memory_context 应进入 SubAgent prompt，并带「非朗读内容」说明。"""
+        provider = DummyProvider(
+            DummyResponse(
+                tools_call_name=["tts_enhance"],
+                tools_call_args=[{"text": "hi"}],
+                tools_call_ids=["c1"],
+            )
+        )
+        agent = _agent({}, DummyContext(provider=provider))
+        await agent.call(
+            DummyEvent(),
+            "sys",
+            "你好",
+            memory_context="【LivingMemory 长期记忆参考】\n- 记忆A",
+        )
+        assert len(provider.calls) == 1
+        prompt = provider.calls[0]["prompt"]
+        assert "记忆A" in prompt
+        assert "不要将其当作需要朗读的内容" in prompt
+
+    async def test_build_prompt_without_memory_is_plain(self):
+        agent = _agent()
+        assert "长期记忆上下文" not in agent._build_prompt("", [], "hi")
+        with_memory = agent._build_prompt(
+            "", [], "hi", memory_context="【LivingMemory 长期记忆参考】\n- 记忆A"
+        )
+        assert "记忆A" in with_memory

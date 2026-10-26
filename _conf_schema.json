@@ -3,13 +3,13 @@
     "description": "启用 SubAgent 语音增强",
     "type": "bool",
     "default": true,
-    "hint": "开启后，插件会额外调用 LLM 根据 Provider 能力说明书自动注入情感标签和指令控制"
+    "hint": "开启后调用 LLM 按 Provider 能力自动注入情感标签与指令控制"
   },
   "enhance_llm_provider": {
     "description": "TTS 增强模型",
     "type": "string",
     "_special": "select_provider",
-    "hint": "选择用于生成 TTS 情感标签和指令的模型。若未选择，将使用当前会话的聊天模型",
+    "hint": "用于生成情感标签与指令的模型；留空则用当前会话聊天模型",
     "default": ""
   },
   "context_window": {
@@ -33,7 +33,7 @@
     "description": "打印增强参数",
     "type": "bool",
     "default": false,
-    "hint": "开启后，会在 INFO 级别记录 SubAgent 生成的语音参数（含情感标签、音量、语速等）"
+    "hint": "开启后，会在 INFO 级别记录 SubAgent 生成的语音参数"
   },
   "page_background": {
     "description": "管理页背景图",
@@ -51,7 +51,7 @@
       "max": 1,
       "step": 0.05
     },
-    "hint": "背景图的不透明度（0 完全透明，1 完全不透明）；仅在配置了背景图时生效"
+    "hint": "背景图的不透明度（0 完全透明，1 完全不透明）"
   },
   "page_background_blur": {
     "description": "背景图模糊度",
@@ -62,7 +62,29 @@
       "max": 30,
       "step": 1
     },
-    "hint": "背景图的模糊半径（像素）；仅在配置了背景图时生效"
+    "hint": "背景图的模糊半径（像素）"
+  },
+  "memory_retrieval_query_strategy": {
+    "description": "检索关键词来源",
+    "type": "string",
+    "default": "user_message",
+    "options": ["user_message", "prefix"],
+    "hint": "user_message=用待合成文本作关键词；prefix=用固定前缀"
+  },
+  "memory_retrieval_prefix": {
+    "description": "固定检索前缀",
+    "type": "text",
+    "default": "用户语音偏好",
+    "condition": {
+      "memory_retrieval_query_strategy": "prefix"
+    },
+    "hint": "仅在检索关键词来源为 prefix 时生效"
+  },
+  "memory_retrieval_top_k": {
+    "description": "召回条数（0 = 关闭记忆检索）",
+    "type": "int",
+    "default": 0,
+    "hint": "单次召回返回的长期记忆条数；设为 0 即关闭记忆检索功能"
   },
   "providers": {
     "type": "template_list",
