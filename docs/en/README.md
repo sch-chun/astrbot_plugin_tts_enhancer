@@ -8,7 +8,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v0.3.13-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.3.14-green)](../../CHANGELOG.md)
 
 ---
 
@@ -99,6 +99,15 @@ More providers (Edge TTS, GPT-SoVITS, etc.) are planned — community contributi
 
 ---
 
+## Long-term Memory Retrieval (LivingMemory, optional)
+
+If the same AstrBot instance has the LivingMemory plugin installed and enabled, and a vector embedding model is configured, TTS Enhancer can recall related long-term memories before synthesis and inject them into the SubAgent as a reference for judging speech style (e.g. the user's stable voice preferences or conversation background), giving the voice a sense of "memory".
+
+- `memory_retrieval_top_k`: number of memories to recall; `0` = disabled (default).
+- `memory_retrieval_query_strategy`: query source. `user_message` uses the text to synthesize; `prefix` uses a fixed prefix (avoids feeding unrelated synthesis text into retrieval and pulling in noise).
+- `memory_retrieval_prefix`: fixed retrieval prefix, shown and used only under the `prefix` strategy.
+- Fully graceful degradation: when LivingMemory is disabled, the Embedding Provider is missing, or a call fails, retrieval is silently skipped without affecting TTS synthesis.
+
 ## Quick Start
 
 1. **Install the plugin** — search and install from the AstrBot plugin marketplace.
@@ -116,6 +125,10 @@ enhance_llm_provider: ""          # Model used for enhancement (a cheaper/free m
 context_window: 10                # Context window (in turns)
 dual_output: false                # Output both text and voice
 log_enhanced_params: false        # Log generated parameters
+# ---- Long-term memory retrieval (LivingMemory, optional) ----
+memory_retrieval_top_k: 0         # Recall count (0 = disabled)
+memory_retrieval_query_strategy: "user_message"  # Query source: user_message / prefix
+memory_retrieval_prefix: "User voice preference"  # Fixed prefix (only used under prefix strategy)
 page_background: []               # Management page background image (file type; blank = hidden)
 page_background_opacity: 0.5       # Background opacity (0~1; only applies when an image is set)
 page_background_blur: 0            # Background blur (0~30px; only applies when an image is set)

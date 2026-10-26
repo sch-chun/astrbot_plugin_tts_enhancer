@@ -8,7 +8,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v0.3.13-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.3.14-green)](CHANGELOG.md)
 
 ---
 
@@ -99,6 +99,15 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 
 ---
 
+## 长期记忆检索（LivingMemory，可选）
+
+若同一 AstrBot 实例已安装并启用 LivingMemory 插件、且配置了向量嵌入模型，TTS Enhancer 可在合成语音前召回相关长期记忆，注入 SubAgent 作为语音风格判断的参考（例如用户稳定的语音偏好、对话背景），让语音更具「记忆感」。
+
+- `memory_retrieval_top_k`：单次召回条数，`0` = 关闭（默认关闭）。
+- `memory_retrieval_query_strategy`：检索关键词来源。`user_message` 用待合成文本；`prefix` 用固定前缀（避免把与朗读无关的待合成文本拼进检索、召回噪声）。
+- `memory_retrieval_prefix`：固定检索前缀，仅在 `prefix` 策略下显示并生效。
+- 全程优雅降级：LivingMemory 未启用、Embedding Provider 缺失或调用异常时自动跳过，不影响 TTS 合成。
+
 ## 快速开始
 
 1. **安装插件**  
@@ -123,6 +132,10 @@ enhance_llm_provider: ""          # 用于增强的模型（为了省钱可以�
 context_window: 10                # 上下文轮次
 dual_output: false                # 同时输出文本和语音
 log_enhanced_params: false        # 打印生成的参数
+# ---- 长期记忆检索（LivingMemory，可选）----
+memory_retrieval_top_k: 0         # 召回条数（0=关闭）
+memory_retrieval_query_strategy: "user_message"  # 关键词来源：user_message / prefix
+memory_retrieval_prefix: "用户语音偏好"  # 固定检索前缀（仅 prefix 策略生效）
 page_background: []               # 管理页背景图（file 类型，留空=不显示）
 page_background_opacity: 0.5       # 背景图不透明度（0~1，仅配置了背景图时生效）
 page_background_blur: 0            # 背景图模糊度（0~30px，仅配置了背景图时生效）
