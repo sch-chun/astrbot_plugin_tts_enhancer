@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 - **长期记忆检索（LivingMemory）**：合成语音前可调用同实例的 LivingMemory 召回相关长期记忆，作为上下文注入 SubAgent，使其能够结合用户稳定的语音偏好 / 对话背景判断语音风格。新增配置组 `memory_retrieval_*`：`memory_retrieval_top_k`（单次召回条数，默认 `0` 即关闭）、`memory_retrieval_query_strategy`（关键词来源，可选 `user_message` 用待合成文本 / `prefix` 用固定前缀）、`memory_retrieval_prefix`（固定检索前缀，仅在 `prefix` 策略下显示并生效）。检索全程优雅降级——LivingMemory 未安装、引擎未就绪（缺 Embedding Provider）或调用异常时静默跳过，绝不阻塞 TTS 合成；需在 AstrBot 同实例安装并启用 LivingMemory 且配置向量嵌入模型后方能生效。
 
+### Fixed
+
+- **群聊 `memory_scope_mode=user` 长期记忆静默失效**：群聊时 `unified_msg_origin` 仅含群 ID，桥接层原先无法取到真实发送者，导致 `user` 作用域 / 白名单退化成群 umo 而检索不到记忆（功能白开、非串号）。现从事件对象取真实 `sender_id` 透传到作用域与白名单解析，群聊下 `user` 模式与按发送者白名单均可正确命中。同时收敛检索缓存（`OrderedDict` LRU 封顶 64 条 + 600s TTL，缓存键纳入 `top_k`），并补全 LivingMemory `config_manager` 缺失时的优雅降级。
+
 ## [0.3.13] - 2026-10-23
 
 ### Changed
