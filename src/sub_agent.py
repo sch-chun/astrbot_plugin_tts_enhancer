@@ -2,11 +2,9 @@
 
 import json
 import traceback
+from typing import Any
 
-from astrbot.core.provider import Provider
 from astrbot.api import logger
-
-from typing import Any, Optional
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api.star import Context
 from astrbot.core.agent.message import (
@@ -15,6 +13,7 @@ from astrbot.core.agent.message import (
     ToolCallMessageSegment,
 )
 from astrbot.core.agent.tool import ToolSet
+from astrbot.core.provider import Provider
 from astrbot.core.provider.entities import ToolCallsResult
 
 
@@ -48,7 +47,7 @@ class TTSSubAgent:
     仅当模型未发起工具调用时，才以 role:"user" 提示其重新调用。
     """
 
-    def __init__(self, context: Context, config: Optional[dict] = None):
+    def __init__(self, context: Context, config: dict | None = None):
         """初始化TTS子代理。
 
         Args:
@@ -70,7 +69,9 @@ class TTSSubAgent:
         if provider_name:
             provider = self.context.get_provider_by_id(provider_name)
             if not provider:
-                logger.warning(f"未找到指定的增强模型 '{provider_name}'，降级为当前会话模型")
+                logger.warning(
+                    f"未找到指定的增强模型 '{provider_name}'，降级为当前会话模型"
+                )
                 provider = self.context.get_using_provider(session_id)
         else:
             provider = self.context.get_using_provider(session_id)
@@ -84,7 +85,11 @@ class TTSSubAgent:
         return provider
 
     def _build_prompt(
-        self, persona: str, context_messages: list[dict], user_message: str
+        self,
+        persona: str,
+        context_messages: list[dict],
+        user_message: str,
+        memory_context: str = "",
     ) -> str:
         """组装单次 LLM 调用的完整 prompt。
 
@@ -116,6 +121,13 @@ class TTSSubAgent:
                     f"以下是最近的对话上下文，请参考判断合适的语音风格：\n\n"
                     f"{summary}\n\n---\n\n"
                 )
+
+        if memory_context:
+            parts.append(
+                "以下是与本次对话相关的长期记忆上下文，仅供判断语音风格 / 语调时参考，"
+                "不要将其当作需要朗读的内容：\n\n"
+                f"{memory_context}\n\n---\n\n"
+            )
 
         parts.append(
             f"现在，请为以下文本合成语音（调用 tts_enhance 工具）：\n{user_message}"
@@ -162,12 +174,13 @@ class TTSSubAgent:
         event: AstrMessageEvent,
         system_prompt: str,
         user_message: str,
-        context_messages: Optional[list[dict[str, str]]] = None,
+        context_messages: list[dict[str, str]] | None = None,
         persona: str = "",
-        tool_set: Optional[ToolSet] = None,
+        tool_set: ToolSet | None = None,
         adapter: Any = None,
         max_attempts: int = 2,
-    ) -> Optional[dict[str, Any]]:
+        memory_context: str = "",
+    ) -> dict[str, Any] | None:
         """调用 LLM 生成 TTS 参数（含工具执行与重试）。
 
         Args:
@@ -202,8 +215,12 @@ class TTSSubAgent:
             pending_tool_result = None
 
             for attempt in range(max_attempts):
-                prompt = self._build_prompt(persona, history, user_message)
-                logger.debug(f"TTS SubAgent: 用户提示（第 {attempt + 1} 次）：\n{prompt}")
+                prompt = self._build_prompt(
+                    persona, history, user_message, memory_context=memory_context
+                )
+                logger.debug(
+                    f"TTS SubAgent: 用户提示（第 {attempt + 1} 次）：\n{prompt}"
+                )
 
                 try:
                     response = await provider.text_chat(
@@ -264,7 +281,9 @@ class TTSSubAgent:
                 try:
                     result = await tool.handler(**tts_args)
                 except Exception as e:
-                    logger.warning(f"tts_enhance 工具执行异常 (尝试 {attempt + 1}): {e}")
+                    logger.warning(
+                        f"tts_enhance 工具执行异常 (尝试 {attempt + 1}): {e}"
+                    )
                     if attempt == max_attempts - 1:
                         return None
                     # 工具执行失败属于「工具结果」语义，以 role:"tool" 结构化回灌
