@@ -141,6 +141,8 @@ const app = createApp({
                 'bailian_cosyvoice_v3_5': '百炼 Cosyvoice-V3.5',
                 'minimax_speech_2_8': 'MiniMax Speech 2.8',
                 'bailian_minimax_speech_2_8': '百炼 MiniMax Speech 2.8',
+                'google_gemini_3_8_flash_tts': 'Gemini 3.8 Flash TTS',
+                'mimo_v2_5_tts': 'Mimo 2.5 TTS',
 
                 // 未来扩展
             };
