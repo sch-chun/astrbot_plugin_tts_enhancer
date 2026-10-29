@@ -27,7 +27,7 @@ const app = createApp({
             'bailian_qwen_audio_3_1_tts': BailianQwenAudio3_1,
             'bailian_cosyvoice_v3_5': BailianCosyvoiceV3_5,
             'minimax_speech_2_8': MinimaxSpeech2_8,
-            'bailian_minimax_speech_2_8': BailianMinimaxSpeech2_8
+            'bailian_minimax_speech_2_8': BailianMinimaxSpeech2_8,
 
             // 未来添加新供应商时在此处增加映射
         };
@@ -134,8 +134,8 @@ const app = createApp({
                 'bailian_qwen_audio_3_1_tts': '百炼 Qwen Audio 3.1 TTS',
                 'bailian_cosyvoice_v3_5': '百炼 Cosyvoice-V3.5',
                 'minimax_speech_2_8': 'MiniMax Speech 2.8',
-                'bailian_minimax_speech_2_8': '百炼 MiniMax Speech 2.8'
-                
+                'bailian_minimax_speech_2_8': '百炼 MiniMax Speech 2.8',
+
                 // 未来扩展
             };
             return map[key] || key;

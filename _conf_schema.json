@@ -610,6 +610,65 @@
             "hint": "音频复刻样本。仅支持 mp3/wav，Base64 编码后不超过 10MB。可多选，实际取第一个"
           }
         }
+      },
+      "google_gemini_3_8_flash_tts": {
+        "name": "Google Gemini 3.8 Flash TTS",
+        "hint": "Google 官方生成式 TTS：自然语言风格控制、语音设计/复刻",
+        "display_item": "display_name",
+        "items": {
+          "display_name": {
+            "description": "显示名称",
+            "type": "string",
+            "default": "Google Gemini 3.8 Flash TTS",
+            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+          },
+          "priority": {
+            "description": "优先级（数字越小越优先）",
+            "type": "int",
+            "default": 0
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "type": "string",
+            "_special": "select_persona",
+            "default": "",
+            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+          },
+          "api_key": {
+            "description": "Gemini API Key",
+            "type": "string",
+            "default": "",
+            "secret": true
+          },
+          "model": {
+            "description": "模型版本",
+            "type": "string",
+            "default": "gemini-3.8-flash-tts",
+            "options": [
+              "gemini-3.8-flash-tts",
+              "gemini-3.8-flash-lite-tts"
+            ],
+            "hint": "Gemini 3.8 系列模型"
+          },
+          "voice_id": {
+            "description": "音色 ID",
+            "type": "string",
+            "default": "Kore",
+            "hint": "音色 ID（如 Kore/Zephyr/Puck）；也可填自定义/设计/复刻返回的 voice_... ID。完整音色库与语音设计/复刻请见 https://aistudio.google.com/generate-speech"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "type": "int",
+            "default": 60,
+            "hint": "单位：秒。合成较长文本时可能需要增加此值"
+          },
+          "proxy": {
+            "description": "代理地址",
+            "type": "string",
+            "default": "",
+            "hint": "访问 Google API 所需的代理（如 http://127.0.0.1:7890）。留空则直连。"
+          }
+        }
       }
     }
   }
