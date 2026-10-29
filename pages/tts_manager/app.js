@@ -48,8 +48,8 @@ const app = createApp({
                 // 后端返回 { code: 0, data: [...] }
                 const data = result.data || result;
                 groups.value = data;
-                if (data.length > 0) {
-                    currentTab.value = data[0].template_key;
+                if (visibleGroups.value.length > 0) {
+                    currentTab.value = visibleGroups.value[0].template_key;
                     switchTab(currentTab.value);
                     // 初始定位不走过渡，避免高亮条从原点滑入。
                     // 用 rAF 而非 nextTick：本场景下 nextTick 回调早于 v-else 挂载执行，取不到元素
