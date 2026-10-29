@@ -60,9 +60,7 @@
                     <div v-else class="empty-state" style="padding: 20px; color: var(--gray);">
                         <template v-if="groups.length">
                             ⚠️ 已配置 {{ groups.length }} 个供应商（{{ groups.map(g => getDisplayName(g.template_key)).join('、') }}），但当前版本暂未提供其可视化面板。
-                            如需在此面板内管理，请配置支持前端操作的服务商（如百炼 / MiniMax）；
-                            Gemini 的语音设计 / 复刻请前往
-                            <a href="https://aistudio.google.com/generate-speech" target="_blank" rel="noopener">Google AI Studio</a> 操作。
+                            如需在此面板内管理，请配置支持前端操作的服务商（如百炼 / MiniMax）。
                         </template>
                         <template v-else>
                             ⚠️ 暂无 TTS 供应商配置，请在插件配置中添加 providers 条目。
