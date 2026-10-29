@@ -1,4 +1,4 @@
-const { createApp, ref, shallowRef, onMounted, onUnmounted } = Vue;
+const { createApp, ref, shallowRef, computed, onMounted, onUnmounted } = Vue;
 
 // 静态导入所有已知供应商组件
 import BailianQwenAudio3_0 from './components/bailian_qwen_audio_3_0_tts.js';
@@ -27,10 +27,16 @@ const app = createApp({
             'bailian_qwen_audio_3_1_tts': BailianQwenAudio3_1,
             'bailian_cosyvoice_v3_5': BailianCosyvoiceV3_5,
             'minimax_speech_2_8': MinimaxSpeech2_8,
-            'bailian_minimax_speech_2_8': BailianMinimaxSpeech2_8
+            'bailian_minimax_speech_2_8': BailianMinimaxSpeech2_8,
 
             // 未来添加新供应商时在此处增加映射
         };
+
+        // 仅展示在 componentMap 中注册了前端组件的供应商；
+        // 无 UI 的供应商（如 Gemini，其设计/复刻走 AI Studio）不会作为空标签页出现。
+        const visibleGroups = computed(() =>
+            groups.value.filter(g => componentMap[g.template_key])
+        );
 
         async function fetchProviders() {
             try {
@@ -42,8 +48,8 @@ const app = createApp({
                 // 后端返回 { code: 0, data: [...] }
                 const data = result.data || result;
                 groups.value = data;
-                if (data.length > 0) {
-                    currentTab.value = data[0].template_key;
+                if (visibleGroups.value.length > 0) {
+                    currentTab.value = visibleGroups.value[0].template_key;
                     switchTab(currentTab.value);
                     // 初始定位不走过渡，避免高亮条从原点滑入。
                     // 用 rAF 而非 nextTick：本场景下 nextTick 回调早于 v-else 挂载执行，取不到元素
@@ -134,8 +140,10 @@ const app = createApp({
                 'bailian_qwen_audio_3_1_tts': '百炼 Qwen Audio 3.1 TTS',
                 'bailian_cosyvoice_v3_5': '百炼 Cosyvoice-V3.5',
                 'minimax_speech_2_8': 'MiniMax Speech 2.8',
-                'bailian_minimax_speech_2_8': '百炼 MiniMax Speech 2.8'
-                
+                'bailian_minimax_speech_2_8': '百炼 MiniMax Speech 2.8',
+                'google_gemini_3_8_flash_tts': 'Gemini 3.8 Flash TTS',
+                'mimo_v2_5_tts': 'Mimo 2.5 TTS',
+
                 // 未来扩展
             };
             return map[key] || key;
@@ -169,6 +177,7 @@ const app = createApp({
 
         return {
             groups,
+            visibleGroups,
             loading,
             currentTab,
             currentComponent,

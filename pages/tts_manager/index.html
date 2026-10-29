@@ -40,12 +40,12 @@
                 <h1>TTS 音色管理</h1>
 
                 <div class="content-panel">
-                    <!-- 有配置时显示 Tabs -->
-                    <div class="tabs" v-if="groups.length">
+                    <!-- 有可见（已注册前端组件）供应商时显示 Tabs -->
+                    <div class="tabs" v-if="visibleGroups.length">
                         <!-- 滑动高亮条：由 JS 对齐激活标签，切换时平滑平移 -->
                         <div class="tab-indicator"></div>
                         <button
-                            v-for="group in groups"
+                            v-for="group in visibleGroups"
                             :key="group.template_key"
                             class="tab"
                             :data-label="getDisplayName(group.template_key)"
@@ -56,13 +56,19 @@
                         </button>
                     </div>
 
-                    <!-- 无配置时显示提示 -->
+                    <!-- 无可见供应商时显示提示：区分「完全没配置」与「配置了但暂无可视化面板」 -->
                     <div v-else class="empty-state" style="padding: 20px; color: var(--gray);">
-                        ⚠️ 暂无 TTS 供应商配置，请在插件配置中添加 providers 条目。
+                        <template v-if="groups.length">
+                            ⚠️ 已配置 {{ groups.length }} 个供应商（{{ groups.map(g => getDisplayName(g.template_key)).join('、') }}），但当前版本暂未提供其可视化面板。
+                            如需在此面板内管理，请配置支持前端操作的服务商（如百炼 / MiniMax）。
+                        </template>
+                        <template v-else>
+                            ⚠️ 暂无 TTS 供应商配置，请在插件配置中添加 providers 条目。
+                        </template>
                     </div>
 
-                    <!-- 内容区域（有配置时渲染组件） -->
-                    <div class="tab-content">
+                    <!-- 内容区域（有可见供应商时渲染组件） -->
+                    <div class="tab-content" v-if="visibleGroups.length">
                         <!-- :key 随标签重挂载，切换动画随每次切换重播 -->
                         <div class="tab-pane" :key="currentTab">
                             <component
