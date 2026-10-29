@@ -41,11 +41,11 @@
 
                 <div class="content-panel">
                     <!-- 有配置时显示 Tabs -->
-                    <div class="tabs" v-if="groups.length">
+                    <div class="tabs" v-if="visibleGroups.length">
                         <!-- 滑动高亮条：由 JS 对齐激活标签，切换时平滑平移 -->
                         <div class="tab-indicator"></div>
                         <button
-                            v-for="group in groups"
+                            v-for="group in visibleGroups"
                             :key="group.template_key"
                             class="tab"
                             :data-label="getDisplayName(group.template_key)"
