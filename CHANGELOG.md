@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.4.0] - 2026-10-29
+
+### Added
+
+- **Google Gemini 3.8 Flash TTS 供应商**：新增对 Gemini Developer API 的支持。合成走 `/interactions` 端点，支持 `speech_metadata.style` 风格控制与文本内联声音标记（如 `<laugh>`、`<sigh>`）；预置音色（Kore/Zephyr/Puck 等）与自定义 / 设计 / 复刻返回的 `voice_...` ID 统一填入「音色 ID」配置项。语音设计与复刻建议在 Google AI Studio（https://aistudio.google.com/generate-speech）完成，将返回的 `voice_...` ID 粘贴到「音色 ID」即可，无需面板内操作。新增 `proxy` 配置项用于填写访问 Google API 的代理地址（访问 Google 被墙时必需，留空则直连）。
+
 ## [0.3.14] - 2026-10-26
 
 ### Added
