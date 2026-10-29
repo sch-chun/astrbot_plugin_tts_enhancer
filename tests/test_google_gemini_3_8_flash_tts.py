@@ -1,7 +1,7 @@
 """Google Gemini 3.8 Flash TTS 适配器离线测试（不依赖网络）。
 
-验证：自动发现、文档齐备、工具契约、参数清洗、PCM→WAV 封装、
-voice 类型判定，以及 call_api / create_voice 在 httpx 被 mock 时的行为。
+验证：自动发现、文档齐备、工具契约、参数清洗、PCM→WAV 封装，
+以及 call_api 在 httpx 被 mock 时的行为。
 """
 
 import base64
@@ -37,7 +37,9 @@ def test_discovery():
 
 def test_docs_loaded():
     adapter = _make_adapter()
-    assert adapter.docs_content.strip(), "缺少能力文档 docs/google_gemini_3_8_flash_tts.md"
+    assert adapter.docs_content.strip(), (
+        "缺少能力文档 docs/google_gemini_3_8_flash_tts.md"
+    )
 
 
 def test_tool_schema_contract():
@@ -80,13 +82,6 @@ def test_pcm_to_wav_header():
     assert len(wav) == 44 + len(pcm)
 
 
-def test_is_custom_voice():
-    assert GoogleGemini3_8FlashTTSAdapter._is_custom_voice("voice_abc123")
-    assert GoogleGemini3_8FlashTTSAdapter._is_custom_voice("voicekey_xyz")
-    assert not GoogleGemini3_8FlashTTSAdapter._is_custom_voice("Kore")
-    assert not GoogleGemini3_8FlashTTSAdapter._is_custom_voice("")
-
-
 def test_build_speech_config():
     adapter = _make_adapter()
     assert adapter._build_speech_config({}, "Kore") == [{"voice": "Kore"}]
@@ -107,10 +102,14 @@ def test_http_kwargs_injects_proxy():
 
 def test_parse_sample_rate():
     assert (
-        GoogleGemini3_8FlashTTSAdapter._parse_sample_rate("audio/L16;codec=pcm;rate=24000")
+        GoogleGemini3_8FlashTTSAdapter._parse_sample_rate(
+            "audio/L16;codec=pcm;rate=24000"
+        )
         == 24000
     )
-    assert GoogleGemini3_8FlashTTSAdapter._parse_sample_rate("audio/wav") == 24000  # 默认
+    assert (
+        GoogleGemini3_8FlashTTSAdapter._parse_sample_rate("audio/wav") == 24000
+    )  # 默认
 
 
 # ---------- call_api (mock httpx) ----------
@@ -192,28 +191,3 @@ async def test_call_api_missing_key_returns_empty():
         text="hi", raw_params={}, config={"_data_dir": "/tmp/x"}
     )
     assert path == ""
-
-
-@pytest.mark.asyncio
-async def test_create_voice_design(tmp_path, monkeypatch):
-    adapter = _make_adapter()
-
-    async def fake_post(api_key, payload, timeout=120):
-        assert payload["voice"]["type"] == "prompted"
-        return {
-            "id": "voice_designed123",
-            "sample_audio": {"mime_type": "audio/wav", "data": "AAAA"},
-        }
-
-    monkeypatch.setattr(adapter, "_post_voices", fake_post)
-    result = await adapter.create_voice({"mode": "design", "prompt": "温柔的老年男声"})
-    assert result["voice_id"] == "voice_designed123"
-    assert result["sample_audio_base64"] == "AAAA"
-
-
-@pytest.mark.asyncio
-async def test_create_voice_replicate_requires_audio(tmp_path, monkeypatch):
-    adapter = _make_adapter()
-    # 未提供音频应抛 ValueError
-    with pytest.raises(ValueError):
-        await adapter.create_voice({"mode": "replicate"})

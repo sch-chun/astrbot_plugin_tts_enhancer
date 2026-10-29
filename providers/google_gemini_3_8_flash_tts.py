@@ -1,27 +1,21 @@
 """Google Gemini 3.8 Flash TTS 适配器模块。
 
-提供 GoogleGemini3_8FlashTTSAdapter，覆盖 Gemini Developer API (ai.google.dev) 的三大能力：
+封装 GoogleGemini3_8FlashTTSAdapter，对接 Gemini Developer API (ai.google.dev) 的语音合成能力：
 
-1. 语音合成（Speech Generation）
-   - 端点：``POST {BASE}/interactions``（Gemini 3.8 的 Interactions API）
-   - 鉴权：``x-goog-api-key`` 请求头（非 Bearer）
-   - 请求体：``model`` + ``input[].content[].text``（逐字稿）+ ``speech_metadata.style``（回合级风格）
-     + ``response_format={"type":"audio"}`` + ``generation_config.speech_config``（单说话人为 ``[{"voice": <id>}]``）
-   - 一元（unary）请求默认返回 **WAV**（audio/wav，24kHz 单声道 16bit PCM，含 RIFF 头），直接保存即可；
-     若显式请求 audio/l16 等裸 PCM，则封装为 WAV 后保存
+- 端点：``POST {BASE}/interactions``（Gemini 3.8 的 Interactions API）
+- 鉴权：``x-goog-api-key`` 请求头（非 Bearer）
+- 请求体：``model`` + ``input[].content[].text``（逐字稿）+ ``speech_metadata.style``（回合级风格）
+  + ``response_format={"type":"audio"}`` + ``generation_config.speech_config``（单说话人为 ``[{"voice": <id>}]``）
+- 一元（unary）请求默认返回 **WAV**（audio/wav，24kHz 单声道 16bit PCM，含 RIFF 头），直接保存即可；
+  若显式请求 audio/l16 等裸 PCM，则封装为 WAV 后保存
 
-2. 语音设计（Voice Design）
-   - 端点：``POST {BASE}/voices``，``voice.type="prompted"``
-   - 用自然语言描述生成自定义音色，返回持久化 ``voice_...`` ID 与 sample_audio
-
-3. 语音复刻（Voice Replication）
-   - 端点：``POST {BASE}/voices``，``voice.type="replicated"``
-   - 需要 10~30s 参考音频 + 同意声明音频（24kHz 单声道 16bit WAV），返回 ``voice_...`` 或 ``voicekey_...``
+音色设计（Voice Design）与复刻（Voice Replication）由 Google AI Studio 提供
+（https://aistudio.google.com/generate-speech）：其返回的持久化 ``voice_...`` / ``voicekey_...`` ID
+可直接填入 ``voice_id`` 配置项使用；本适配器不实现相关的创建与管理接口。
 """
 
 import base64
 import struct
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -34,26 +28,11 @@ from .utils.audio import save_audio_bytes
 # Gemini Developer API (v1beta) 基址
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
-# Gemini 3.8 系列 TTS 模型：同时支持语音合成、设计与复刻，无单独分层。
+# Gemini 3.8 系列 TTS 模型：语音合成 / 设计 / 复刻共用同一模型，无单独分层。
 GEMINI_TTS_MODELS = [
     "gemini-3.8-flash-tts",
     "gemini-3.8-flash-lite-tts",
 ]
-
-# 预置音色（官方 30 个 Studio 预置音色；模型自动检测语言，下列为通用英文预置音色名）
-# 完整列表见 https://ai.google.dev/gemini-api/docs/speech-generation#prebuilt-voices
-PREBUILT_VOICES = [
-    "Zephyr", "Puck", "Charon", "Kore", "Fenrir", "Leda", "Orus", "Aoede",
-    "Callirrhoe", "Autonoe", "Enceladus", "Iapetus", "Umbriel", "Algieba",
-    "Despina", "Erinome", "Algenib", "Rasalgethi", "Laomedeia", "Achernar",
-    "Alnilam", "Schedar", "Gacrux", "Pulcherrima", "Achird", "Zubenelgenubi",
-    "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat",
-]
-
-# 复刻音频约束
-REPLICATE_MIN_SEC = 10.0
-REPLICATE_MAX_SEC = 30.0
-REPLICATE_SAMPLE_RATE = 24000
 
 
 class GoogleGemini3_8FlashTTSAdapter(TTSProviderAdapter):
@@ -128,13 +107,6 @@ class GoogleGemini3_8FlashTTSAdapter(TTSProviderAdapter):
     # ————————————————————————————————
     # 语音合成
     # ————————————————————————————————
-
-    @staticmethod
-    def _is_custom_voice(voice_id: str) -> bool:
-        """判断 voice_id 是否为自定义/设计/复刻音色（Gemini 返回的持久化 ID）。"""
-        return bool(voice_id) and (
-            voice_id.startswith("voice_") or voice_id.startswith("voicekey_")
-        )
 
     def _build_speech_config(self, config: dict, voice_id: str | None) -> list[dict]:
         """构造单说话人 speech_config（数组形式）。
@@ -245,11 +217,11 @@ class GoogleGemini3_8FlashTTSAdapter(TTSProviderAdapter):
     def _parse_sample_rate(mime_type: str) -> int:
         """从 mimeType（如 audio/L16;codec=pcm;rate=24000）解析采样率。"""
         if not mime_type:
-            return REPLICATE_SAMPLE_RATE
+            return 24000
         import re
 
         m = re.search(r"rate=(\d+)", mime_type)
-        return int(m.group(1)) if m else REPLICATE_SAMPLE_RATE
+        return int(m.group(1)) if m else 24000
 
     @staticmethod
     def pcm16le_to_wav_bytes(
@@ -278,218 +250,14 @@ class GoogleGemini3_8FlashTTSAdapter(TTSProviderAdapter):
         )
         return header + pcm
 
-    # ————————————————————————————————
-    # 音色管理：设计 / 复刻 / 列表 / 删除
-    # ————————————————————————————————
-
-    def _voice_model(self) -> str:
-        """语音设计/复刻与合成共用同一个 model 字段（3.8 系列）。"""
-        return self.entry.get("model") or GEMINI_TTS_MODELS[0]
-
     def _http_kwargs(self, timeout: int) -> dict:
         """构造 httpx.AsyncClient 关键字参数，统一注入代理（若已配置）。
 
         代理地址取配置项 ``proxy``（如 ``http://127.0.0.1:7890`` 或
-        ``socks5://127.0.0.1:7891``）。AstrBot 启动时会清空环境变量中的
-        ``http_proxy``/``https_proxy``，故此处用显式配置项而非依赖环境变量。
+        ``socks5://127.0.0.1:7891``）。留空则直连。
         """
         kwargs: dict[str, Any] = {"timeout": timeout}
         proxy = self.entry.get("proxy")
         if isinstance(proxy, str) and proxy.strip():
             kwargs["proxy"] = proxy.strip()
         return kwargs
-
-    async def create_voice(self, params: dict) -> dict:
-        """创建音色：mode=design（设计）或 mode=replicate（复刻）。"""
-        mode = (params.get("mode") or "").strip().lower()
-        if mode in ("design", "prompted"):
-            return await self._create_voice_by_design(params)
-        if mode in ("replicate", "clone"):
-            return await self._create_voice_by_replicate(params)
-        # 自动推断
-        if params.get("prompt") or params.get("voice_prompt"):
-            return await self._create_voice_by_design(params)
-        if params.get("source_audio") or params.get("source_audio_path"):
-            return await self._create_voice_by_replicate(params)
-        raise ValueError("无法推断创建模式，请指定 mode='design' 或 mode='replicate'")
-
-    async def _create_voice_by_design(self, params: dict) -> dict:
-        """语音设计：自然语言描述 → 自定义音色。"""
-        api_key = self.entry.get("api_key")
-        if not api_key:
-            raise ValueError("API Key 未配置")
-
-        prompt = params.get("prompt") or params.get("voice_prompt")
-        if not prompt or not str(prompt).strip():
-            raise ValueError("prompt（音色描述）为必填参数")
-
-        payload: dict[str, Any] = {
-            "store": True,
-            "voice": {
-                "model": self._voice_model(),
-                "type": "prompted",
-                "prompted": {"input": str(prompt).strip()},
-            },
-        }
-        if params.get("display_name"):
-            payload["voice"]["display_name"] = params["display_name"]
-
-        result = await self._post_voices(api_key, payload, timeout=120)
-        voice_id = result.get("id") or result.get("voiceId")
-        if not voice_id:
-            raise RuntimeError(f"未返回 voice_id: {result}")
-        response = {"voice_id": voice_id}
-        sample = result.get("sample_audio") or result.get("sampleAudio")
-        if sample and sample.get("data"):
-            response["sample_audio_base64"] = sample["data"]
-            response["sample_audio_mime"] = sample.get("mime_type", "audio/wav")
-        return response
-
-    async def _create_voice_by_replicate(self, params: dict) -> dict:
-        """语音复刻：参考音频 + 同意声明音频 → 复刻音色。"""
-        api_key = self.entry.get("api_key")
-        if not api_key:
-            raise ValueError("API Key 未配置")
-
-        source_b64 = await self._resolve_replicate_audio(
-            params.get("source_audio"), params.get("source_audio_path"), "参考音频"
-        )
-        consent_b64 = await self._resolve_replicate_audio(
-            params.get("consent_audio"),
-            params.get("consent_audio_path"),
-            "同意声明音频",
-        )
-
-        store = params.get("store", True)
-        payload: dict[str, Any] = {
-            "store": bool(store),
-            "voice": {
-                "model": self._voice_model(),
-                "type": "replicated",
-                "replicated": {
-                    "source_audio": {"mime_type": "audio/wav", "data": source_b64},
-                    "consent_audio": {"mime_type": "audio/wav", "data": consent_b64},
-                },
-            },
-        }
-        if params.get("display_name"):
-            payload["voice"]["display_name"] = params["display_name"]
-
-        result = await self._post_voices(api_key, payload, timeout=120)
-        # store=True → id；store=False → key（voicekey_...）
-        voice_id = (
-            result.get("id")
-            or result.get("voiceId")
-            or result.get("key")
-            or result.get("voiceKey")
-        )
-        if not voice_id:
-            raise RuntimeError(f"未返回 voice_id/key: {result}")
-        return {"voice_id": voice_id}
-
-    async def _resolve_replicate_audio(
-        self, raw_b64: Any, file_path: Any, label: str
-    ) -> str:
-        """复刻音频：优先用 base64 原文；否则读取本地文件并（必要时）转为 24k 单声道 16bit WAV。"""
-        if raw_b64 and isinstance(raw_b64, str):
-            return raw_b64
-        if not file_path:
-            raise ValueError(
-                f"{label}缺失（需提供 source_audio/consent_audio 或对应文件路径）"
-            )
-        p = Path(file_path)
-        if not p.exists():
-            raise ValueError(f"{label}文件不存在: {file_path}")
-        # 时长校验
-        try:
-            from .utils.audio import validate_audio_duration
-
-            ok, msg = validate_audio_duration(
-                str(p), REPLICATE_MIN_SEC, REPLICATE_MAX_SEC
-            )
-            if not ok:
-                logger.warning(f"{label}时长校验: {msg}（仍尝试提交）")
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"无法校验{label}时长: {e}")
-        # 统一转码为 24kHz 单声道 16bit WAV
-        try:
-            from pydub import AudioSegment
-
-            seg = AudioSegment.from_file(str(p))
-            seg = (
-                seg.set_frame_rate(REPLICATE_SAMPLE_RATE)
-                .set_channels(1)
-                .set_sample_width(2)
-            )
-            import io
-
-            buf = io.BytesIO()
-            seg.export(buf, format="wav")
-            return base64.b64encode(buf.getvalue()).decode("utf-8")
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"{label}转码失败，回退为原文件 base64: {e}")
-            return base64.b64encode(p.read_bytes()).decode("utf-8")
-
-    async def _post_voices(
-        self, api_key: str, payload: dict, timeout: int = 120
-    ) -> dict:
-        url = f"{API_BASE}/voices"
-        headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
-        try:
-            async with httpx.AsyncClient(**self._http_kwargs(timeout)) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-                resp.raise_for_status()
-                return resp.json()
-        except httpx.TimeoutException:
-            raise RuntimeError("语音创建请求超时")
-        except Exception as e:
-            raise RuntimeError(f"语音创建失败: {e}")
-
-    async def list_voice(self, **kwargs) -> dict:
-        """列出已创建的音色（voices.list）。"""
-        api_key = self.entry.get("api_key")
-        if not api_key:
-            raise ValueError("API Key 未配置")
-        url = f"{API_BASE}/voices"
-        headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
-        try:
-            async with httpx.AsyncClient(**self._http_kwargs(30)) as client:
-                resp = await client.get(url, headers=headers)
-                resp.raise_for_status()
-                data = resp.json()
-        except Exception as e:
-            raise RuntimeError(f"查询音色列表失败: {e}")
-
-        items = []
-        for v in data.get("voices", data.get("voiceList", [])):
-            items.append(
-                {
-                    "voice_id": v.get("id") or v.get("voiceId"),
-                    "display_name": v.get("displayName") or v.get("display_name"),
-                    "type": v.get("type"),
-                }
-            )
-        return {"items": items, "total": len(items)}
-
-    async def delete_voice(self, **kwargs) -> bool:
-        """删除指定音色（voices.delete）。"""
-        api_key = self.entry.get("api_key")
-        if not api_key:
-            raise ValueError("API Key 未配置")
-        voice_id = kwargs.get("voice_id")
-        if not voice_id:
-            raise ValueError("voice_id 为必填参数")
-        url = f"{API_BASE}/voices/{voice_id}"
-        headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
-        try:
-            async with httpx.AsyncClient(**self._http_kwargs(30)) as client:
-                resp = await client.delete(url, headers=headers)
-                resp.raise_for_status()
-                return True
-        except Exception as e:
-            logger.error(f"删除音色失败: {e}")
-            return False
-
-    async def query_voice(self, voice_id: str) -> str:
-        """Gemini 设计/复刻为同步返回，无异步部署流程，直接返回 OK。"""
-        return "OK"
