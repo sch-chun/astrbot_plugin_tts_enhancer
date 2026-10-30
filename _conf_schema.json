@@ -671,14 +671,14 @@
         }
       },
       "fish_audio_s2": {
-        "name": "Fish Audio",
-        "hint": "支持 64+ 情绪标记与自由自然语言风格控制（标记直接写进文本）",
+        "name": "Fish Audio S2 Family",
+        "hint": "情绪标记写进文本",
         "display_item": "display_name",
         "items": {
           "display_name": {
             "description": "显示名称",
             "type": "string",
-            "default": "Fish Audio",
+            "default": "Fish Audio S2 Family",
             "hint": "用于区分多个相同类型的供应商"
           },
           "priority": {
