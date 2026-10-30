@@ -712,7 +712,7 @@
             "description": "音色 ID",
             "type": "string",
             "default": "",
-            "hint": "Voice Library 模型 ID；留空用默认音色，音色库见 https://fish.audio"
+            "hint": "Voice Library 模型 ID；留空用默认音色，音色库见 https://fish.audio/zh-CN/discovery/"
           },
           "format": {
             "description": "输出格式",
