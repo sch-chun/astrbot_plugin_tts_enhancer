@@ -83,7 +83,7 @@ class FishAudioS2Adapter(TTSProviderAdapter):
                     },
                     "volume": {
                         "type": "number",
-                        "description": "音量，单位 dB，默认 0；正数更响、负数更轻。",
+                        "description": "音量，单位 dB，默认 0；正数更响、负数更轻；范围 -20~20，超出由适配器裁剪到边界。",
                     },
                     "language": {
                         "type": "string",
@@ -104,7 +104,7 @@ class FishAudioS2Adapter(TTSProviderAdapter):
             "- text 必填，为待合成文本；情绪/风格标记（如 [happy]、[warm and happy]）"
             "直接写进 text，可跨句改变，每句最多约 3 个；\n"
             "- speed 可选，语速 0.5~2.0；\n"
-            "- volume 可选，音量 dB（默认 0）；\n"
+            "- volume 可选，音量 dB（默认 0，范围 -20~20，超出由适配器裁剪）；\n"
             "- language 可选，BCP-47 标签（如 zh-CN、en），仅影响数字/日期读法。\n"
             "根据对话内容与情绪，为合适的句子加 [标记] 来表达语气/情绪。直接调用工具，不要额外解释。\n\n"
             "参考能力说明：\n"
@@ -220,6 +220,8 @@ class FishAudioS2Adapter(TTSProviderAdapter):
             prosody["speed"] = speed
         volume = self._as_float(raw_params.get("volume"))
         if volume is not None:
+            # Fish Audio 限制音量为 -20~20 dB，超出边界由服务端拒绝，故在此裁剪
+            volume = max(-20.0, min(20.0, volume))
             prosody["volume"] = volume
         nl = config.get("normalize_loudness", True)
         if isinstance(nl, bool):
@@ -275,9 +277,9 @@ class FishAudioS2Adapter(TTSProviderAdapter):
         except httpx.HTTPStatusError as e:
             status = e.response.status_code
             try:
-                err = extract_error_message(e.response.json(), str(e))
+                err = extract_error_message(e.response.json(), e.response.text)
             except Exception:
-                err = str(e)
+                err = e.response.text or str(e)
             logger.error(f"Fish Audio TTS 调用失败 ({status}): {err}")
             return ""
         except httpx.TimeoutException:

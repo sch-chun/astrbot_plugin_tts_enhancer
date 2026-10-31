@@ -12,6 +12,10 @@ from astrbot_plugin_tts_enhancer.providers.base import TTSProviderAdapter
 from astrbot_plugin_tts_enhancer.providers.fish_audio_s2 import (
     FishAudioS2Adapter,
 )
+from astrbot_plugin_tts_enhancer.providers.fish_audio_s2 import (
+    logger as fish_logger,
+)
+from astrbot_plugin_tts_enhancer.providers.utils.http import extract_error_message
 
 KEY = "fish_audio_s2"
 ENTRY = {"__template_key": KEY, "api_key": "test-key", "reference_id": "voice-abc"}
@@ -121,6 +125,12 @@ class _FakeResp:
     def content(self):
         return self._content
 
+    @property
+    def text(self):
+        if isinstance(self._content, (bytes, bytearray)):
+            return self._content.decode("utf-8", errors="replace")
+        return str(self._content)
+
     def json(self):
         return {"message": "boom", "reason": "test"}
 
@@ -223,3 +233,59 @@ async def test_call_api_opus_uses_opus_bitrate(tmp_path, monkeypatch):
     payload = fake.last_kwargs["json"]
     assert "opus_bitrate" in payload
     assert "mp3_bitrate" not in payload
+
+
+@pytest.mark.asyncio
+async def test_call_api_clamps_volume(tmp_path, monkeypatch):
+    adapter = _make_adapter()
+    entry = dict(ENTRY, _data_dir=str(tmp_path))
+    fake = _FakeClient(_FakeResp(b"\x00\x01" * 100))
+    monkeypatch.setattr(
+        "astrbot_plugin_tts_enhancer.providers.fish_audio_s2.httpx.AsyncClient",
+        lambda *a, **k: fake,
+    )
+    # 上边界：30 -> 20
+    await adapter.call_api(
+        text="hi", raw_params={"text": "hi", "volume": 30}, config=entry
+    )
+    assert fake.last_kwargs["json"]["prosody"]["volume"] == 20.0
+    # 下边界：-50 -> -20
+    await adapter.call_api(
+        text="hi", raw_params={"text": "hi", "volume": -50}, config=entry
+    )
+    assert fake.last_kwargs["json"]["prosody"]["volume"] == -20.0
+
+
+@pytest.mark.asyncio
+async def test_call_api_http_error_surfaces_reason(monkeypatch):
+    # Fish Audio 用 reason 字段返回错误（如 402 quota exceeded），
+    # 日志必须保留原始原因，而不是只剩 "Client error '402 Payment Required'"
+    adapter = _make_adapter()
+    entry = dict(ENTRY, _data_dir="/tmp/x")
+    captured = {}
+
+    class _ReasonResp(_FakeResp):
+        def json(self):
+            return {"reason": "quota exceeded"}
+
+    monkeypatch.setattr(
+        fish_logger, "error", lambda m, *a, **k: captured.setdefault("msg", m)
+    )
+    fake = _FakeClient(_ReasonResp(b"", status=402))
+    monkeypatch.setattr(
+        "astrbot_plugin_tts_enhancer.providers.fish_audio_s2.httpx.AsyncClient",
+        lambda *a, **k: fake,
+    )
+    path = await adapter.call_api(text="hi", raw_params={}, config=entry)
+    assert path == ""
+    assert "quota exceeded" in captured["msg"]
+
+
+def test_extract_error_message_reason():
+    # 仅 reason 字段时也能提取
+    assert extract_error_message({"reason": "quota exceeded"}) == "quota exceeded"
+    # message 优先级高于 reason
+    assert extract_error_message({"message": "bad", "reason": "quota"}) == "bad"
+    # 无已知字段时回退到原始响应体
+    assert extract_error_message({}, "raw body text") == "raw body text"
+    assert extract_error_message({"detail": "x"}, "raw") == "x"

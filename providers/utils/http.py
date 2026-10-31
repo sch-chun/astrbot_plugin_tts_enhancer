@@ -22,8 +22,9 @@ def bearer_headers(api_key: str, with_json: bool = True) -> dict[str, str]:
 def extract_error_message(payload: Any, fallback_text: str = "") -> str:
     """从响应 JSON 提取错误信息。
 
-    优先取 `message`、`error`、`detail` 中第一个非空值，否则回退到
-    `fallback_text`。用于兼容不同平台返回的错误字段。
+    优先取 `message`、`error`、`detail`、`reason` 中第一个非空值，否则回退到
+    `fallback_text`（调用方通常传入 `response.text`，以保留原始错误体）。
+    用于兼容不同平台返回的错误字段。
 
     Args:
         payload: 已解析的响应字典。
@@ -34,7 +35,7 @@ def extract_error_message(payload: Any, fallback_text: str = "") -> str:
     """
     if not isinstance(payload, dict):
         return fallback_text
-    for key in ("message", "error", "detail"):
+    for key in ("message", "error", "detail", "reason"):
         value = payload.get(key)
         if value:
             return str(value)

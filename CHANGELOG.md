@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 - **Fish Audio S2 系列 TTS 供应商**：新增对 Fish Audio S2 / S2-Pro（`s2.1-pro`、`s2.1-pro-free`、`s2-pro`）的支持。合成走 `POST /v1/tts` 端点，`model` 置于请求头、`Authorization: Bearer` 鉴权，成功返回二进制音频（按 `format` 落盘），错误返回 JSON（解析 `message`/`reason` 后降级）。情绪与风格控制采用文本内联方括号标记（如 `[happy]`、`[warm and happy]`），支持 64+ 种情绪 / 语调 / 音效标记与自然语言描述，可跨句自由改变情绪、长段落无需拆分；不在配置层单独提供情绪字段。工具 schema 暴露 `text`（必填）、`speed`（0.5~2.0）、`volume`（dB）、`language`（BCP-47，仅影响数字 / 日期口语化读法）；配置项覆盖 `format` 及对应编码参数（`mp3_bitrate` / `sample_rate` / `opus_bitrate` 按格式条件显示）、`latency`、`normalize`、`timeout`、`proxy`、采样等引擎参数（`temperature` / `top_p` / `repetition_penalty` / `chunk_length` 等，建议保持默认）、`reference_id`（Voice Library 模型 ID，留空用默认音色），以及发音词典开关（`use_pronunciation_dictionary` 开启后显示 `id` + `version`，按平台引用形式 `[{"id":..., "version":...}]` 发送）。新增能力说明书 `providers/docs/fish_audio_s2.md`（完整情绪参考、放置规则、组合 / 过渡 / 背景效果、强度修饰符、最佳实践与常见用例），随 SubAgent 系统提示注入；新增单元测试 `tests/test_fish_audio_s2.py`（自动发现、工具契约、参数清洗、prosody 构造、格式相关编码参数、发音词典、模型回退与 HTTP 错误处理，15 例全过）。
 
+### Fixed
+
+- **Fish Audio 错误日志补全原因**：`extract_error_message` 现识别 `reason` 字段，且 HTTP 错误回退到 `response.text` 原始响应体（与仓库内 bailian / minimax 处理对齐）。此前 Fish Audio 返回 `{"reason":"quota exceeded"}` 等时，日志只剩 `Client error '402 Payment Required'`，付费 / 限流原因不可见。
+- **`prosody.volume` 裁剪到官方限定的 -20~20 dB**：超出由服务端拒收，现由适配器在请求时裁剪到边界；工具 schema 与能力说明书 `fish_audio_s2.md` 同步标注范围。
+- **`sample_rate` 配置项补充可选值**：新增 `options` 8000/16000/24000/32000/44100（仅 wav/pcm 生效，对齐 Fish Audio 文档），避免自由输入非法采样率。
+
 ## [0.4.0] - 2026-10-29
 
 ### Added

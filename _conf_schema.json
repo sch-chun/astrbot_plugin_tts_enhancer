@@ -732,7 +732,8 @@
             "description": "采样率",
             "type": "int",
             "default": 44100,
-            "hint": "单位 Hz，仅 wav/pcm 生效；选 mp3/opus 时忽略"
+            "options": [8000, 16000, 24000, 32000, 44100],
+            "hint": "单位 Hz，仅 wav/pcm 生效（支持 8000/16000/24000/32000/44100）；选 mp3/opus 时忽略"
           },
           "opus_bitrate": {
             "description": "Opus 码率",
