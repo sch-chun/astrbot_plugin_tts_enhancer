@@ -441,7 +441,7 @@
       },
       "bailian_minimax_speech_2_8": {
         "name": "百炼 MiniMax Speech 2.8",
-        "hint": "通过阿里云百炼平台调用 MiniMax Speech 2.8",
+        "hint": "百炼调用 MiniMax 2.8",
         "display_item": "display_name",
         "items": {
           "display_name": {
@@ -522,7 +522,7 @@
       },
       "mimo_v2_5_tts": {
         "name": "小米 MiMo V2.5 TTS",
-        "hint": "支持预置音色、文本设计音色与音频复刻三种模型",
+        "hint": "支持预置、设计、复刻三模型",
         "display_item": "display_name",
         "items": {
           "display_name": {
@@ -613,7 +613,7 @@
       },
       "google_gemini_3_8_flash_tts": {
         "name": "Google Gemini 3.8 Flash TTS",
-        "hint": "Google 官方生成式 TTS：自然语言风格控制、语音设计/复刻",
+        "hint": "官方生成式 TTS，自然语言风格",
         "display_item": "display_name",
         "items": {
           "display_name": {
@@ -667,6 +667,184 @@
             "type": "string",
             "default": "",
             "hint": "访问 Google API 所需的代理（如 http://127.0.0.1:7890）。留空则直连。"
+          }
+        }
+      },
+      "fish_audio_s2": {
+        "name": "Fish Audio S2 Family",
+        "hint": "情绪标记写进文本",
+        "display_item": "display_name",
+        "items": {
+          "display_name": {
+            "description": "显示名称",
+            "type": "string",
+            "default": "Fish Audio S2 Family",
+            "hint": "用于区分多个相同类型的供应商"
+          },
+          "priority": {
+            "description": "优先级",
+            "type": "int",
+            "default": 0,
+            "hint": "数字越小越优先"
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "type": "string",
+            "_special": "select_persona",
+            "default": "",
+            "hint": "仅在该人格下使用；留空表示通用兜底音色"
+          },
+          "api_key": {
+            "description": "API Key",
+            "type": "string",
+            "default": "",
+            "secret": true,
+            "hint": "Fish Audio 密钥"
+          },
+          "model": {
+            "description": "模型",
+            "type": "string",
+            "default": "s2.1-pro-free",
+            "options": ["s2.1-pro", "s2.1-pro-free", "s2-pro"],
+            "hint": "s2.1/s2 系列；s2.1-pro-free 为免费档（无 TTFA/DPA 保障），生产建议 s2.1-pro"
+          },
+          "reference_id": {
+            "description": "音色 ID",
+            "type": "string",
+            "default": "",
+            "hint": "Voice Library 模型 ID；留空用默认音色，音色库见 https://fish.audio/zh-CN/discovery；或在 https://fish.audio/zh-CN/app/my-voices 中创建音色"
+          },
+          "format": {
+            "description": "输出格式",
+            "type": "string",
+            "default": "mp3",
+            "options": ["mp3", "wav", "pcm", "opus"]
+          },
+          "mp3_bitrate": {
+            "description": "MP3 码率",
+            "type": "int",
+            "default": 128,
+            "options": [64, 128, 192],
+            "condition": {"format": "mp3"},
+            "hint": "单位 kbps，仅 mp3 生效"
+          },
+          "sample_rate": {
+            "description": "采样率",
+            "type": "int",
+            "default": 44100,
+            "options": [8000, 16000, 24000, 32000, 44100],
+            "hint": "单位 Hz，仅 wav/pcm 生效（支持 8000/16000/24000/32000/44100）；选 mp3/opus 时忽略"
+          },
+          "opus_bitrate": {
+            "description": "Opus 码率",
+            "type": "int",
+            "default": -1000,
+            "options": [-1000, 24000, 32000, 48000, 64000],
+            "condition": {"format": "opus"},
+            "hint": "单位 bps，-1000 为自动，仅 opus 生效"
+          },
+          "latency": {
+            "description": "延迟权衡",
+            "type": "string",
+            "default": "normal",
+            "options": ["low", "normal", "balanced"]
+          },
+          "normalize": {
+            "description": "文本归一化",
+            "type": "bool",
+            "default": true,
+            "hint": "将数字/日期等重写为口语词后再合成（仅影响读法，不改变口音），默认开启"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "type": "int",
+            "default": 120,
+            "hint": "单位秒；长文本合成可能需要调大"
+          },
+          "proxy": {
+            "description": "代理地址",
+            "type": "string",
+            "default": "",
+            "hint": "可选；国内访问可能需要，如 http://127.0.0.1:7890"
+          },
+          "use_pronunciation_dictionary": {
+            "description": "启用发音词典",
+            "type": "bool",
+            "default": false
+          },
+          "pronunciation_dictionary_id": {
+            "description": "词典 ID",
+            "type": "string",
+            "default": "",
+            "condition": {"use_pronunciation_dictionary": true},
+            "hint": "正则 ^[A-Za-z0-9_-]{1,128}$"
+          },
+          "pronunciation_dictionary_version": {
+            "description": "词典版本",
+            "type": "string",
+            "default": "",
+            "condition": {"use_pronunciation_dictionary": true},
+            "hint": "必须显式给出（无 latest）；正则 ^[A-Za-z0-9_-]{1,128}$"
+          },
+          "temperature": {
+            "description": "采样温度",
+            "type": "number",
+            "default": 0.7,
+            "hint": "范围 0~1，建议保持默认"
+          },
+          "top_p": {
+            "description": "核采样",
+            "type": "number",
+            "default": 0.7,
+            "hint": "范围 0~1，建议保持默认"
+          },
+          "repetition_penalty": {
+            "description": "重复惩罚",
+            "type": "number",
+            "default": 1.2,
+            "hint": "需 >1.0，建议保持默认"
+          },
+          "chunk_length": {
+            "description": "文本分块大小",
+            "type": "int",
+            "default": 300,
+            "hint": "范围 100~300，建议保持默认"
+          },
+          "min_chunk_length": {
+            "description": "新块最小字符数",
+            "type": "int",
+            "default": 50,
+            "hint": "范围 0~100，建议保持默认"
+          },
+          "max_new_tokens": {
+            "description": "单块最大音频 token 数",
+            "type": "int",
+            "default": 1024,
+            "hint": "每块音频 token 上限，建议保持默认"
+          },
+          "condition_on_previous_chunks": {
+            "description": "音色一致性",
+            "type": "bool",
+            "default": true,
+            "hint": "用前序音频保持音色一致，建议保持默认"
+          },
+          "early_stop_threshold": {
+            "description": "批处理早停阈值",
+            "type": "number",
+            "default": 1,
+            "hint": "范围 0~1，建议保持默认"
+          },
+          "normalize_loudness": {
+            "description": "响度归一化",
+            "type": "bool",
+            "default": true,
+            "hint": "建议保持默认"
+          },
+          "features": {
+            "description": "功能标志",
+            "type": "string",
+            "default": "",
+            "hint": "逗号分隔，如 quality-guard；留空默认，建议保持默认"
           }
         }
       }
