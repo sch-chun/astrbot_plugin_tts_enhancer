@@ -5,17 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.6.0] - 2026-11-03
+
+### Added
+
+- **ElevenLabs v4 / v4 Turbo TTS 供应商**：新增对 ElevenLabs 的支持。合成走 `POST /v1/text-to-speech/{voice_id}`（非流式 convert），鉴权用 `xi-api-key` 请求头（**非** Bearer）；默认模型显式传 `eleven_v4`（覆盖 ElevenLabs 平台默认的多语 `eleven_multilingual_v2`），可选 `eleven_v4_turbo`。v4 不支持 style/speed 滑块与 SSML，情绪/风格用文本内联方括号标签（如 `[whispering]`、`[excited][laughing]`、`[warm and happy]`），专有名词用 `/IPA/` 标注发音，停顿用 `<break time="1.5s" />`。
+- **`output_format` 拆分为编码 + 采样率/码率（condition 联动）**：配置项 `output_codec` 选 `mp3` / `wav` / `opus`（仅容器格式，裸 PCM/ulaw/alaw 因 Record 无法播放已不暴露），按所选编码条件显示对应采样率/码率子项（mp3 采样率 22050/24000/44100 + 码率 32~192；wav 采样率 8k~48k；opus 固定 48k + 码率 32~192）；脏数据回落白名单内默认值。
+- **`voice_settings` 全部落配置**：`stability`、`similarity_boost`、`use_speaker_boost`；其余配置项含 `base_url`、`proxy`、`timeout`、`language_code`、`apply_text_normalization`(auto/on/off)、`seed`（>0 才发送）、`enable_logging`（零留存开关，仅企业版可用）、`use_pvc_as_ivc`（PVC 转 IVC）。
+- **发音词典 `pronunciation_dictionary_locators`**：`use_pronunciation_dictionary` 开关，开启后显示 `pronunciation_dictionary_id` + `pronunciation_dictionary_version`（按 ElevenLabs 引用形式 `[{pronunciation_dictionary_id, version_id}]` 发送），仿 Fish Audio 交互。
+- **音频效果 `audio_effects`（catalog 动态拉取）**：`use_audio_effects` 开关；开启后**每次合成前** `GET /v1/audio-effects/catalog`（带 300s TTL 缓存），据此动态生成 `filter_preset_id` / `environment_id` / `background_noise_id` 枚举及 `distance` / `send_level` / `pan` 数值参数；拉取失败（缺 Key / 网络异常 / 结构异常）则 `Warning` 并丢弃该 schema 与参数，全程优雅降级，绝不阻塞 TTS。
+- **`language_code` 升级为工具参数（逐句切语言）**：v4 音色支持跨语种，故 `language_code` 从纯配置项提升为 `tts_enhance` 工具参数，SubAgent 可按消息切换语言；工具参数优先于配置默认语言。枚举固定为 v4 官方支持的 87 个 ISO 639-1 代码（如 `cmn`/`en`/`ja`/`ko`/`fr`/`pt-BR`/`es-419`），模型不支持的代码由 ElevenLabs 静默忽略。
+- 新增能力说明书 `providers/docs/elevenlabs_v4.md`（情绪标签参考、IPA 与停顿用法、音频效果调用指引、支持语言清单），随 SubAgent 系统提示注入；新增单元测试 `tests/test_elevenlabs_v4.py`（自动发现、文档齐备、工具契约、参数清洗、output_format 组合、catalog 拉取成功/失败/缺 Key/畸形、audio_effects 组装与动态提示注入、language_code 87 码枚举与工具参数优先于配置、call_api 落盘/缺 Key/带效果与发音词典，共 34 例全过）。
+
 ## [0.5.0] - 2026-10-30
 
 ### Added
 
 - **Fish Audio S2 系列 TTS 供应商**：新增对 Fish Audio S2 / S2-Pro（`s2.1-pro`、`s2.1-pro-free`、`s2-pro`）的支持。合成走 `POST /v1/tts` 端点，`model` 置于请求头、`Authorization: Bearer` 鉴权，成功返回二进制音频（按 `format` 落盘），错误返回 JSON（解析 `message`/`reason` 后降级）。情绪与风格控制采用文本内联方括号标记（如 `[happy]`、`[warm and happy]`），支持 64+ 种情绪 / 语调 / 音效标记与自然语言描述，可跨句自由改变情绪、长段落无需拆分；不在配置层单独提供情绪字段。工具 schema 暴露 `text`（必填）、`speed`（0.5~2.0）、`volume`（dB）、`language`（BCP-47，仅影响数字 / 日期口语化读法）；配置项覆盖 `format` 及对应编码参数（`mp3_bitrate` / `sample_rate` / `opus_bitrate` 按格式条件显示）、`latency`、`normalize`、`timeout`、`proxy`、采样等引擎参数（`temperature` / `top_p` / `repetition_penalty` / `chunk_length` 等，建议保持默认）、`reference_id`（Voice Library 模型 ID，留空用默认音色），以及发音词典开关（`use_pronunciation_dictionary` 开启后显示 `id` + `version`，按平台引用形式 `[{"id":..., "version":...}]` 发送）。新增能力说明书 `providers/docs/fish_audio_s2.md`（完整情绪参考、放置规则、组合 / 过渡 / 背景效果、强度修饰符、最佳实践与常见用例），随 SubAgent 系统提示注入；新增单元测试 `tests/test_fish_audio_s2.py`（自动发现、工具契约、参数清洗、prosody 构造、格式相关编码参数、发音词典、模型回退与 HTTP 错误处理，18 例全过）。
-
-### Fixed
-
-- **Fish Audio 错误日志补全原因**：`extract_error_message` 现识别 `reason` 字段，且 HTTP 错误回退到 `response.text` 原始响应体（与仓库内 bailian / minimax 处理对齐）。此前 Fish Audio 返回 `{"reason":"quota exceeded"}` 等时，日志只剩 `Client error '402 Payment Required'`，付费 / 限流原因不可见。
-- **`prosody.volume` 裁剪到官方限定的 -20~20 dB**：超出由服务端拒收，现由适配器在请求时裁剪到边界；工具 schema 与能力说明书 `fish_audio_s2.md` 同步标注范围。
-- **`sample_rate` 配置项补充可选值**：新增 `options` 8000/16000/24000/32000/44100（仅 wav/pcm 生效，对齐 Fish Audio 文档），避免自由输入非法采样率。
 
 ## [0.4.0] - 2026-10-29
 
