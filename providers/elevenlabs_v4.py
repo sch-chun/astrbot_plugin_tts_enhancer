@@ -44,15 +44,10 @@ _CATALOG_CACHE: dict[tuple[str, str], dict] = {}
 # 同一 key 的并发预热去重，避免事件循环内重复拉取
 _CATALOG_INFLIGHT: set[tuple[str, str]] = set()
 
-# 静态兜底枚举：仅在类级缓存未命中（尚未预热 / 预热失败）时用于工具 schema，
-# 保证开启 use_audio_effects 后「绝不联网、绝不阻塞事件循环」。
-# ID 取自 ElevenLabs 官方文档示例；预热成功后会被实时 catalog 覆盖。
-# 注意：未知效果 ID 服务端会 404，故兜底 ID 必须是真实存在的示例值。
-STATIC_FALLBACK_CATALOG: dict[str, list[str]] = {
-    "filter_presets": ["phone", "old_radio", "robot"],
-    "environments": ["small_room", "hall", "tunnel"],
-    "background_noises": ["cafe", "keyboard", "city"],
-}
+# 未预热 / 预热失败 / 已过期时 _get_catalog 直接返回 None，调用方据此**不暴露**
+# audio_effects 参数（工具 schema 与 SubAgent 提示词都不出现该字段），避免向
+# SubAgent 提供对当前账号/区域可能不存在的猜测性 effect ID（服务端会 404）。只有
+# 预热成功、缓存命中时才返回实时目录，参数才会暴露。
 
 # 可选采样率 / 码率白名单（用于脏数据兜底）
 WAV_SAMPLE_RATES = (8000, 16000, 22050, 24000, 32000, 44100, 48000)
@@ -170,11 +165,12 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
         return prompt
 
     def _build_audio_effects_guidance(self) -> str:
-        """开启音频效果时，拼接可选值注入 SubAgent 提示（ID 来自缓存或静态兜底）。
+        """开启音频效果且 catalog 预热成功时，拼接可选值注入 SubAgent 提示。
 
-        仅在 ``use_audio_effects`` 开启且存在可用 catalog（类级缓存命中或静态兜底）
-        时返回非空字符串；否则返回空（不注入），避免向 SubAgent 暴露其无法看到的
-        插件配置。本方法同步读取缓存，绝不发起网络请求、绝不阻塞事件循环。
+        仅在 ``use_audio_effects`` 开启且 catalog 已成功预热（类级缓存命中）时返回
+        非空字符串；未预热 / 预热失败时返回空（不注入），从而**不在提示词里暴露**
+        audio_effects 字段（与工具 schema 行为一致，避免向 SubAgent 提供可能无效的
+        猜测性 effect ID）。本方法同步读取缓存，绝不发起网络请求、绝不阻塞事件循环。
 
         Returns:
             音频效果使用指引（含 ID 枚举），或空字符串。
@@ -264,21 +260,21 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
         return (base, self.entry.get("api_key") or "")
 
     def _get_catalog(self) -> dict[str, list[str]] | None:
-        """同步读取 catalog：命中类级缓存（TTL 内）返回实时目录，否则返回静态兜底。
+        """同步读取 catalog：命中类级缓存（TTL 内）返回实时目录，否则返回 None。
 
         本方法**绝不发起网络请求、绝不阻塞事件循环**——它只在同步热路径
         （get_tool_schema / get_subagent_system_prompt）里被调用。未预热 / 预热
-        失败时返回 ``STATIC_FALLBACK_CATALOG``（非空），保证工具 schema 始终能
-        给出 audio_effects 字段；预热成功后返回实时目录覆盖兜底。
+        失败 / 已过期时返回 None，调用方据此**不暴露** audio_effects 参数；预热
+        成功后缓存命中才返回实时目录，参数才会暴露。
 
         Returns:
-            包含三类效果 ID 列表的字典；仅在极端情况下（兜底也为空）返回 None。
+            包含三类效果 ID 列表的字典（缓存命中时），或 None（未就绪/失败时）。
         """
         key = self._catalog_key()
         cached = _CATALOG_CACHE.get(key)
         if cached is not None and (time.time() - cached["ts"]) < CATALOG_TTL:
             return cached["catalog"]
-        return STATIC_FALLBACK_CATALOG
+        return None
 
     async def _fetch_catalog(self) -> None:
         """异步拉取 audio_effects catalog 并写入类级缓存（带 proxy，失败静默降级）。

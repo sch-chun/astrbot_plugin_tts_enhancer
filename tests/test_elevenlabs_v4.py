@@ -103,18 +103,17 @@ def test_tool_schema_with_audio_effects_injects_dynamic_enums(monkeypatch):
     assert props["pan"]["minimum"] == -1 and props["pan"]["maximum"] == 1
 
 
-def test_tool_schema_with_audio_effects_uses_static_fallback(monkeypatch):
-    # 缓存未命中（预热前/失败）时，_get_catalog 返回静态兜底枚举，字段仍出现
+def test_tool_schema_with_audio_effects_unwarmed_drops_schema(monkeypatch):
+    # 缓存未命中（预热前/失败）时，_get_catalog 返回 None，audio_effects 字段不出现
     adapter = _make_adapter(use_audio_effects=True)
-    monkeypatch.setattr(
-        adapter,
-        "_get_catalog",
-        lambda: elevenlabs_v4.STATIC_FALLBACK_CATALOG,
-    )
+    monkeypatch.setattr(adapter, "_get_catalog", lambda: None)
     props = adapter.get_tool_schema().parameters["properties"]
-    assert props["filter_preset_id"]["enum"] == ["phone", "old_radio", "robot"]
-    assert props["environment_id"]["enum"] == ["small_room", "hall", "tunnel"]
-    assert props["background_noise_id"]["enum"] == ["cafe", "keyboard", "city"]
+    assert "filter_preset_id" not in props
+    assert "environment_id" not in props
+    assert "background_noise_id" not in props
+    assert "distance" not in props
+    assert "send_level" not in props
+    assert "pan" not in props
 
 
 def test_system_prompt_nonempty():
@@ -149,17 +148,13 @@ def test_system_prompt_with_audio_effects_injects_real_ids(monkeypatch):
     assert "配置" not in prompt
 
 
-def test_system_prompt_with_audio_effects_uses_static_fallback(monkeypatch):
-    # 缓存未命中时，用静态兜底枚举拼接指引（不空壳、不报错）
+def test_system_prompt_with_audio_effects_unwarmed_has_no_fx_block(monkeypatch):
+    # 缓存未命中时，不注入 audio_effects 指引（与 schema 行为一致，不暴露猜测 ID）
     adapter = _make_adapter(use_audio_effects=True)
-    monkeypatch.setattr(
-        adapter,
-        "_get_catalog",
-        lambda: elevenlabs_v4.STATIC_FALLBACK_CATALOG,
-    )
+    monkeypatch.setattr(adapter, "_get_catalog", lambda: None)
     prompt = adapter.get_subagent_system_prompt()
-    assert "音频效果（audio_effects）" in prompt
-    assert "phone" in prompt and "hall" in prompt
+    assert "音频效果（audio_effects）" not in prompt
+    assert "filter_preset_id（音色滤镜）" not in prompt
 
 
 # ---------- 参数校验 / 清洗 ----------
@@ -327,10 +322,10 @@ class _FakeAsyncClient:
         return self._resp
 
 
-def test_get_catalog_returns_static_fallback_when_unwarmed(catalog_clean):
-    # 缓存为空时，_get_catalog 不发起网络、直接返回静态兜底（非空）
+def test_get_catalog_returns_none_when_unwarmed(catalog_clean):
+    # 缓存为空时，_get_catalog 不发起网络、直接返回 None（参数不暴露）
     adapter = _make_adapter()
-    assert adapter._get_catalog() == elevenlabs_v4.STATIC_FALLBACK_CATALOG
+    assert adapter._get_catalog() is None
 
 
 def test_fetch_catalog_success_populates_class_cache(catalog_clean, monkeypatch):
@@ -350,7 +345,7 @@ def test_fetch_catalog_success_populates_class_cache(catalog_clean, monkeypatch)
     }
 
 
-def test_fetch_catalog_failure_keeps_static_fallback(catalog_clean, monkeypatch):
+def test_fetch_catalog_failure_returns_none_and_drops_params(catalog_clean, monkeypatch):
     async def _boom_get(self, *a, **k):
         raise RuntimeError("network down")
 
@@ -362,8 +357,15 @@ def test_fetch_catalog_failure_keeps_static_fallback(catalog_clean, monkeypatch)
     import asyncio
 
     asyncio.run(_make_adapter().ensure_catalog_warm())
-    # 失败不写缓存，_get_catalog 仍回退静态兜底
-    assert _make_adapter()._get_catalog() == elevenlabs_v4.STATIC_FALLBACK_CATALOG
+    # 失败不写缓存，_get_catalog 返回 None，audio_effects 参数从 schema/提示词消失
+    assert _make_adapter()._get_catalog() is None
+    props = (
+        _make_adapter(use_audio_effects=True)
+        .get_tool_schema()
+        .parameters["properties"]
+    )
+    assert "filter_preset_id" not in props
+    assert "pan" not in props
 
 
 def test_fetch_catalog_missing_key_no_cache(catalog_clean):
@@ -374,7 +376,7 @@ def test_fetch_catalog_missing_key_no_cache(catalog_clean):
     assert elevenlabs_v4._CATALOG_CACHE == {}
 
 
-def test_fetch_catalog_malformed_keeps_static_fallback(catalog_clean, monkeypatch):
+def test_fetch_catalog_malformed_returns_none(catalog_clean, monkeypatch):
     monkeypatch.setattr(
         "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.httpx.AsyncClient",
         lambda *a, **k: _FakeAsyncClient(_FakeResp({"unexpected": []})),
@@ -383,7 +385,7 @@ def test_fetch_catalog_malformed_keeps_static_fallback(catalog_clean, monkeypatc
 
     asyncio.run(_make_adapter().ensure_catalog_warm())
     assert elevenlabs_v4._CATALOG_CACHE == {}
-    assert _make_adapter()._get_catalog() == elevenlabs_v4.STATIC_FALLBACK_CATALOG
+    assert _make_adapter()._get_catalog() is None
 
 
 def test_build_audio_effects_none_when_empty():
