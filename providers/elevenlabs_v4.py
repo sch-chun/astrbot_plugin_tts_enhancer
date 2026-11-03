@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from typing import Any
 
@@ -400,6 +401,32 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
             return
         loop.create_task(self.ensure_catalog_warm())
 
+    def _invalidate_catalog_cache(self) -> None:
+        """失效本账号/区域的 audio_effects catalog 缓存。
+
+        当合成因某个 effect ID 被下架/无效而 404 时调用，使下一次同步热路径
+        （``get_tool_schema`` / ``get_subagent_system_prompt``）重新拉取目录，
+        拿到修正后的 ID 列表，避免持续向 SubAgent 提供坏 ID。
+        """
+        _CATALOG_CACHE.pop(self._catalog_key(), None)
+
+    @staticmethod
+    def _error_references_audio_effects(response: "httpx.Response") -> bool:
+        """判断错误响应是否指向 audio_effects 字段。
+
+        官方文档：未知/已下架 effect ID 返回 404，且 ``param`` 指明相应字段。
+        用此判定把「effect ID 404」与「voice_id 404」等其它 404 区分开，避免误剥
+        效果。解析失败时保守返回 ``False``（不重试）。
+        """
+        try:
+            body = response.json()
+        except Exception:  # noqa: BLE001
+            return False
+        try:
+            return "audio_effects" in json.dumps(body, ensure_ascii=False)
+        except Exception:  # noqa: BLE001
+            return False
+
     @staticmethod
     def _collect_ids(items: Any, id_key: str) -> list[str]:
         """从 catalog 分类列表中提取 ID（容忍 None / 缺字段 / description 为 null）。"""
@@ -600,7 +627,8 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
                 logger.warning("已启用发音词典但未提供 id，将忽略该参数")
 
         effects = self._build_audio_effects(raw_params)
-        if effects:
+        had_effects = effects is not None
+        if had_effects:
             payload["audio_effects"] = effects
 
         timeout = self._as_int(config.get("timeout", 120)) or 120
@@ -617,8 +645,47 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
                 err = extract_error_message(e.response.json(), e.response.text)
             except Exception:  # noqa: BLE001
                 err = e.response.text or str(e)
-            logger.error(f"ElevenLabs TTS 调用失败 ({status}): {err}")
-            return ""
+            # 优雅降级：未知/已下架 effect ID → 404 且错误指明 audio_effects 字段时，
+            # 剥除 audio_effects 重试一次（用户仍拿到干净语音，只是不带效果）；同时失效
+            # 该类 catalog 缓存，下次合成重新拉取拿到修正后的目录。429/422/400 及非
+            # effect 的 404（如 voice_id 无效）一律不重试。
+            if (
+                status == 404
+                and had_effects
+                and self._error_references_audio_effects(e.response)
+            ):
+                logger.warning(
+                    f"audio_effects ID 已被下架/无效({status})，已剥除效果并重试: {err}"
+                )
+                self._invalidate_catalog_cache()
+                payload.pop("audio_effects", None)
+                try:
+                    async with httpx.AsyncClient(**self._http_kwargs(timeout)) as client:
+                        resp = await client.post(
+                            url, params=params, headers=headers, json=payload
+                        )
+                        resp.raise_for_status()
+                        content = resp.content
+                except httpx.HTTPStatusError as e2:
+                    try:
+                        err2 = extract_error_message(
+                            e2.response.json(), e2.response.text
+                        )
+                    except Exception:  # noqa: BLE001
+                        err2 = e2.response.text or str(e2)
+                    logger.error(
+                        f"剥除 audio_effects 重试仍失败 ({e2.response.status_code}): {err2}"
+                    )
+                    return ""
+                except httpx.TimeoutException:
+                    logger.error(f"ElevenLabs TTS 超时 (timeout={timeout}s)")
+                    return ""
+                except Exception as e2:  # noqa: BLE001
+                    logger.error(f"ElevenLabs TTS 调用失败: {e2}")
+                    return ""
+            else:
+                logger.error(f"ElevenLabs TTS 调用失败 ({status}): {err}")
+                return ""
         except httpx.TimeoutException:
             logger.error(f"ElevenLabs TTS 超时 (timeout={timeout}s)")
             return ""

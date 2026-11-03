@@ -8,6 +8,7 @@ httpx 被 mock 时的行为。
 import os
 import time
 
+import httpx
 import pytest
 from astrbot_plugin_tts_enhancer.providers import (
     ProviderFactory,
@@ -811,3 +812,140 @@ async def test_seed_zero_and_positive_passed(tmp_path, monkeypatch):
         )
         await adapter.call_api(text="hi", raw_params={}, config=entry)
         assert fake.last_json["seed"] == s
+
+
+# ---------- call_api：audio_effects 下架/无效 优雅降级 ----------
+
+
+def _make_status_error(status: int, body: dict) -> "httpx.HTTPStatusError":
+    """构造一个 httpx.HTTPStatusError（带 JSON 错误体），供降级测试。"""
+    req = httpx.Request("POST", "https://api.elevenlabs.io/v1/text-to-speech/x")
+    resp = httpx.Response(status, json=body, request=req)
+    return httpx.HTTPStatusError("error", request=req, response=resp)
+
+
+class _FakeClientOnceErrThenOK:
+    """post 第一次抛错、第二次返回成功的 mock 客户端（验证降级重试）。"""
+
+    def __init__(self, err, ok):
+        self._err = err
+        self._ok = ok
+        self.calls = 0
+        self.last_json = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def post(self, *a, **k):
+        self.calls += 1
+        self.last_json = k.get("json")
+        if self.calls == 1:
+            raise self._err
+        return self._ok
+
+
+class _FakeClientAlwaysErr:
+    """post 始终抛错（验证不该重试的场景：voice 404 / 429）。"""
+
+    def __init__(self, err):
+        self._err = err
+        self.calls = 0
+        self.last_json = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def post(self, *a, **k):
+        self.calls += 1
+        self.last_json = k.get("json")
+        raise self._err
+
+
+def test_error_references_audio_effects_true():
+    resp = httpx.Response(
+        404,
+        json={"detail": [{"loc": ["body", "audio_effects", "environment_id"], "msg": "unknown id"}]},
+    )
+    assert ElevenLabsV4Adapter._error_references_audio_effects(resp) is True
+
+
+def test_error_references_audio_effects_false_for_voice():
+    resp = httpx.Response(
+        404,
+        json={"detail": [{"loc": ["path", "voice_id"], "msg": "not found"}]},
+    )
+    assert ElevenLabsV4Adapter._error_references_audio_effects(resp) is False
+
+
+def test_error_references_audio_effects_false_on_bad_json():
+    class _Bad:
+        def json(self):
+            raise ValueError("nope")
+
+        @property
+        def text(self):
+            return "broken"
+
+    assert ElevenLabsV4Adapter._error_references_audio_effects(_Bad()) is False
+
+
+@pytest.mark.asyncio
+async def test_call_api_effect_404_strips_and_retries(tmp_path, monkeypatch):
+    adapter = _make_adapter()
+    entry = dict(ENTRY, _data_dir=str(tmp_path))
+    # 第一次 404，错误体指向 audio_effects 字段（模拟 effect ID 下架）
+    err = _make_status_error(
+        404,
+        {"detail": [{"loc": ["body", "audio_effects", "environment_id"], "msg": "unknown id"}]},
+    )
+    fake = _FakeClientOnceErrThenOK(err, _FakeResp(b"fakeaudio"))
+    monkeypatch.setattr(
+        "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.httpx.AsyncClient",
+        lambda *a, **k: fake,
+    )
+    raw = {"text": "hi", "environment_id": "hall", "send_level": 0.5}
+    path = await adapter.call_api(text="hi", raw_params=raw, config=entry)
+    # 剥除 audio_effects 后重试一次成功（仍拿到干净语音）
+    assert path and os.path.exists(path)
+    assert fake.calls == 2
+    # 重试请求体不再含 audio_effects
+    assert "audio_effects" not in fake.last_json
+
+
+@pytest.mark.asyncio
+async def test_call_api_voice_404_does_not_retry(tmp_path, monkeypatch):
+    adapter = _make_adapter()
+    entry = dict(ENTRY, _data_dir=str(tmp_path))
+    # 404 但错误体指向 voice_id（非 audio_effects）→ 不应剥除/重试
+    err = _make_status_error(404, {"detail": [{"loc": ["path", "voice_id"], "msg": "not found"}]})
+    fake = _FakeClientAlwaysErr(err)
+    monkeypatch.setattr(
+        "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.httpx.AsyncClient",
+        lambda *a, **k: fake,
+    )
+    raw = {"text": "hi", "environment_id": "hall"}
+    path = await adapter.call_api(text="hi", raw_params=raw, config=entry)
+    assert path == ""
+    assert fake.calls == 1  # 只调用一次，未重试
+
+
+@pytest.mark.asyncio
+async def test_call_api_429_does_not_retry(tmp_path, monkeypatch):
+    adapter = _make_adapter()
+    entry = dict(ENTRY, _data_dir=str(tmp_path))
+    err = _make_status_error(429, {"detail": "rate limited"})
+    fake = _FakeClientAlwaysErr(err)
+    monkeypatch.setattr(
+        "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.httpx.AsyncClient",
+        lambda *a, **k: fake,
+    )
+    raw = {"text": "hi", "environment_id": "hall"}
+    path = await adapter.call_api(text="hi", raw_params=raw, config=entry)
+    assert path == ""
+    assert fake.calls == 1  # 429 不重试
