@@ -33,8 +33,10 @@ API_PATH = "/v1/text-to-speech"
 # 支持的容器编码（裸 PCM/ulaw/alaw 无文件头，Record 无法播放，故不暴露）
 OUTPUT_EXT = {"mp3": "mp3", "wav": "wav", "opus": "opus"}
 
-# audio_effects catalog 缓存 TTL（秒）
+# audio_effects catalog 缓存 TTL（秒）——仅作默认值；实际值由配置 catalog_ttl 覆盖。
 CATALOG_TTL = 300
+# audio_effects catalog 拉取超时（秒）——仅作默认值；实际值由配置 catalog_fetch_timeout 覆盖。
+CATALOG_FETCH_TIMEOUT = 5
 
 # audio_effects catalog **类级**缓存：键为 (base_url, api_key)，值为 {"catalog":..., "ts":...}。
 # 必须放在类级（而非实例级）——ProviderFactory 每次合成都会新建适配器实例
@@ -259,6 +261,26 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
         base = (self.entry.get("base_url") or "https://api.elevenlabs.io").rstrip("/")
         return (base, self.entry.get("api_key") or "")
 
+    def _catalog_ttl(self) -> int:
+        """返回 audio_effects 目录缓存 TTL（秒），可被配置 catalog_ttl 覆盖。
+
+        非法 / 零 / 负 / 非整数值回退到模块默认 ``CATALOG_TTL``（300s）。
+        """
+        ttl = self._as_int(self.entry.get("catalog_ttl"))
+        if isinstance(ttl, int) and ttl > 0:
+            return ttl
+        return CATALOG_TTL
+
+    def _catalog_fetch_timeout(self) -> int:
+        """返回目录拉取超时（秒），可被配置 catalog_fetch_timeout 覆盖。
+
+        非法 / 零 / 负 / 非整数值回退到模块默认 ``CATALOG_FETCH_TIMEOUT``（5s）。
+        """
+        t = self._as_int(self.entry.get("catalog_fetch_timeout"))
+        if isinstance(t, int) and t > 0:
+            return t
+        return CATALOG_FETCH_TIMEOUT
+
     def _get_catalog(self) -> dict[str, list[str]] | None:
         """同步读取 catalog：命中类级缓存（TTL 内）返回实时目录，否则返回 None。
 
@@ -272,7 +294,7 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
         """
         key = self._catalog_key()
         cached = _CATALOG_CACHE.get(key)
-        if cached is not None and (time.time() - cached["ts"]) < CATALOG_TTL:
+        if cached is not None and (time.time() - cached["ts"]) < self._catalog_ttl():
             return cached["catalog"]
         return None
 
@@ -287,14 +309,18 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
             logger.warning("未配置 ElevenLabs API Key，跳过 audio_effects 目录拉取")
             return
         try:
-            async with httpx.AsyncClient(**self._http_kwargs(5)) as client:
+            async with httpx.AsyncClient(
+                **self._http_kwargs(self._catalog_fetch_timeout())
+            ) as client:
                 resp = await client.get(
                     self._catalog_url(), headers={"xi-api-key": api_key}
                 )
                 resp.raise_for_status()
                 data = resp.json()
         except Exception as e:  # noqa: BLE001
-            logger.warning(f"拉取 audio_effects 目录失败（已降级为静态兜底）: {e}")
+            logger.warning(
+                f"拉取 audio_effects 目录失败（已降级：本次不暴露音频效果参数）: {e}"
+            )
             return
 
         catalog = {
@@ -309,7 +335,7 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
             ),
         }
         if not any(catalog.values()):
-            logger.warning("audio_effects 目录为空或结构异常，保持静态兜底")
+            logger.warning("audio_effects 目录为空或结构异常，本次不暴露音频效果参数")
             return
         _CATALOG_CACHE[self._catalog_key()] = {"catalog": catalog, "ts": time.time()}
 
@@ -320,7 +346,7 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
         """
         key = self._catalog_key()
         cached = _CATALOG_CACHE.get(key)
-        if cached is not None and (time.time() - cached["ts"]) < CATALOG_TTL:
+        if cached is not None and (time.time() - cached["ts"]) < self._catalog_ttl():
             return
         if key in _CATALOG_INFLIGHT:
             return

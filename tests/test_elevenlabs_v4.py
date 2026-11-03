@@ -6,6 +6,7 @@ httpx 被 mock 时的行为。
 """
 
 import os
+import time
 
 import pytest
 from astrbot_plugin_tts_enhancer.providers import (
@@ -503,6 +504,117 @@ def test_language_code_config_item_present_in_schema():
     found = items["language_code"]
     assert found["type"] == "string"
     assert found["default"] == ""
+
+
+def test_catalog_config_items_present_in_schema_and_conditional():
+    # 用户需求：目录拉取超时与目录缓存时长须暴露为配置，且仅在 use_audio_effects 开启时显示
+    import json
+
+    schema = json.load(open("_conf_schema.json"))
+    items = (
+        schema.get("providers", {})
+        .get("templates", {})
+        .get("elevenlabs_v4", {})
+        .get("items", {})
+    )
+    for name in ("catalog_fetch_timeout", "catalog_ttl"):
+        assert name in items, f"elevenlabs_v4 配置缺少 {name} 项"
+        found = items[name]
+        assert found["type"] == "int"
+        assert found.get("condition") == {"use_audio_effects": True}, (
+            f"{name} 应在 use_audio_effects 开启时才显示"
+        )
+    assert items["catalog_fetch_timeout"]["default"] == 5
+    assert items["catalog_ttl"]["default"] == 300
+
+
+def test_catalog_ttl_config_overrides_default():
+    # 未配置 → 模块默认 300；配置合法正值 → 取配置；非法/零/负值 → 回退默认
+    assert _make_adapter()._catalog_ttl() == 300
+    assert _make_adapter(catalog_ttl=60)._catalog_ttl() == 60
+    assert _make_adapter(catalog_ttl=0)._catalog_ttl() == 300
+    assert _make_adapter(catalog_ttl=-5)._catalog_ttl() == 300
+    assert _make_adapter(catalog_ttl="abc")._catalog_ttl() == 300
+
+
+def test_catalog_fetch_timeout_config_overrides_default():
+    # 未配置 → 模块默认 5；配置合法正值 → 取配置；非法/零/负值 → 回退默认
+    assert _make_adapter()._catalog_fetch_timeout() == 5
+    assert _make_adapter(catalog_fetch_timeout=42)._catalog_fetch_timeout() == 42
+    assert _make_adapter(catalog_fetch_timeout=0)._catalog_fetch_timeout() == 5
+    assert _make_adapter(catalog_fetch_timeout=-1)._catalog_fetch_timeout() == 5
+    assert _make_adapter(catalog_fetch_timeout="abc")._catalog_fetch_timeout() == 5
+
+
+def test_get_catalog_respects_configured_ttl(catalog_clean):
+    # 缓存新鲜（10s 前）命中；超过配置 TTL（60s 前）判为过期返回 None
+    adapter = _make_adapter(catalog_ttl=60)
+    key = adapter._catalog_key()
+    empty_catalog = {
+        "filter_presets": [],
+        "environments": [],
+        "background_noises": [],
+    }
+    elevenlabs_v4._CATALOG_CACHE[key] = {
+        "catalog": empty_catalog,
+        "ts": time.time() - 10,
+    }
+    assert adapter._get_catalog() is not None
+    elevenlabs_v4._CATALOG_CACHE[key]["ts"] = time.time() - 100
+    assert adapter._get_catalog() is None
+
+
+def test_fetch_catalog_uses_configured_timeout(catalog_clean, monkeypatch):
+    # _fetch_catalog 拉目录时，httpx 超时须取配置的 catalog_fetch_timeout
+    captured: dict = {}
+
+    class _CaptureClient:
+        def __init__(self, *a, **k):
+            captured.update(k)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, *a, **k):
+            return _FakeResp(CATALOG)
+
+    monkeypatch.setattr(
+        "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.httpx.AsyncClient",
+        _CaptureClient,
+    )
+    import asyncio
+
+    asyncio.run(_make_adapter(catalog_fetch_timeout=42).ensure_catalog_warm())
+    assert captured.get("timeout") == 42
+
+
+def test_fetch_catalog_default_timeout(catalog_clean, monkeypatch):
+    captured: dict = {}
+
+    class _CaptureClient:
+        def __init__(self, *a, **k):
+            captured.update(k)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, *a, **k):
+            return _FakeResp(CATALOG)
+
+    monkeypatch.setattr(
+        "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.httpx.AsyncClient",
+        _CaptureClient,
+    )
+    import asyncio
+
+    asyncio.run(_make_adapter().ensure_catalog_warm())
+    assert captured.get("timeout") == 5
 
 
 @pytest.mark.asyncio
