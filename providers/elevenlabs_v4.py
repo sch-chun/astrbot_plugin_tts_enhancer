@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 
@@ -35,6 +36,24 @@ OUTPUT_EXT = {"mp3": "mp3", "wav": "wav", "opus": "opus"}
 # audio_effects catalog 缓存 TTL（秒）
 CATALOG_TTL = 300
 
+# audio_effects catalog **类级**缓存：键为 (base_url, api_key)，值为 {"catalog":..., "ts":...}。
+# 必须放在类级（而非实例级）——ProviderFactory 每次合成都会新建适配器实例
+# （providers/__init__.py 的 adapter_cls(entry)），实例级缓存永远跨不过一次合成，
+# 300s TTL 形同虚设。类级缓存让 TTL 真正生效，同一账号/区域只打一次 API。
+_CATALOG_CACHE: dict[tuple[str, str], dict] = {}
+# 同一 key 的并发预热去重，避免事件循环内重复拉取
+_CATALOG_INFLIGHT: set[tuple[str, str]] = set()
+
+# 静态兜底枚举：仅在类级缓存未命中（尚未预热 / 预热失败）时用于工具 schema，
+# 保证开启 use_audio_effects 后「绝不联网、绝不阻塞事件循环」。
+# ID 取自 ElevenLabs 官方文档示例；预热成功后会被实时 catalog 覆盖。
+# 注意：未知效果 ID 服务端会 404，故兜底 ID 必须是真实存在的示例值。
+STATIC_FALLBACK_CATALOG: dict[str, list[str]] = {
+    "filter_presets": ["phone", "old_radio", "robot"],
+    "environments": ["small_room", "hall", "tunnel"],
+    "background_noises": ["cafe", "keyboard", "city"],
+}
+
 # 可选采样率 / 码率白名单（用于脏数据兜底）
 WAV_SAMPLE_RATES = (8000, 16000, 22050, 24000, 32000, 44100, 48000)
 OPUS_BITRATES = (32, 64, 96, 128, 192)
@@ -45,9 +64,6 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
 
     def __init__(self, entry: dict) -> None:
         super().__init__(entry)
-        # 缓存：(catalog, 获取时间戳)；TTL 内复用，避免每次合成打 API
-        self._catalog: dict[str, list[str]] | None = None
-        self._catalog_ts: float = 0.0
 
     # ————————————————————————————————
     # 工具 Schema 与 SubAgent 提示词
@@ -74,108 +90,17 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
             },
             "language_code": {
                 "type": "string",
-                "enum": [
-                    "af",
-                    "am",
-                    "ar",
-                    "hy",
-                    "as",
-                    "ast",
-                    "az",
-                    "be",
-                    "bn",
-                    "bs",
-                    "bg",
-                    "my",
-                    "yue",
-                    "ca",
-                    "ceb",
-                    "hr",
-                    "cs",
-                    "da",
-                    "nl",
-                    "en",
-                    "et",
-                    "fil",
-                    "fi",
-                    "fr",
-                    "ff",
-                    "gl",
-                    "ka",
-                    "de",
-                    "el",
-                    "gu",
-                    "ha",
-                    "he",
-                    "hi",
-                    "hu",
-                    "is",
-                    "id",
-                    "it",
-                    "ja",
-                    "kn",
-                    "kk",
-                    "ko",
-                    "ky",
-                    "lo",
-                    "ln",
-                    "lt",
-                    "lg",
-                    "lb",
-                    "mk",
-                    "ms",
-                    "ml",
-                    "mt",
-                    "cmn",
-                    "mi",
-                    "mr",
-                    "mn",
-                    "ne",
-                    "nb",
-                    "oc",
-                    "or",
-                    "ps",
-                    "fa",
-                    "pl",
-                    "pt-BR",
-                    "pa",
-                    "ro",
-                    "ru",
-                    "sr",
-                    "sn",
-                    "sd",
-                    "sk",
-                    "sl",
-                    "so",
-                    "ku",
-                    "es-419",
-                    "sw",
-                    "sv",
-                    "tg",
-                    "ta",
-                    "te",
-                    "th",
-                    "tr",
-                    "uk",
-                    "ur",
-                    "uz",
-                    "vi",
-                    "cy",
-                    "wo",
-                ],
                 "description": (
-                    "ISO 639-1 语言代码；v4 音色支持跨语种合成，可按需在文本中切换语言。"
-                    "留空则用供应商配置的默认语言。"
+                    "ElevenLabs 支持的语言代码（自由文本，无枚举；模型不支持的代码会被"
+                    "静默忽略）。v4 音色支持跨语种合成，可按需在文本中切换语言；"
+                    "留空则用供应商配置的默认语言。常用示例：cmn、en、ja、ko、fr、yue、pt-BR、es-419。"
                 ),
             },
         }
         if self.entry.get("use_audio_effects"):
-            catalog = self._load_effects_catalog()
-            if catalog is None:
-                logger.warning(
-                    "audio_effects 目录获取失败，本次丢弃 audio_effects 参数"
-                )
-            else:
+            self._maybe_warmup()
+            catalog = self._get_catalog()
+            if catalog:
                 properties.update(
                     {
                         "filter_preset_id": {
@@ -245,18 +170,19 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
         return prompt
 
     def _build_audio_effects_guidance(self) -> str:
-        """开启音频效果且成功拉取 catalog 时，拼接实时可选值注入 SubAgent 提示。
+        """开启音频效果时，拼接可选值注入 SubAgent 提示（ID 来自缓存或静态兜底）。
 
-        仅在 ``use_audio_effects`` 开启且 catalog 成功获取时返回非空字符串；
-        否则返回空（不注入），避免向 SubAgent 暴露其无法看到的插件配置，也避免
-        用硬编码的示例 ID 误导模型。
+        仅在 ``use_audio_effects`` 开启且存在可用 catalog（类级缓存命中或静态兜底）
+        时返回非空字符串；否则返回空（不注入），避免向 SubAgent 暴露其无法看到的
+        插件配置。本方法同步读取缓存，绝不发起网络请求、绝不阻塞事件循环。
 
         Returns:
-            音频效果使用指引（含实时 ID 枚举），或空字符串。
+            音频效果使用指引（含 ID 枚举），或空字符串。
         """
         if not self.entry.get("use_audio_effects"):
             return ""
-        catalog = self._load_effects_catalog()
+        self._maybe_warmup()
+        catalog = self._get_catalog()
         if not catalog:
             return ""
         lines = [
@@ -332,35 +258,48 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
         base = (self.entry.get("base_url") or "https://api.elevenlabs.io").rstrip("/")
         return f"{base}/v1/audio-effects/catalog"
 
-    def _load_effects_catalog(self) -> dict[str, list[str]] | None:
-        """实时拉取音频效果目录并提取 ID 列表（带 TTL 缓存，阻塞式）。
+    def _catalog_key(self) -> tuple[str, str]:
+        """catalog 缓存键：按 base_url + api_key 区分（不同账号 / 区域的目录可能不同）。"""
+        base = (self.entry.get("base_url") or "https://api.elevenlabs.io").rstrip("/")
+        return (base, self.entry.get("api_key") or "")
 
-        成功返回 {filter_presets, environments, background_noises} 三个 ID 列表；
-        任意失败（缺 Key / 网络异常 / 结构异常）返回 None，调用方据此丢弃
-        audio_effects schema 或参数。
+    def _get_catalog(self) -> dict[str, list[str]] | None:
+        """同步读取 catalog：命中类级缓存（TTL 内）返回实时目录，否则返回静态兜底。
+
+        本方法**绝不发起网络请求、绝不阻塞事件循环**——它只在同步热路径
+        （get_tool_schema / get_subagent_system_prompt）里被调用。未预热 / 预热
+        失败时返回 ``STATIC_FALLBACK_CATALOG``（非空），保证工具 schema 始终能
+        给出 audio_effects 字段；预热成功后返回实时目录覆盖兜底。
 
         Returns:
-            包含三类效果 ID 列表的字典，或 None。
+            包含三类效果 ID 列表的字典；仅在极端情况下（兜底也为空）返回 None。
         """
-        now = time.time()
-        if self._catalog is not None and now - self._catalog_ts < CATALOG_TTL:
-            return self._catalog
+        key = self._catalog_key()
+        cached = _CATALOG_CACHE.get(key)
+        if cached is not None and (time.time() - cached["ts"]) < CATALOG_TTL:
+            return cached["catalog"]
+        return STATIC_FALLBACK_CATALOG
 
+    async def _fetch_catalog(self) -> None:
+        """异步拉取 audio_effects catalog 并写入类级缓存（带 proxy，失败静默降级）。
+
+        仅在 ``ensure_catalog_warm`` 调度下运行；任何失败都仅告警并跳过，绝不抛
+        异常影响调用方，也绝不阻塞事件循环（``await AsyncClient`` 让出控制权）。
+        """
         api_key = self.entry.get("api_key")
         if not api_key:
-            logger.warning("未配置 ElevenLabs API Key，无法拉取 audio_effects 目录")
-            return None
+            logger.warning("未配置 ElevenLabs API Key，跳过 audio_effects 目录拉取")
+            return
         try:
-            resp = httpx.get(
-                self._catalog_url(),
-                headers={"xi-api-key": api_key},
-                timeout=5,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+            async with httpx.AsyncClient(**self._http_kwargs(5)) as client:
+                resp = await client.get(
+                    self._catalog_url(), headers={"xi-api-key": api_key}
+                )
+                resp.raise_for_status()
+                data = resp.json()
         except Exception as e:  # noqa: BLE001
-            logger.warning(f"拉取 audio_effects 目录失败: {e}")
-            return None
+            logger.warning(f"拉取 audio_effects 目录失败（已降级为静态兜底）: {e}")
+            return
 
         catalog = {
             "filter_presets": self._collect_ids(
@@ -374,11 +313,41 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
             ),
         }
         if not any(catalog.values()):
-            logger.warning("audio_effects 目录为空或结构异常")
-            return None
-        self._catalog = catalog
-        self._catalog_ts = now
-        return catalog
+            logger.warning("audio_effects 目录为空或结构异常，保持静态兜底")
+            return
+        _CATALOG_CACHE[self._catalog_key()] = {"catalog": catalog, "ts": time.time()}
+
+    async def ensure_catalog_warm(self) -> None:
+        """预热类级 catalog 缓存：未命中（或过期）才异步拉取，命中则直接返回。
+
+        同一 key 并发只拉一次（``_CATALOG_INFLIGHT`` 去重）。
+        """
+        key = self._catalog_key()
+        cached = _CATALOG_CACHE.get(key)
+        if cached is not None and (time.time() - cached["ts"]) < CATALOG_TTL:
+            return
+        if key in _CATALOG_INFLIGHT:
+            return
+        _CATALOG_INFLIGHT.add(key)
+        try:
+            await self._fetch_catalog()
+        finally:
+            _CATALOG_INFLIGHT.discard(key)
+
+    def _maybe_warmup(self) -> None:
+        """在同步热路径里非阻塞地触发 catalog 预热（fire-and-forget）。
+
+        ``get_tool_schema`` / ``get_subagent_system_prompt`` 是同步方法，但运行在
+        async 事件循环内；这里拿到运行中的 loop 后 ``create_task`` 即可，不会阻塞
+        循环。无运行 loop（如离线单测）时直接跳过，由静态兜底顶上。
+        """
+        if not self.entry.get("use_audio_effects"):
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        loop.create_task(self.ensure_catalog_warm())
 
     @staticmethod
     def _collect_ids(items: Any, id_key: str) -> list[str]:
@@ -392,6 +361,26 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
                 if isinstance(vid, str) and vid:
                     ids.append(vid)
         return ids
+
+    @staticmethod
+    def _clamp(value: float | None, lo: float, hi: float, default: float) -> float:
+        """将数值夹紧到 [lo, hi]，None 或非数值回退 default，越界告警。
+
+        Args:
+            value: 待夹紧的值（已转换为 float 或 None）。
+            lo: 下界。
+            hi: 上界。
+            default: value 为 None 时的回退值。
+
+        Returns:
+            夹紧后的浮点数。
+        """
+        if value is None:
+            return default
+        if value < lo or value > hi:
+            logger.warning(f"参数 {value} 超出允许范围 [{lo},{hi}]，已夹紧到边界")
+            return lo if value < lo else hi
+        return value
 
     # ————————————————————————————————
     # 语音合成
@@ -498,7 +487,13 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
 
         base = (config.get("base_url") or "https://api.elevenlabs.io").rstrip("/")
         output_format = self._compose_output_format(config)
-        url = f"{base}{API_PATH}/{voice}?output_format={output_format}"
+        url = f"{base}{API_PATH}/{voice}"
+        # output_format 与 enable_logging 均为 query 参数（官方 spec：enable_logging
+        # 在 query，不在 body；body 里的未知字段会被忽略，导致零留存开关失效）
+        params: dict[str, str] = {"output_format": output_format}
+        enable_logging = config.get("enable_logging", True)
+        if isinstance(enable_logging, bool):
+            params["enable_logging"] = "true" if enable_logging else "false"
         headers = {"xi-api-key": api_key, "Content-Type": "application/json"}
 
         model = config.get("model") or "eleven_v4"
@@ -511,13 +506,17 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
             "model_id": model,
         }
         if config.get("use_voice_settings"):
-            stability = self._as_float(config.get("stability", 0.5))
-            similarity_boost = self._as_float(config.get("similarity_boost", 0.75))
+            # 官方约束 stability / similarity_boost 均在 [0,1]；越界原样发出会 422，
+            # 故在此夹紧到边界并告警（UI 滑块已限 [0,1]，这里是程序化/直连配置的兜底）。
+            stability = self._clamp(
+                self._as_float(config.get("stability", 0.5)), 0.0, 1.0, 0.5
+            )
+            similarity_boost = self._clamp(
+                self._as_float(config.get("similarity_boost", 0.75)), 0.0, 1.0, 0.75
+            )
             payload["voice_settings"] = {
-                "stability": stability if stability is not None else 0.5,
-                "similarity_boost": similarity_boost
-                if similarity_boost is not None
-                else 0.75,
+                "stability": stability,
+                "similarity_boost": similarity_boost,
                 "use_speaker_boost": bool(config.get("use_speaker_boost", True)),
             }
 
@@ -533,10 +532,6 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
         seed = self._as_int(config.get("seed"))
         if isinstance(seed, int) and 0 <= seed <= 4294967295:
             payload["seed"] = seed
-
-        enable_logging = config.get("enable_logging", True)
-        if isinstance(enable_logging, bool):
-            payload["enable_logging"] = enable_logging
 
         use_pvc_as_ivc = config.get("use_pvc_as_ivc", False)
         if isinstance(use_pvc_as_ivc, bool):
@@ -560,7 +555,9 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
         timeout = self._as_int(config.get("timeout", 120)) or 120
         try:
             async with httpx.AsyncClient(**self._http_kwargs(timeout)) as client:
-                resp = await client.post(url, headers=headers, json=payload)
+                resp = await client.post(
+                    url, params=params, headers=headers, json=payload
+                )
                 resp.raise_for_status()
                 content = resp.content
         except httpx.HTTPStatusError as e:

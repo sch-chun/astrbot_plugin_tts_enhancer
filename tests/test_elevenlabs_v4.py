@@ -8,7 +8,10 @@ httpx 被 mock 时的行为。
 import os
 
 import pytest
-from astrbot_plugin_tts_enhancer.providers import ProviderFactory
+from astrbot_plugin_tts_enhancer.providers import (
+    ProviderFactory,
+    elevenlabs_v4,
+)
 from astrbot_plugin_tts_enhancer.providers.base import TTSProviderAdapter
 from astrbot_plugin_tts_enhancer.providers.elevenlabs_v4 import (
     ElevenLabsV4Adapter,
@@ -20,6 +23,16 @@ ENTRY = {
     "api_key": "test-key",
     "voice_id": "21m00Tcm4TlvDq8ikWAM",
 }
+
+
+@pytest.fixture
+def catalog_clean():
+    """隔离类级 catalog 缓存，避免跨测试污染（module 级 dict）。"""
+    elevenlabs_v4._CATALOG_CACHE.clear()
+    elevenlabs_v4._CATALOG_INFLIGHT.clear()
+    yield
+    elevenlabs_v4._CATALOG_CACHE.clear()
+    elevenlabs_v4._CATALOG_INFLIGHT.clear()
 
 
 def _make_adapter(**overrides):
@@ -51,15 +64,13 @@ def test_tool_schema_contract():
     assert "text" in tool.parameters["required"]
 
 
-def test_language_code_enum_has_official_codes():
-    # v4 官方支持 87 种语言；enum 必须覆盖且只允许这些 ISO 639-1 代码
+def test_language_code_is_free_string():
+    # 官方 spec：language_code 是自由文本（无 enum），模型不支持的代码会被静默忽略
     props = _make_adapter().get_tool_schema().parameters["properties"]
-    enum = props["language_code"]["enum"]
-    assert len(enum) == 87
-    for code in ("en", "ja", "cmn", "yue", "pt-BR", "es-419", "mi", "fil", "ceb"):
-        assert code in enum
-    # 校验/清洗不得改动大小写或引入非字符串
-    assert all(isinstance(c, str) and c == c.strip() for c in enum)
+    lang = props["language_code"]
+    assert lang["type"] == "string"
+    assert "enum" not in lang
+    assert "静默忽略" in lang["description"]
 
 
 def test_tool_schema_without_audio_effects_has_no_effects_fields():
@@ -72,11 +83,11 @@ def test_tool_schema_without_audio_effects_has_no_effects_fields():
 
 
 def test_tool_schema_with_audio_effects_injects_dynamic_enums(monkeypatch):
-    # 开启后应从 catalog 动态注入效果字段，并带上实时 ID 枚举
+    # 开启后应从缓存 catalog 动态注入效果字段，并带上实时 ID 枚举
     adapter = _make_adapter(use_audio_effects=True)
     monkeypatch.setattr(
         adapter,
-        "_load_effects_catalog",
+        "_get_catalog",
         lambda: {
             "filter_presets": ["phone", "old_radio"],
             "environments": ["hall"],
@@ -92,19 +103,18 @@ def test_tool_schema_with_audio_effects_injects_dynamic_enums(monkeypatch):
     assert props["pan"]["minimum"] == -1 and props["pan"]["maximum"] == 1
 
 
-def test_tool_schema_with_audio_effects_failure_drops_schema(monkeypatch):
-    # catalog 拉取失败应 Warning 并丢弃效果字段，而非抛错或留空壳
-    captured = []
+def test_tool_schema_with_audio_effects_uses_static_fallback(monkeypatch):
+    # 缓存未命中（预热前/失败）时，_get_catalog 返回静态兜底枚举，字段仍出现
     adapter = _make_adapter(use_audio_effects=True)
-    monkeypatch.setattr(adapter, "_load_effects_catalog", lambda: None)
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.logger.warning",
-        lambda msg, *a, **k: captured.append(msg),
+        adapter,
+        "_get_catalog",
+        lambda: elevenlabs_v4.STATIC_FALLBACK_CATALOG,
     )
     props = adapter.get_tool_schema().parameters["properties"]
-    assert "filter_preset_id" not in props
-    assert "pan" not in props
-    assert any("audio_effects" in m for m in captured)
+    assert props["filter_preset_id"]["enum"] == ["phone", "old_radio", "robot"]
+    assert props["environment_id"]["enum"] == ["small_room", "hall", "tunnel"]
+    assert props["background_noise_id"]["enum"] == ["cafe", "keyboard", "city"]
 
 
 def test_system_prompt_nonempty():
@@ -121,11 +131,11 @@ def test_system_prompt_without_audio_effects_has_no_fx_block():
 
 
 def test_system_prompt_with_audio_effects_injects_real_ids(monkeypatch):
-    # 开启且抓到 catalog 时，用真实 ID 动态拼接指引，且不提及「配置」
+    # 开启且有 catalog 时，用实时 ID 动态拼接指引，且不提及「配置」
     adapter = _make_adapter(use_audio_effects=True)
     monkeypatch.setattr(
         adapter,
-        "_load_effects_catalog",
+        "_get_catalog",
         lambda: {
             "filter_presets": ["phone", "old_radio"],
             "environments": ["hall"],
@@ -139,14 +149,17 @@ def test_system_prompt_with_audio_effects_injects_real_ids(monkeypatch):
     assert "配置" not in prompt
 
 
-def test_system_prompt_with_audio_effects_but_catalog_fails_has_no_fx_block(
-    monkeypatch,
-):
-    # 开启但 catalog 抓取失败时，静默不注入（与工具 schema 行为一致）
+def test_system_prompt_with_audio_effects_uses_static_fallback(monkeypatch):
+    # 缓存未命中时，用静态兜底枚举拼接指引（不空壳、不报错）
     adapter = _make_adapter(use_audio_effects=True)
-    monkeypatch.setattr(adapter, "_load_effects_catalog", lambda: None)
+    monkeypatch.setattr(
+        adapter,
+        "_get_catalog",
+        lambda: elevenlabs_v4.STATIC_FALLBACK_CATALOG,
+    )
     prompt = adapter.get_subagent_system_prompt()
-    assert "音频效果（audio_effects）" not in prompt
+    assert "音频效果（audio_effects）" in prompt
+    assert "phone" in prompt and "hall" in prompt
 
 
 # ---------- 参数校验 / 清洗 ----------
@@ -298,44 +311,79 @@ CATALOG = {
 }
 
 
-def test_load_effects_catalog_success(monkeypatch):
+class _FakeAsyncClient:
+    """mock httpx.AsyncClient：get 返回同步 _FakeResp 的异步版本。"""
+
+    def __init__(self, resp):
+        self._resp = resp
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def get(self, *a, **k):
+        return self._resp
+
+
+def test_get_catalog_returns_static_fallback_when_unwarmed(catalog_clean):
+    # 缓存为空时，_get_catalog 不发起网络、直接返回静态兜底（非空）
+    adapter = _make_adapter()
+    assert adapter._get_catalog() == elevenlabs_v4.STATIC_FALLBACK_CATALOG
+
+
+def test_fetch_catalog_success_populates_class_cache(catalog_clean, monkeypatch):
     adapter = _make_adapter()
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.httpx.get",
-        lambda *a, **k: _FakeResp(CATALOG),
+        "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.httpx.AsyncClient",
+        lambda *a, **k: _FakeAsyncClient(_FakeResp(CATALOG)),
     )
-    cat = adapter._load_effects_catalog()
-    assert cat == {
+    import asyncio
+
+    asyncio.run(adapter.ensure_catalog_warm())
+    # 类级缓存命中，_get_catalog 返回实时目录（不再是静态兜底）
+    assert adapter._get_catalog() == {
         "filter_presets": ["phone", "old_radio"],
         "environments": ["hall"],
         "background_noises": ["cafe"],
     }
 
 
-def test_load_effects_catalog_failure_returns_none(monkeypatch):
-    adapter = _make_adapter()
-
-    def _boom(*a, **k):
+def test_fetch_catalog_failure_keeps_static_fallback(catalog_clean, monkeypatch):
+    async def _boom_get(self, *a, **k):
         raise RuntimeError("network down")
 
+    monkeypatch.setattr(_FakeAsyncClient, "get", _boom_get)
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.httpx.get", _boom
+        "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.httpx.AsyncClient",
+        lambda *a, **k: _FakeAsyncClient(_FakeResp(CATALOG)),
     )
-    assert adapter._load_effects_catalog() is None
+    import asyncio
+
+    asyncio.run(_make_adapter().ensure_catalog_warm())
+    # 失败不写缓存，_get_catalog 仍回退静态兜底
+    assert _make_adapter()._get_catalog() == elevenlabs_v4.STATIC_FALLBACK_CATALOG
 
 
-def test_load_effects_catalog_missing_key(monkeypatch):
-    adapter = _make_adapter(api_key="")
-    assert adapter._load_effects_catalog() is None
+def test_fetch_catalog_missing_key_no_cache(catalog_clean):
+    # 无 api_key 时 _fetch_catalog 直接返回、不写缓存
+    import asyncio
+
+    asyncio.run(_make_adapter(api_key="").ensure_catalog_warm())
+    assert elevenlabs_v4._CATALOG_CACHE == {}
 
 
-def test_load_effects_catalog_malformed_returns_none(monkeypatch):
-    adapter = _make_adapter()
+def test_fetch_catalog_malformed_keeps_static_fallback(catalog_clean, monkeypatch):
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.httpx.get",
-        lambda *a, **k: _FakeResp({"unexpected": []}),
+        "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.httpx.AsyncClient",
+        lambda *a, **k: _FakeAsyncClient(_FakeResp({"unexpected": []})),
     )
-    assert adapter._load_effects_catalog() is None
+    import asyncio
+
+    asyncio.run(_make_adapter().ensure_catalog_warm())
+    assert elevenlabs_v4._CATALOG_CACHE == {}
+    assert _make_adapter()._get_catalog() == elevenlabs_v4.STATIC_FALLBACK_CATALOG
 
 
 def test_build_audio_effects_none_when_empty():
@@ -361,6 +409,7 @@ class _FakeClient:
         self._resp = resp
         self.last_json = None
         self.last_url = None
+        self.last_params = None
 
     async def __aenter__(self):
         return self
@@ -371,6 +420,7 @@ class _FakeClient:
     async def post(self, *a, **k):
         self.last_url = a[0] if a else None
         self.last_json = k.get("json")
+        self.last_params = k.get("params")
         return self._resp
 
 
@@ -386,14 +436,71 @@ async def test_call_api_saves_mp3(tmp_path, monkeypatch):
     path = await adapter.call_api(text="你好", raw_params={}, config=entry)
     assert path and path.endswith(".mp3")
     assert os.path.exists(path)
-    # 请求体核心契约：模型 + voice_settings + 默认 enable_logging
+    # 请求体核心契约：模型 + voice_settings；enable_logging 必须在 query（不在 body）
     body = fake.last_json
     assert body["model_id"] == "eleven_v4"
     assert "voice_settings" in body
     assert body["voice_settings"]["use_speaker_boost"] is True
-    assert body["enable_logging"] is True
-    # output_format 是 query 参数（在 URL 中，不在 body）
-    assert "output_format=mp3_44100_128" in (fake.last_url or "")
+    assert body["voice_settings"]["stability"] == 0.5
+    assert body["voice_settings"]["similarity_boost"] == 0.75
+    assert "enable_logging" not in body
+    # output_format 与 enable_logging 均为 query 参数（官方 spec：enable_logging 在 query）
+    assert fake.last_params["output_format"] == "mp3_44100_128"
+    assert fake.last_params["enable_logging"] == "true"
+
+
+@pytest.mark.asyncio
+async def test_call_api_enable_logging_false_sent_in_query(tmp_path, monkeypatch):
+    adapter = _make_adapter()
+    # 零留存开关：用户设 false 时必须在 query 真正发出，否则服务端忽略（仍被记录）
+    entry = dict(ENTRY, _data_dir=str(tmp_path), enable_logging=False)
+    fake = _FakeClient(_FakeResp(b"fakeaudio"))
+    monkeypatch.setattr(
+        "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.httpx.AsyncClient",
+        lambda *a, **k: fake,
+    )
+    await adapter.call_api(text="hi", raw_params={}, config=entry)
+    assert "enable_logging" not in fake.last_json
+    assert fake.last_params["enable_logging"] == "false"
+
+
+@pytest.mark.asyncio
+async def test_voice_settings_out_of_range_clamped(tmp_path, monkeypatch):
+    adapter = _make_adapter()
+    # 越界值（程序化/直连配置）必须夹紧到 [0,1]，否则服务端 422
+    entry = dict(
+        ENTRY,
+        _data_dir=str(tmp_path),
+        use_voice_settings=True,
+        stability=5.0,
+        similarity_boost=-3.0,
+    )
+    fake = _FakeClient(_FakeResp(b"fakeaudio"))
+    monkeypatch.setattr(
+        "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.httpx.AsyncClient",
+        lambda *a, **k: fake,
+    )
+    await adapter.call_api(text="hi", raw_params={}, config=entry)
+    vs = fake.last_json["voice_settings"]
+    assert vs["stability"] == 1.0
+    assert vs["similarity_boost"] == 0.0
+
+
+def test_language_code_config_item_present_in_schema():
+    # P2-4：schema 必须提供 language_code 配置项（代码 config.get("language_code") 依赖它）
+    import json
+
+    schema = json.load(open("_conf_schema.json"))
+    items = (
+        schema.get("providers", {})
+        .get("templates", {})
+        .get("elevenlabs_v4", {})
+        .get("items", {})
+    )
+    assert "language_code" in items, "elevenlabs_v4 配置缺少 language_code 项"
+    found = items["language_code"]
+    assert found["type"] == "string"
+    assert found["default"] == ""
 
 
 @pytest.mark.asyncio

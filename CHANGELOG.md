@@ -13,9 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 - **`output_format` 拆分为编码 + 采样率/码率（condition 联动）**：配置项 `output_codec` 选 `mp3` / `wav` / `opus`（仅容器格式，裸 PCM/ulaw/alaw 因 Record 无法播放已不暴露），按所选编码条件显示对应采样率/码率子项（mp3 采样率 22050/24000/44100 + 码率 32~192；wav 采样率 8k~48k；opus 固定 48k + 码率 32~192）；脏数据回落白名单内默认值。
 - **`voice_settings` 全部落配置**：`stability`、`similarity_boost`、`use_speaker_boost`；其余配置项含 `base_url`、`proxy`、`timeout`、`language_code`、`apply_text_normalization`(auto/on/off)、`seed`（>0 才发送）、`enable_logging`（零留存开关，仅企业版可用）、`use_pvc_as_ivc`（PVC 转 IVC）。
 - **发音词典 `pronunciation_dictionary_locators`**：`use_pronunciation_dictionary` 开关，开启后显示 `pronunciation_dictionary_id` + `pronunciation_dictionary_version`（按 ElevenLabs 引用形式 `[{pronunciation_dictionary_id, version_id}]` 发送），仿 Fish Audio 交互。
-- **音频效果 `audio_effects`（catalog 动态拉取）**：`use_audio_effects` 开关；开启后**每次合成前** `GET /v1/audio-effects/catalog`（带 300s TTL 缓存），据此动态生成 `filter_preset_id` / `environment_id` / `background_noise_id` 枚举及 `distance` / `send_level` / `pan` 数值参数；拉取失败（缺 Key / 网络异常 / 结构异常）则 `Warning` 并丢弃该 schema 与参数，全程优雅降级，绝不阻塞 TTS。
-- **`language_code` 升级为工具参数（逐句切语言）**：v4 音色支持跨语种，故 `language_code` 从纯配置项提升为 `tts_enhance` 工具参数，SubAgent 可按消息切换语言；工具参数优先于配置默认语言。枚举固定为 v4 官方支持的 87 个 ISO 639-1 代码（如 `cmn`/`en`/`ja`/`ko`/`fr`/`pt-BR`/`es-419`），模型不支持的代码由 ElevenLabs 静默忽略。
-- 新增能力说明书 `providers/docs/elevenlabs_v4.md`（情绪标签参考、IPA 与停顿用法、音频效果调用指引、支持语言清单），随 SubAgent 系统提示注入；新增单元测试 `tests/test_elevenlabs_v4.py`（自动发现、文档齐备、工具契约、参数清洗、output_format 组合、catalog 拉取成功/失败/缺 Key/畸形、audio_effects 组装与动态提示注入、language_code 87 码枚举与工具参数优先于配置、call_api 落盘/缺 Key/带效果与发音词典，共 34 例全过）。
+- **音频效果 `audio_effects`（catalog 动态拉取）**：`use_audio_effects` 开关；开启后在插件初始化/首次调用时**异步预热**一次 `GET /v1/audio-effects/catalog`（类级缓存，300s TTL，带代理），写入类级缓存（同一账号/区域只打一次 API）；`get_tool_schema` / SubAgent 提示词**只读缓存**，未预热时回退内置静态兜底枚举（phone/old_radio/robot、small_room/hall/tunnel、cafe/keyboard/city，均为官方示例真实 ID），**绝不联网、绝不阻塞事件循环**。据此动态生成 `filter_preset_id` / `environment_id` / `background_noise_id` 枚举及 `distance` / `send_level` / `pan` 数值参数；拉取失败（缺 Key / 网络异常 / 结构异常）仅告警并保留静态兜底，全程优雅降级，绝不阻塞 TTS。
+- **`language_code` 双通道（配置项 + 工具参数）**：新增配置项 `language_code`（ElevenLabs 语言代码，自由文本，留空用音色/平台默认）；同时 `language_code` 也是 `tts_enhance` 工具参数，SubAgent 可按消息切换语言、优先于配置默认；模型不支持的代码由 ElevenLabs 静默忽略（非固定枚举，官方为自由字符串）。
+- 新增能力说明书 `providers/docs/elevenlabs_v4.md`（情绪标签参考、IPA 与停顿用法、音频效果调用指引、支持语言清单），随 SubAgent 系统提示注入；新增单元测试 `tests/test_elevenlabs_v4.py`（自动发现、文档齐备、工具契约、参数清洗、output_format 组合、catalog 类级缓存/异步预热/静态兜底回退/失败降级、audio_effects 组装与动态提示注入、language_code 自由文本与工具参数优先于配置、call_api 落盘/缺 Key/带效果与发音词典/enable_logging 走 query/voice_settings 越界夹紧，共 43 例全过）。
+
+### Fixed
+
+- **P1：catalog 同步拉取 100% 阻塞事件循环**：原实现在 `get_tool_schema` / `_build_audio_effects_guidance` 内**同步**调用 `httpx.get` 拉 catalog，而二者又被 async `synthesize()` 同步调用——实测 catalog 延迟 2s 即阻塞事件循环 2.19s，心跳与全部消息停摆。修复：catalog 缓存提到**类级**（`_CATALOG_CACHE`，按 base_url+api_key 区分，TTL 真生效），拉取挪出同步热路径改为插件初始化/首次调用时的异步预热（`ensure_catalog_warm`，fire-and-forget，带并发去重）；`get_tool_schema` 只读缓存，miss 时回退静态兜底枚举、**不联网**。此前 `ProviderFactory` 每次合成都新建适配器实例，实例级缓存从未跨过一次合成，300s TTL 形同虚设——现已根除。
+- **P2-1：`enable_logging` 位置错误导致零留存开关失效**：官方 spec 中 `enable_logging` 是 **query** 参数，原代码塞进 JSON body，后端忽略未知字段 → 用户设 `false` 想开零留存实际仍被记录。修复：拼进 query string（`params["enable_logging"]`）。
+- **P2-2：`voice_settings` 缺范围校验，越界原样发出**：官方 `stability`/`similarity_boost` 均为 `[0,1]`，原代码只过 `_as_float` 不查范围，越界（如 5.0/-3.0）会触发后端 422。修复：`call_api` 内用 `_clamp` 夹紧到 `[0,1]` 并告警（UI 滑块已限范围，此处为程序化/直连配置兜底）；schema 已含 `slider min/max`，补一处一致说明。
+- **P2-3：catalog 拉取不走代理**：原 `_load_effects_catalog` 用裸 `httpx.get` 直连，需代理访问 ElevenLabs 的环境下音频效果静默失效。修复：统一走 `_http_kwargs()`（注入 `proxy`），catalog 预热与合成请求共用同一代理通道。
+- **P2-4：schema 缺少 `language_code` 配置项**：代码 `config.get("language_code")`、工具 schema 描述、docs、CHANGELOG 均声称有该配置项，但 `_conf_schema.json` 实际零命中，功能不可用（`test_call_api_falls_back_to_config_language` 直接构造 dict 绕过 schema 掩盖了问题）。修复：在 `elevenlabs_v4` 配置项中加入 `language_code`（string，默认空），并补测试断言其存在。
+- **P3：`language_code` 枚举措辞错误**：原硬编码 87 码并标注「ISO 639-1」，但官方 spec 为自由字符串、混有 639-3（`cmn`/`yue`/`ast`/`ceb`/`fil`）与带地区码（`pt-BR`/`es-419`）。修复：工具参数改为自由文本，描述改为「ElevenLabs 语言代码（模型不支持的代码静默忽略）」，docs/CHANGELOG 同步修正。
 
 ## [0.5.0] - 2026-10-30
 
