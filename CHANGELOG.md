@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 - **`language_code` 双通道（配置项 + 工具参数）**：新增配置项 `language_code`（ElevenLabs 语言代码，自由文本，留空用音色/平台默认）；同时 `language_code` 也是 `tts_enhance` 工具参数，SubAgent 可按消息切换语言、优先于配置默认；模型不支持的代码由 ElevenLabs 静默忽略（非固定枚举，官方为自由字符串）。
 - **audio_effects 目录拉取超时与缓存时长可配置**：`use_audio_effects` 开启时新增 `catalog_fetch_timeout`（**合成时等待目录就绪的超时上限**，默认 5s）与 `catalog_ttl`（目录缓存时长，默认 300s）两个配置项，且仅在该开关开启时显示；非法 / 零 / 负值回退到默认值，预热拉取与缓存命中判断据此动态取用，不影响合成主流程。
 - **audio_effects 下架 / 无效 ID 优雅降级**：TTL 窗口内被下架的 effect ID 会在合成时触发 ElevenLabs 返回 404（错误体 `param` 指明 `audio_effects` 字段）。`call_api` 现新增一层降级——仅当 HTTP 404 且错误体指向 `audio_effects` 字段时，自动剥除 `audio_effects` 并重试一次（用户仍拿到干净语音，只是不带效果），同时失效该类 catalog 缓存以便下次合成重新拉取修正后的目录；429（限流）/ 422（通用校验）/ 400（格式不支持，本适配器不触发）以及非 effect 的 404（如 `voice_id` 无效）一律不重试，避免误伤与死循环。
-- 新增能力说明书 `providers/docs/elevenlabs_v4.md`（情绪标签参考、IPA 与停顿用法、音频效果调用指引、支持语言清单），随 SubAgent 系统提示注入；新增单元测试 `tests/test_elevenlabs_v4.py`（自动发现、文档齐备、工具契约、参数清洗、output_format 组合、catalog 类级缓存/异步预热/静态兜底回退/失败降级、audio_effects 组装与动态提示注入、language_code 自由文本与工具参数优先于配置、call_api 落盘/缺 Key/带效果与发音词典/enable_logging 走 query/voice_settings 越界夹紧，共 43 例全过）。
+- 新增能力说明书 `providers/docs/elevenlabs_v4.md`（情绪标签参考、IPA 与停顿用法、音频效果调用指引、支持语言清单），随 SubAgent 系统提示注入；新增单元测试 `tests/test_elevenlabs_v4.py`（自动发现、文档齐备、工具契约、参数清洗、output_format 组合、catalog 类级缓存/异步预热/失败降级、audio_effects 下架无效 ID 优雅降级、audio_effects 组装与动态提示注入、language_code 自由文本与工具参数优先于配置、call_api 落盘/缺 Key/带效果与发音词典/enable_logging 走 query/voice_settings 越界夹紧，共 59 例全过）。
 
 ## [0.5.0] - 2026-10-30
 

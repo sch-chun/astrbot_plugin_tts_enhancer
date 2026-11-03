@@ -391,7 +391,8 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
 
         ``get_tool_schema`` / ``get_subagent_system_prompt`` 是同步方法，但运行在
         async 事件循环内；这里拿到运行中的 loop 后 ``create_task`` 即可，不会阻塞
-        循环。无运行 loop（如离线单测）时直接跳过，由静态兜底顶上。
+        循环。无运行 loop（如离线单测）时直接跳过，不阻塞；未预热时
+        ``get_tool_schema`` 按缓存未命中逻辑不暴露 audio_effects 参数。
         """
         if not self.entry.get("use_audio_effects"):
             return
