@@ -43,8 +43,9 @@ CATALOG_FETCH_TIMEOUT = 5
 # （providers/__init__.py 的 adapter_cls(entry)），实例级缓存永远跨不过一次合成，
 # 300s TTL 形同虚设。类级缓存让 TTL 真正生效，同一账号/区域只打一次 API。
 _CATALOG_CACHE: dict[tuple[str, str], dict] = {}
-# 同一 key 的并发预热去重，避免事件循环内重复拉取
-_CATALOG_INFLIGHT: set[tuple[str, str]] = set()
+# 同一 key 的并发预热去重：存实际运行中的 fetch 任务（供 ensure_catalog_ready 等待），
+# 避免事件循环内重复拉取；任务完成后移除。
+_CATALOG_INFLIGHT: dict[tuple[str, str], "asyncio.Task"] = {}
 
 # 未预热 / 预热失败 / 已过期时 _get_catalog 直接返回 None，调用方据此**不暴露**
 # audio_effects 参数（工具 schema 与 SubAgent 提示词都不出现该字段），避免向
@@ -342,19 +343,47 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
     async def ensure_catalog_warm(self) -> None:
         """预热类级 catalog 缓存：未命中（或过期）才异步拉取，命中则直接返回。
 
-        同一 key 并发只拉一次（``_CATALOG_INFLIGHT`` 去重）。
+        同一 key 并发只拉一次：若已有预热任务在跑，直接 ``await`` 它（不重复打 API）；
+        否则新建 fetch 任务记入 ``_CATALOG_INFLIGHT``，完成后移除。任务失败/取消均
+        不影响调用方（``_fetch_catalog`` 内部已吞掉所有异常）。
         """
         key = self._catalog_key()
         cached = _CATALOG_CACHE.get(key)
         if cached is not None and (time.time() - cached["ts"]) < self._catalog_ttl():
             return
-        if key in _CATALOG_INFLIGHT:
+        existing = _CATALOG_INFLIGHT.get(key)
+        if existing is not None and not existing.done():
+            # 已有预热在跑，等它完成即可（不重复拉取）
+            await existing
             return
-        _CATALOG_INFLIGHT.add(key)
+        task = asyncio.ensure_future(self._fetch_catalog())
+        _CATALOG_INFLIGHT[key] = task
         try:
-            await self._fetch_catalog()
+            await task
         finally:
-            _CATALOG_INFLIGHT.discard(key)
+            if _CATALOG_INFLIGHT.get(key) is task:
+                _CATALOG_INFLIGHT.pop(key, None)
+
+    async def ensure_catalog_ready(self, timeout: int | None = None) -> None:
+        """合成前按配置超时有界等待 catalog 就绪（仅 ``use_audio_effects`` 开启时有效）。
+
+        等到（缓存命中 / 预热完成）→ 本次合成的 ``get_tool_schema`` / SubAgent 提示词
+        会**动态拼入** audio_effects 参数；超时未就绪 → 本次不暴露该参数，但预热任务
+        不取消、继续在后台完成并写入类级缓存，**后续合成可命中**（解决「两次合成间隔
+        超过 TTL 导致音频效果永不出现」的问题）。底层用 ``asyncio.wait(timeout=...)``
+        而非 ``wait_for``：超时只结束「等待」，绝不取消底层预热协程。
+
+        Args:
+            timeout: 等待上限（秒）；为 ``None`` 或非法值时取配置 ``catalog_fetch_timeout``。
+        """
+        if not self.entry.get("use_audio_effects"):
+            return
+        if self._get_catalog() is not None:
+            return
+        t = timeout if isinstance(timeout, (int, float)) and timeout > 0 else self._catalog_fetch_timeout()
+        task = asyncio.ensure_future(self.ensure_catalog_warm())
+        # asyncio.wait 超时不会取消 pending 的 task，使其继续后台预热
+        await asyncio.wait({task}, timeout=t)
 
     def _maybe_warmup(self) -> None:
         """在同步热路径里非阻塞地触发 catalog 预热（fire-and-forget）。

@@ -152,6 +152,16 @@ class TTSProviderAdapter(ABC):
         """
         pass
 
+    async def ensure_catalog_ready(self, timeout: int | None = None) -> None:
+        """合成前等待供应商预热（如目录拉取）就绪。
+
+        基类默认无操作；需要预热的供应商（如 ElevenLabs v4 的 audio_effects 目录）
+        应覆写此方法，按配置超时有界等待，超时则不暴露对应参数但继续后台预热。
+        ``tts_service`` 在构建工具 schema / SubAgent 提示词前统一调用，对所有适配
+        器安全（无操作适配器零成本）。
+        """
+        return None
+
     # ————————————————————————
 
     # ———————— 参数验证 ————————

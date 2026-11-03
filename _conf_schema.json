@@ -1026,7 +1026,7 @@
             "description": "音频效果",
             "type": "bool",
             "default": false,
-            "hint": "开启后，合成时让 AI 智能为语音附加 ElevenLabs 音频效果（滤波预设/环境混响/背景噪声三类，如电话、房间、噪点质感）。效果 ID 在插件运行时预热并缓存（类级 TTL，可在下方配置，默认 300s，带代理）；未预热/拉取失败时不暴露音频效果参数，不影响合成主流程"
+            "hint": "开启后，合成时让 AI 智能为语音附加 ElevenLabs 音频效果（滤波预设/环境混响/背景噪声三类，如电话、房间、噪点质感）。合成时按下方 catalog_fetch_timeout 有界等待目录就绪：等到则把效果参数拼进 schema 与提示词，等不到本次不暴露但预热继续后台跑（后续合成可命中）。目录缓存时长见 catalog_ttl"
           },
           "catalog_fetch_timeout": {
             "description": "目录拉取超时",

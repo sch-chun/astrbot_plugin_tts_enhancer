@@ -618,6 +618,87 @@ def test_fetch_catalog_default_timeout(catalog_clean, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_ensure_catalog_ready_noop_when_disabled(catalog_clean, monkeypatch):
+    # 未开启 use_audio_effects 时直接返回，绝不触发拉取
+    called = []
+    async def boom(self):
+        called.append(1)
+    monkeypatch.setattr(ElevenLabsV4Adapter, "_fetch_catalog", boom)
+    await _make_adapter().ensure_catalog_ready(timeout=1)
+    assert called == []
+
+
+@pytest.mark.asyncio
+async def test_ensure_catalog_ready_skips_when_already_cached(catalog_clean, monkeypatch):
+    # 缓存已命中 → 不触发拉取，直接可用
+    called = []
+    async def boom(self):
+        called.append(1)
+    monkeypatch.setattr(ElevenLabsV4Adapter, "_fetch_catalog", boom)
+    adapter = _make_adapter(use_audio_effects=True)
+    key = adapter._catalog_key()
+    elevenlabs_v4._CATALOG_CACHE[key] = {
+        "catalog": {"filter_presets": [], "environments": [], "background_noises": []},
+        "ts": time.time(),
+    }
+    await adapter.ensure_catalog_ready(timeout=1)
+    assert called == []
+    assert adapter._get_catalog() is not None
+
+
+@pytest.mark.asyncio
+async def test_ensure_catalog_ready_waits_and_exposes_on_success(
+    catalog_clean, monkeypatch
+):
+    # 预热能在超时内完成 → 缓存命中，后续 schema/提示词会暴露参数
+    monkeypatch.setattr(
+        "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.httpx.AsyncClient",
+        lambda *a, **k: _FakeAsyncClient(_FakeResp(CATALOG)),
+    )
+    adapter = _make_adapter(use_audio_effects=True)
+    assert adapter._get_catalog() is None
+    await adapter.ensure_catalog_ready(timeout=2)
+    assert adapter._get_catalog() is not None
+
+
+@pytest.mark.asyncio
+async def test_ensure_catalog_ready_timeout_keeps_warming(catalog_clean, monkeypatch):
+    # 超时只结束等待、不取消底层预热：本次不暴露，但后台继续并最终落地缓存
+    import asyncio
+
+    state: dict = {}
+    async def slow_fetch(self):
+        await asyncio.sleep(0.4)
+        key = self._catalog_key()
+        elevenlabs_v4._CATALOG_CACHE[key] = {
+            "catalog": {
+                "filter_presets": [],
+                "environments": [],
+                "background_noises": [],
+            },
+            "ts": time.time(),
+        }
+        state["done"] = True
+
+    monkeypatch.setattr(ElevenLabsV4Adapter, "_fetch_catalog", slow_fetch)
+    adapter = _make_adapter(use_audio_effects=True)
+    start = time.monotonic()
+    await adapter.ensure_catalog_ready(timeout=0.1)
+    elapsed = time.monotonic() - start
+    # 超时返回不阻塞完整 0.4s 拉取
+    assert elapsed < 0.35
+    assert adapter._get_catalog() is None
+    assert not state.get("done")
+    # 后台继续：稍后缓存落地，后续合成可命中
+    for _ in range(40):
+        if state.get("done"):
+            break
+        await asyncio.sleep(0.05)
+    assert state.get("done") is True
+    assert adapter._get_catalog() is not None
+
+
+@pytest.mark.asyncio
 async def test_call_api_tool_language_overrides_config(tmp_path, monkeypatch):
     adapter = _make_adapter()
     entry = dict(ENTRY, _data_dir=str(tmp_path), language_code="en")
