@@ -1026,7 +1026,7 @@
             "description": "音频效果",
             "type": "bool",
             "default": false,
-            "hint": "开启后，合成时让 AI 智能为语音附加 ElevenLabs 音频效果（滤波预设/环境混响/背景噪声三类，如电话、房间、噪点质感）。合成时按下方 catalog_fetch_timeout 有界等待目录就绪：等到则把效果参数拼进 schema 与提示词，等不到本次不暴露但预热继续后台跑（后续合成可命中）。目录缓存时长见 catalog_ttl"
+            "hint": "开启后，AI 会为语音附加 ElevenLabs 音频效果（电话/房间/噪点等空间质感）。插件会等目录就绪再暴露效果参数；若超时未就绪，本次不附加，但后台继续预热，下次合成即可用"
           },
           "catalog_fetch_timeout": {
             "description": "目录拉取超时",
@@ -1034,7 +1034,7 @@
             "default": 5,
             "min": 1,
             "max": 120,
-            "hint": "单位秒；拉取 audio_effects 目录的网络超时。网络差/代理慢时可调大；超时仅影响预热，不影响合成主流程（预热未完成则不暴露效果参数）",
+            "hint": "拉取音频效果目录的网络超时（秒），也是合成时等待目录就绪的上限。超时则本次不附加效果，但预热继续后台跑",
             "condition": {"use_audio_effects": true}
           },
           "catalog_ttl": {
@@ -1043,7 +1043,7 @@
             "default": 300,
             "min": 30,
             "max": 3600,
-            "hint": "单位秒；audio_effects 目录缓存时长。调小可更快感知目录变更（如新上线 effect），调大可减少重复拉取",
+            "hint": "音频效果目录的缓存时长（秒）。越短越能及时感知目录变更（如新上线效果），越长越省去重复拉取",
             "condition": {"use_audio_effects": true}
           },
           "enable_logging": {
