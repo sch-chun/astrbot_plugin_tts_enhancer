@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import time
 from typing import Any
 
@@ -413,20 +412,25 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
 
     @staticmethod
     def _error_references_audio_effects(response: "httpx.Response") -> bool:
-        """判断错误响应是否指向 audio_effects 字段。
+        """判断错误响应是否指向 audio_effects 字段（而非 voice_id 等其它 404）。
 
-        官方文档：未知/已下架 effect ID 返回 404，且 ``param`` 指明相应字段。
-        用此判定把「effect ID 404」与「voice_id 404」等其它 404 区分开，避免误剥
-        效果。解析失败时保守返回 ``False``（不重试）。
+        官方文档：未知/已下架 effect ID 返回 404，且 ``param`` 指明相应字段。按
+        ``param`` 字段精确判定（支持顶层或嵌在 ``detail`` 对象内），避免把 ``msg``
+        里偶然出现 “audio_effects” 字样的 voice_id 错误误判为 effect 错误（那样会多打
+        一次无意义的重试请求）。解析失败或无 ``param`` 时保守返回 ``False``（不重试）。
         """
         try:
             body = response.json()
         except Exception:  # noqa: BLE001
             return False
-        try:
-            return "audio_effects" in json.dumps(body, ensure_ascii=False)
-        except Exception:  # noqa: BLE001
+        if not isinstance(body, dict):
             return False
+        # param 可能在顶层，也可能嵌在 detail（对象）里；二者都取
+        param = body.get("param")
+        detail = body.get("detail")
+        if param is None and isinstance(detail, dict):
+            param = detail.get("param")
+        return isinstance(param, str) and param.startswith("audio_effects")
 
     @staticmethod
     def _collect_ids(items: Any, id_key: str) -> list[str]:

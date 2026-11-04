@@ -868,17 +868,22 @@ class _FakeClientAlwaysErr:
 
 
 def test_error_references_audio_effects_true():
+    # 官方 404 audio_effects 错误体：param 指明字段（顶层或嵌在 detail）
     resp = httpx.Response(
         404,
-        json={"detail": [{"loc": ["body", "audio_effects", "environment_id"], "msg": "unknown id"}]},
+        json={"detail": {"param": "audio_effects.environment_id", "message": "unknown id"}},
     )
     assert ElevenLabsV4Adapter._error_references_audio_effects(resp) is True
+    resp_top = httpx.Response(404, json={"param": "audio_effects", "message": "x"})
+    assert ElevenLabsV4Adapter._error_references_audio_effects(resp_top) is True
 
 
-def test_error_references_audio_effects_false_for_voice():
+def test_error_references_audio_effects_false_for_voice_param():
+    # param 指向 voice_id（非 audio_effects）；即便 msg 里提到 audio_effects，
+    # 也不应误判为 effect 错误触发重试
     resp = httpx.Response(
         404,
-        json={"detail": [{"loc": ["path", "voice_id"], "msg": "not found"}]},
+        json={"detail": {"param": "voice_id", "message": "not found; check audio_effects usage"}},
     )
     assert ElevenLabsV4Adapter._error_references_audio_effects(resp) is False
 
@@ -899,10 +904,10 @@ def test_error_references_audio_effects_false_on_bad_json():
 async def test_call_api_effect_404_strips_and_retries(tmp_path, monkeypatch):
     adapter = _make_adapter()
     entry = dict(ENTRY, _data_dir=str(tmp_path))
-    # 第一次 404，错误体指向 audio_effects 字段（模拟 effect ID 下架）
+    # 第一次 404，错误体 param 指向 audio_effects 字段（模拟 effect ID 下架）
     err = _make_status_error(
         404,
-        {"detail": [{"loc": ["body", "audio_effects", "environment_id"], "msg": "unknown id"}]},
+        {"detail": {"param": "audio_effects.environment_id", "message": "unknown id"}},
     )
     fake = _FakeClientOnceErrThenOK(err, _FakeResp(b"fakeaudio"))
     monkeypatch.setattr(
@@ -922,8 +927,8 @@ async def test_call_api_effect_404_strips_and_retries(tmp_path, monkeypatch):
 async def test_call_api_voice_404_does_not_retry(tmp_path, monkeypatch):
     adapter = _make_adapter()
     entry = dict(ENTRY, _data_dir=str(tmp_path))
-    # 404 但错误体指向 voice_id（非 audio_effects）→ 不应剥除/重试
-    err = _make_status_error(404, {"detail": [{"loc": ["path", "voice_id"], "msg": "not found"}]})
+    # 404 但错误体 param 指向 voice_id（非 audio_effects）→ 不应剥除/重试
+    err = _make_status_error(404, {"detail": {"param": "voice_id", "message": "not found"}})
     fake = _FakeClientAlwaysErr(err)
     monkeypatch.setattr(
         "astrbot_plugin_tts_enhancer.providers.elevenlabs_v4.httpx.AsyncClient",
