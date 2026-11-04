@@ -1,6 +1,6 @@
 {
   "enable_enhance": {
-    "description": "启用 SubAgent 语音增强",
+    "description": "SubAgent 语音增强",
     "type": "bool",
     "default": true,
     "hint": "开启后调用 LLM 按 Provider 能力自动注入情感标签与指令控制"
@@ -25,9 +25,10 @@
     "hint": "开启后，TTS 段落会同时保留文本和语音消息"
   },
   "tts_prompt": {
-    "description": "TTS 触发提示词（注入主模型）",
+    "description": "TTS 触发提示词",
     "type": "text",
-    "default": "当你想要发送语音时，使用 <tts></tts> 标签包裹需要转换为语音的文字。使用标签触发 TTS 相较使用工具触发能减少一轮工具调用，节约对话轮数。工具更适用于在 Agent Loop 中顺手发送语音"
+    "default": "当你想要发送语音时，使用 <tts></tts> 标签包裹需要转换为语音的文字。使用标签触发 TTS 相较使用工具触发能减少一轮工具调用，节约对话轮数。工具更适用于在 Agent Loop 中顺手发送语音",
+    "hint": "提示词注入主模型"
   },
   "log_enhanced_params": {
     "description": "打印增强参数",
@@ -64,6 +65,12 @@
     },
     "hint": "背景图的模糊半径（像素）"
   },
+  "memory_retrieval_top_k": {
+    "description": "记忆召回条数",
+    "type": "int",
+    "default": 0,
+    "hint": "LivingMemory 联动：需安装 LivingMemory 插件才可用，未安装则记忆检索不生效；召回返回的长期记忆条数，0 = 关闭记忆检索"
+  },
   "memory_retrieval_query_strategy": {
     "description": "检索关键词来源",
     "type": "string",
@@ -79,12 +86,6 @@
       "memory_retrieval_query_strategy": "prefix"
     },
     "hint": "仅在检索关键词来源为 prefix 时生效"
-  },
-  "memory_retrieval_top_k": {
-    "description": "召回条数（0 = 关闭记忆检索）",
-    "type": "int",
-    "default": 0,
-    "hint": "单次召回返回的长期记忆条数；设为 0 即关闭记忆检索功能"
   },
   "providers": {
     "type": "template_list",
@@ -845,6 +846,217 @@
             "type": "string",
             "default": "",
             "hint": "逗号分隔，如 quality-guard；留空默认，建议保持默认"
+          }
+        }
+      },
+      "elevenlabs_v4": {
+        "name": "ElevenLabs v4",
+        "hint": "v4/v4 Turbo：情绪写进文本[标签]",
+        "display_item": "display_name",
+        "items": {
+          "display_name": {
+            "description": "显示名称",
+            "type": "string",
+            "default": "ElevenLabs v4",
+            "hint": "用于区分多个相同类型的供应商"
+          },
+          "priority": {
+            "description": "优先级",
+            "type": "int",
+            "default": 0,
+            "hint": "数字越小越优先"
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "type": "string",
+            "_special": "select_persona",
+            "default": "",
+            "hint": "仅在该人格下使用；留空表示通用兜底音色"
+          },
+          "api_key": {
+            "description": "API Key",
+            "type": "string",
+            "default": "",
+            "secret": true,
+            "hint": "ElevenLabs 密钥（xi-api-key）"
+          },
+          "model": {
+            "description": "模型",
+            "type": "string",
+            "default": "eleven_v4",
+            "options": ["eleven_v4", "eleven_v4_turbo"],
+            "hint": "v4=质量优先；v4_turbo=低延迟实时"
+          },
+          "voice_id": {
+            "description": "音色 ID",
+            "type": "string",
+            "default": "",
+            "hint": "Voice Library/克隆音色 ID；语音库 https://elevenlabs.io/app/voice-lab"
+          },
+          "language_code": {
+            "description": "默认语言代码",
+            "type": "string",
+            "default": "",
+            "hint": "ElevenLabs 支持的语言代码（自由文本，模型不支持的代码会被静默忽略）；留空用音色/平台默认语言。工具参数 language_code 可逐句覆盖。常用示例：cmn、en、ja、ko、fr、yue、pt-BR、es-419"
+          },
+          "base_url": {
+            "description": "API 地址",
+            "type": "string",
+            "default": "https://api.elevenlabs.io",
+            "hint": "区域/可达性：api.us.*、api.eu.residency.* 等"
+          },
+          "proxy": {
+            "description": "代理地址",
+            "type": "string",
+            "default": "",
+            "hint": "可选；国内访问可能需要，如 http://127.0.0.1:7890"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "type": "int",
+            "default": 120,
+            "hint": "单位秒；长文本合成可能需要调大"
+          },
+          "use_voice_settings": {
+            "description": "语音设置",
+            "type": "bool",
+            "default": false,
+            "hint": "覆盖该音色已保存的语音设置，仅对本次请求生效；关闭则不传（用音色默认）"
+          },
+          "stability": {
+            "description": "稳定性",
+            "type": "float",
+            "default": 0.5,
+            "min": 0,
+            "max": 1,
+            "slider": {"min": 0, "max": 1, "step": 0.05},
+            "hint": "越高越稳定/单调；越低越有表现力；超出 [0,1] 会自动夹紧",
+            "condition": {"use_voice_settings": true}
+          },
+          "similarity_boost": {
+            "description": "相似度",
+            "type": "float",
+            "default": 0.75,
+            "min": 0,
+            "max": 1,
+            "slider": {"min": 0, "max": 1, "step": 0.05},
+            "hint": "越高越贴合参考音色，可能牺牲自然度；超出 [0,1] 会自动夹紧",
+            "condition": {"use_voice_settings": true}
+          },
+          "use_speaker_boost": {
+            "description": "说话人增强",
+            "type": "bool",
+            "default": true,
+            "hint": "提升与原始说话者相似度，会增加延迟",
+            "condition": {"use_voice_settings": true}
+          },
+          "output_codec": {
+            "description": "音频编码",
+            "type": "string",
+            "default": "mp3",
+            "options": ["mp3", "wav", "opus"],
+            "hint": "MP3 通用；WAV 无损；Opus 最省流量"
+          },
+          "mp3_sample_rate": {
+            "description": "MP3 采样率",
+            "type": "int",
+            "default": 44100,
+            "options": [22050, 24000, 44100],
+            "condition": {"output_codec": "mp3"},
+            "hint": "22050/24000 时码率随采样率固定（32k/48k），不可另选；仅 44100 可在下方选码率"
+          },
+          "mp3_bitrate": {
+            "description": "MP3 码率",
+            "type": "int",
+            "default": 128,
+            "options": [32, 64, 96, 128, 192],
+            "condition": {"output_codec": "mp3", "mp3_sample_rate": 44100},
+            "hint": "MP3 码率（kbps）；192k 需 Creator 及以上"
+          },
+          "wav_sample_rate": {
+            "description": "WAV 采样率",
+            "type": "int",
+            "default": 44100,
+            "options": [8000, 16000, 22050, 24000, 32000, 44100, 48000],
+            "condition": {"output_codec": "wav"},
+            "hint": "44.1k/48k 需 Pro 及以上"
+          },
+          "opus_bitrate": {
+            "description": "Opus 码率",
+            "type": "int",
+            "default": 128,
+            "options": [32, 64, 96, 128, 192],
+            "condition": {"output_codec": "opus"}
+          },
+          "apply_text_normalization": {
+            "description": "文本归一化",
+            "type": "string",
+            "default": "auto",
+            "options": ["auto", "on", "off"],
+            "hint": "auto=自动；on=始终；off=跳过"
+          },
+          "seed": {
+            "description": "随机种子",
+            "type": "int",
+            "default": -1,
+            "min": -1,
+            "max": 4294967295,
+            "hint": "-1=不固定（不传）；0~4294967295=固定种子"
+          },
+          "use_pronunciation_dictionary": {
+            "description": "发音词典",
+            "type": "bool",
+            "default": false,
+            "hint": "开启后按词典替换专有名词发音；需先在 ElevenLabs 建词典"
+          },
+          "pronunciation_dictionary_id": {
+            "description": "词典 ID",
+            "type": "string",
+            "default": "",
+            "condition": {"use_pronunciation_dictionary": true}
+          },
+          "pronunciation_dictionary_version": {
+            "description": "词典版本",
+            "type": "string",
+            "default": "",
+            "condition": {"use_pronunciation_dictionary": true},
+            "hint": "留空=最新版；每请求最多 3 个定位符"
+          },
+          "use_audio_effects": {
+            "description": "音频效果",
+            "type": "bool",
+            "default": false,
+            "hint": "开启后，AI 会为语音附加 ElevenLabs 音频效果（电话/房间/噪点等空间质感）。插件会等目录就绪再暴露效果参数；若超时未就绪，本次不附加，但后台继续预热，下次合成即可用"
+          },
+          "catalog_fetch_timeout": {
+            "description": "目录拉取超时",
+            "type": "int",
+            "default": 5,
+            "min": 1,
+            "max": 120,
+            "hint": "拉取音频效果目录的网络超时（秒），也是合成时等待目录就绪的上限。超时则本次不附加效果，但预热继续后台跑",
+            "condition": {"use_audio_effects": true}
+          },
+          "catalog_ttl": {
+            "description": "目录缓存时长",
+            "type": "int",
+            "default": 300,
+            "min": 30,
+            "max": 3600,
+            "hint": "音频效果目录的缓存时长（秒）。越短越能及时感知目录变更（如新上线效果），越长越省去重复拉取",
+            "condition": {"use_audio_effects": true}
+          },
+          "enable_logging": {
+            "description": "启用日志",
+            "type": "bool",
+            "default": true,
+            "hint": "零留存仅企业版可关；普通版强制开启"
+          },
+          "use_pvc_as_ivc": {
+            "description": "PVC 转 IVC",
+            "type": "bool",
+            "default": false,
+            "hint": "对专业音色使用 IVC 版本，可能提升表现力/降延迟；仅 PVC 音色生效"
           }
         }
       }
