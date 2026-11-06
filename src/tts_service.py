@@ -10,9 +10,16 @@ from astrbot.api.message_components import Record
 from astrbot.api.star import Context
 
 from ..providers import ProviderFactory
+from ..providers.utils.audio import get_audio_duration
 from .config import TTSEnhancerConfig
 from .livingmemory_bridge import LivingMemoryBridge
 from .sub_agent import TTSSubAgent
+from .synthesis_store import (
+    SOURCE_CHAT,
+    SOURCE_PREVIEW,
+    SynthesisRecordStore,
+    build_config_snapshot,
+)
 
 
 class TTSService:
@@ -27,6 +34,7 @@ class TTSService:
         providers: list,
         config: TTSEnhancerConfig,
         audio_data_dir: Path,
+        synthesis_store: SynthesisRecordStore | None = None,
     ) -> None:
         """
         初始化 TTS 服务实例。
@@ -36,11 +44,13 @@ class TTSService:
             providers: TTS 供应商配置列表。
             config: TTS 增强配置对象。
             audio_data_dir: 音频数据存储目录路径。
+            synthesis_store: 合成记录存储实例；为 None 时跳过落盘记录。
         """
         self.context = context
         self.providers = providers
         self.config = config
         self.audio_data_dir = audio_data_dir
+        self.synthesis_store = synthesis_store
         self.sub_agent = TTSSubAgent(context, config.raw_config)
         # LivingMemory 桥接：合成前召回长期记忆作为 SubAgent 上下文（未安装时自动降级）
         self.lm_bridge = LivingMemoryBridge(context)
@@ -214,99 +224,268 @@ class TTSService:
                 logger.warning("人格专属音色均失败，回退到通用音色")
 
             entry_name = self.config.get_entry_name(entry, idx)
-
-            entry_with_data_dir = dict(entry)
-            entry_with_data_dir["_data_dir"] = str(self.audio_data_dir)
-
-            adapter = ProviderFactory.get_adapter(entry_with_data_dir)
-            if not adapter:
-                continue
-
-            # 检查文档是否存在
-            has_docs = bool(adapter.docs_content)
-            enable_enhance = self.config.get("enable_enhance", True) and has_docs
-
-            # 无文档降级
-            if not enable_enhance:
-                logger.warning(f"供应商 {entry_name} 缺少文档，降级为纯文本请求")
-                try:
-                    audio_path = await adapter.call_api(
-                        text=raw_text, raw_params={}, config=entry_with_data_dir
-                    )
-                    if audio_path:
-                        return Record.fromFileSystem(audio_path, text=raw_text)
-                except Exception as e:
-                    logger.warning(f"纯文本 TTS 失败 ({entry_name}): {e}")
-                    continue
-                # call_api 返回空串（而非抛异常）时同样视为失败：
-                # 缺少文档的供应商本就不该走增强流程，直接换下一个，避免白白调用一次 LLM。
-                continue
-
-            # 准备 SubAgent 工具
-            tool_set = None
-            if hasattr(adapter, "get_tool_schema"):
-                # 合成前按供应商配置超时有界等待预热（如 ElevenLabs audio_effects 目录）：
-                # 等到则本合成把对应参数拼进 schema 与提示词，等不到本次不暴露但预热
-                # 继续后台跑。基类默认无操作（同步/非预热适配器零成本），仅当适配器
-                # 确实提供该异步钩子时才调用，对测试替身/MagicMock 友好。
-                hook = getattr(adapter, "ensure_catalog_ready", None)
-                if callable(hook) and asyncio.iscoroutinefunction(hook):
-                    await hook()
-                tool = adapter.get_tool_schema()
-                if tool:
-                    from astrbot.core.agent.tool import ToolSet
-
-                    tool_set = ToolSet(tools=[tool])
-
-            current_context = context_messages.copy() if context_messages else []
-            # SubAgent 内部完成「工具执行 + 校验 + role:tool 重试」；
-            # 成功返回合法（或末轮清洗后）参数 dict，失败兜底返回 None。
-            try:
-                api_params = await self.sub_agent.call(
-                    event,
-                    adapter.get_subagent_system_prompt(),
-                    raw_text,
-                    current_context,
-                    persona,
-                    tool_set=tool_set,
-                    adapter=adapter,
-                    max_attempts=2,
-                    memory_context=memory_context,
-                )
-            except Exception as e:
-                logger.warning(f"SubAgent 调用异常: {e}")
-                api_params = None
-            if api_params is None or not isinstance(api_params, dict):
-                api_params = None
-
-            enhanced_text = raw_text
-            # SubAgent 可能返回空 text；此时保留原文，否则会带着空文本去请求 TTS API
-            if api_params and api_params.get("text"):
-                enhanced_text = api_params["text"]
-
-            if self.config.get("log_enhanced_params", False) and api_params:
-                try:
-                    logger.info(
-                        f"增强参数: {json.dumps(api_params, ensure_ascii=False)}"
-                    )
-                except (TypeError, ValueError):
-                    logger.warning("增强参数含不可序列化对象，跳过日志输出")
-
-            # 调用 API
-            try:
-                audio_path = await adapter.call_api(
-                    text=enhanced_text,
-                    raw_params=api_params or {},
-                    config=entry_with_data_dir,
-                )
-                if audio_path:
-                    logger.info(f"TTS 合成成功，供应商: {entry_name}")
-                    return Record.fromFileSystem(audio_path, text=enhanced_text)
-            except Exception as e:
-                logger.warning(f"供应商 {entry_name} TTS API 失败: {e}，尝试下一个")
+            audio_path, final_text = await self._synthesize_one(
+                entry,
+                raw_text,
+                entry_name,
+                event=event,
+                enhance=self.config.get("enable_enhance", True),
+                persona=persona,
+                context_messages=context_messages,
+                memory_context=memory_context,
+                source=SOURCE_CHAT,
+            )
+            if audio_path:
+                return Record.fromFileSystem(audio_path, text=final_text)
 
         if bound and not unbound:
             logger.warning("人格专属音色均失败，且未配置通用兜底音色")
         else:
             logger.error("所有 TTS 供应商均失败")
         return None
+
+    async def _synthesize_one(
+        self,
+        entry: dict,
+        raw_text: str,
+        entry_name: str,
+        *,
+        event: AstrMessageEvent | None = None,
+        enhance: bool = False,
+        persona: str = "",
+        context_messages: list[dict] | None = None,
+        memory_context: str = "",
+        voice_id: str | None = None,
+        source: str = SOURCE_CHAT,
+    ) -> tuple[str | None, str]:
+        """单供应商合成一步（聊天与预览共用）。
+
+        聊天路径（``synthesize``）对每个候选供应商调用本方法；预览路径
+        （``preview_synthesize``）对指定供应商调用本方法。两者仅在选择供应商、
+        是否注入人格 / 上下文上有差异，单供应商的合成流程（配置快照 → 可选
+        SubAgent 增强 → 调用 API → 落盘记录）完全一致，借由此方法统一。
+
+        Args:
+            entry: 供应商配置 dict。
+            raw_text: 待合成文本。
+            entry_name: 供应商显示名（用于日志与记录）。
+            event: 聊天事件（用于解析会话标识与记录来源）；预览为 None。
+            enhance: 是否允许本供应商走 SubAgent 增强（还需该供应商有文档）。
+                聊天路径传全局 enable_enhance；预览路径传前端开关。
+            persona: 说话人人格（仅聊天路径注入）。
+            context_messages: 对话上下文（仅聊天路径注入）。
+            memory_context: 长期记忆上下文（仅聊天路径注入）。
+            voice_id: 显式音色 ID（预览场景覆盖配置音色）；聊天为 None。
+            source: 合成记录来源类别。
+
+        Returns:
+            (audio_path, final_text)：成功时 audio_path 为音频路径，final_text 为
+            实际合成文本（增强后或原文）；失败时 audio_path 为 None。
+        """
+        entry_with_data_dir = dict(entry)
+        entry_with_data_dir["_data_dir"] = str(self.audio_data_dir)
+
+        adapter = ProviderFactory.get_adapter(entry_with_data_dir)
+        if not adapter:
+            return None, raw_text
+
+        # 配置快照：本次合成实际使用的供应商配置（不含密钥），供记录展示。
+        config_snapshot = build_config_snapshot(entry)
+
+        # 增强仅在「允许增强 且 该供应商带能力文档」时生效；否则纯文本降级。
+        has_docs = bool(adapter.docs_content)
+        do_enhance = bool(enhance) and has_docs
+        if not do_enhance:
+            if bool(enhance) and not has_docs:
+                logger.warning(f"供应商 {entry_name} 缺少文档，降级为纯文本请求")
+            try:
+                audio_path = await adapter.call_api(
+                    text=raw_text,
+                    raw_params={},
+                    config=entry_with_data_dir,
+                    voice_id=voice_id,
+                )
+            except Exception as e:
+                logger.warning(f"纯文本 TTS 失败 ({entry_name}): {e}")
+                return None, raw_text
+            if audio_path:
+                await self._record_synthesis(
+                    audio_path,
+                    raw_text,
+                    entry_name,
+                    event,
+                    source,
+                    config=config_snapshot,
+                )
+                return audio_path, raw_text
+            # call_api 返回空串（而非抛异常）时同样视为失败，交由调用方换下一个。
+            return None, raw_text
+
+        # 准备 SubAgent 工具
+        tool_set = None
+        if hasattr(adapter, "get_tool_schema"):
+            # 合成前按供应商配置超时有界等待预热（如 ElevenLabs audio_effects 目录）：
+            # 等到则本合成把对应参数拼进 schema 与提示词，等不到本次不暴露但预热
+            # 继续后台跑。基类默认无操作（同步/非预热适配器零成本），仅当适配器
+            # 确实提供该异步钩子时才调用，对测试替身/MagicMock 友好。
+            hook = getattr(adapter, "ensure_catalog_ready", None)
+            if callable(hook) and asyncio.iscoroutinefunction(hook):
+                await hook()
+            tool = adapter.get_tool_schema()
+            if tool:
+                from astrbot.core.agent.tool import ToolSet
+
+                tool_set = ToolSet(tools=[tool])
+
+        session_id = event.unified_msg_origin if event is not None else None
+        current_context = context_messages.copy() if context_messages else []
+        # SubAgent 内部完成「工具执行 + 校验 + role:tool 重试」；
+        # 成功返回合法（或末轮清洗后）参数 dict，失败兜底返回 None。
+        try:
+            api_params = await self.sub_agent.call(
+                adapter.get_subagent_system_prompt(),
+                raw_text,
+                session_id,
+                context_messages=current_context,
+                persona=persona,
+                tool_set=tool_set,
+                adapter=adapter,
+                max_attempts=2,
+                memory_context=memory_context,
+            )
+        except Exception as e:
+            logger.warning(f"SubAgent 调用异常: {e}")
+            api_params = None
+        if api_params is None or not isinstance(api_params, dict):
+            api_params = None
+
+        enhanced_text = raw_text
+        # SubAgent 可能返回空 text；此时保留原文，否则会带着空文本去请求 TTS API
+        if api_params and api_params.get("text"):
+            enhanced_text = api_params["text"]
+
+        if self.config.get("log_enhanced_params", False) and api_params:
+            try:
+                logger.info(
+                    f"增强参数: {json.dumps(api_params, ensure_ascii=False)}"
+                )
+            except (TypeError, ValueError):
+                logger.warning("增强参数含不可序列化对象，跳过日志输出")
+
+        # 调用 API
+        try:
+            audio_path = await adapter.call_api(
+                text=enhanced_text,
+                raw_params=api_params or {},
+                config=entry_with_data_dir,
+                voice_id=voice_id,
+            )
+            if audio_path:
+                logger.info(f"TTS 合成成功，供应商: {entry_name}")
+                await self._record_synthesis(
+                    audio_path,
+                    enhanced_text,
+                    entry_name,
+                    event,
+                    source,
+                    params=api_params,
+                    config=config_snapshot,
+                )
+                return audio_path, enhanced_text
+        except Exception as e:
+            logger.warning(f"供应商 {entry_name} TTS API 失败: {e}，尝试下一个")
+        return None, raw_text
+
+    async def preview_synthesize(
+        self,
+        entry: dict,
+        entry_name: str,
+        text: str,
+        voice_id: str,
+        enhance: bool,
+        source: str = SOURCE_PREVIEW,
+    ) -> tuple[str | None, str | None]:
+        """预览合成（复用 ``_synthesize_one``），返回 (audio_path, 格式扩展名)。
+
+        与聊天路径的区别：指定单一供应商与音色、无会话 / 人格 / 上下文、可显式
+        开关 SubAgent 增强（默认关闭；开启时若未配置 ``enhance_llm_provider`` 则
+        回退到默认聊天模型）。
+
+        Args:
+            entry: 供应商配置 dict。
+            entry_name: 供应商显示名。
+            text: 预览文本。
+            voice_id: 预览音色 ID。
+            enhance: 是否走 SubAgent 增强（前端开关）。
+            source: 合成记录来源类别。
+
+        Returns:
+            (audio_path, ext)：成功时 audio_path 为音频路径，ext 为扩展名（不含点）；
+            失败时两者为 None。
+        """
+        audio_path, _final_text = await self._synthesize_one(
+            entry,
+            text,
+            entry_name,
+            enhance=enhance,
+            voice_id=voice_id,
+            source=source,
+        )
+        if not audio_path:
+            return None, None
+        ext = Path(audio_path).suffix.lstrip(".") or "mp3"
+        return audio_path, ext
+
+    async def _record_synthesis(
+        self,
+        audio_path: str,
+        text: str,
+        provider: str,
+        event: AstrMessageEvent | None,
+        source: str = SOURCE_CHAT,
+        params: dict | None = None,
+        config: dict | None = None,
+    ) -> None:
+        """把一次成功的合成结果落盘为合成记录（失败静默跳过，绝不阻塞 TTS）。
+
+        Args:
+            audio_path: 合成产生的音频文件绝对路径。
+            text: 实际合成的文本（增强后）。
+            provider: 命中并成功的供应商显示名。
+            event: 消息事件，用于提取 UMO 作为来源补充信息；可为 None。
+            source: 合成来源（见 synthesis_store.SOURCE_* 常量）。
+            params: AI 增强参数（指令 / 音量 / 语速 / 音调 / 语言提示等，由
+                SubAgent 增强得出）；为 None 时记空 dict。
+            config: 本次合成使用的供应商配置快照（音色 / 格式 / 采样率 / 模型等，
+                不含密钥）；为 None 时记空 dict。
+        """
+        if self.synthesis_store is None or self.synthesis_store.max_records <= 0:
+            return
+        try:
+            from pathlib import Path as _Path
+
+            data = _Path(audio_path).read_bytes()
+            if not data:
+                return
+            detail = ""
+            if event is not None:
+                detail = getattr(event, "unified_msg_origin", "") or ""
+            duration = None
+            try:
+                duration = get_audio_duration(audio_path)
+            except Exception:
+                duration = None
+            fmt = _Path(audio_path).suffix.lstrip(".") or "mp3"
+            await self.synthesis_store.add(
+                audio_bytes=data,
+                source=source,
+                provider=provider,
+                text=text,
+                fmt=fmt,
+                source_detail=detail,
+                duration=duration,
+                params=params,
+                config=config,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"合成记录落盘失败（已跳过）: {exc}")

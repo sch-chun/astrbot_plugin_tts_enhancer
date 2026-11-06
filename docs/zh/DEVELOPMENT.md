@@ -30,8 +30,8 @@ pytest                # 在 AstrBot 源码树内运行
 ### 1.3 前端（无需构建）
 
 - 前端是原生 ES Module + 本地 Vue UMD，**没有打包步骤**，改完 JS 直接生效。
-- 仅 `eslint.config.mjs` 提供可选 lint（开发期），依赖见 `pages/tts_manager/package.json` 的 `devDependencies`。
-- 可选：`cd pages/tts_manager && npm install && npx eslint .`。
+- 仅 `eslint.config.mjs` 提供可选 lint（开发期），依赖见 `pages/tts_studio/package.json` 的 `devDependencies`。
+- 可选：`cd pages/tts_studio && npm install && npx eslint .`。
 
 ---
 
@@ -57,7 +57,7 @@ astrbot_plugin_tts_enhancer/
 │   ├── <vendor>_<model>.py      # 具体适配器（即 template_key）
 │   ├── utils/{http,audio}.py    # 公共 HTTP / 音频工具
 │   └── docs/<docs_key>.md       # 能力说明书（含 *_design.md）
-├── pages/tts_manager/           # 前端（Vue 3，无需构建）
+├── pages/tts_studio/           # 前端（Vue 3，无需构建）
 │   ├── index.html / app.js / style.css
 │   ├── components/common/       # 跨供应商共享组件
 │   ├── components/*.js          # 各供应商组件
@@ -75,7 +75,7 @@ astrbot_plugin_tts_enhancer/
 | 1. 写适配器 | `providers/<template_key>.py` | ✅ |
 | 2. 写能力说明书 | `providers/docs/<docs_key>.md`（可能含 `_design.md`） | ✅（否则降级纯文本） |
 | 3. 配置 Schema | `_conf_schema.json` 的 `providers.templates` 新增模板 | ✅ |
-| 4. 前端接入 | `pages/tts_manager/components/*.js` + `app.js` 注册 | 仅当需 UI |
+| 4. 前端接入 | `pages/tts_studio/components/*.js` + `app.js` 注册 | 仅当需 UI |
 | 5. 测试 | `tests/` 新增用例 | 强烈建议 |
 
 > 所有新增供应商会被 `ProviderFactory` **自动发现并加载**，无需修改核心代码。文件名（去掉 `.py`）即 `template_key`，必须与 `_conf_schema.json` 的 `templates` key 一致。

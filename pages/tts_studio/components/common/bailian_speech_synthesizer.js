@@ -550,6 +550,24 @@ export default {
             previewAudioFormat.value = result.preview_audio?.response_format || 'wav';
             previewText.value = designForm.preview_text;
             previewModalVisible.value = true;
+
+            // 把设计试听音频回传落盘为「合成记录」（来源=设计试听）。
+            // 该音频由音色创建接口以 base64 形式返回，前端持有，故经 record 接口回填。
+            const b64 = result.preview_audio?.data;
+            if (b64) {
+                const entryIdx = selectedEntryId.value;
+                const entry = (entries.value && entries.value[entryIdx]) || {};
+                const providerName = entry.display_name || '';
+                props.bridge
+                    .apiPost('synthesis-records/record', {
+                        audio_base64: b64,
+                        format: previewAudioFormat.value,
+                        source: 'design_preview',
+                        provider: providerName,
+                        text: designForm.preview_text,
+                    })
+                    .catch((e) => console.warn('设计试听记录落盘失败（已跳过）:', e));
+            }
         }
 
         // ----- 预览模态框 -----

@@ -144,7 +144,7 @@ class TestBailian3_1ModelWhitelist:
         js_path = (
             self._REPO_ROOT
             / "pages"
-            / "tts_manager"
+            / "tts_studio"
             / "components"
             / "bailian_qwen_audio_3_1_tts.js"
         )

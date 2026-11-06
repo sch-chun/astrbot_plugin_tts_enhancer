@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [1.0.0] - 2026-11-07
+
+首个稳定里程碑：将分散的管理体验整合为统一单页应用，并把合成记录存储迁移到 AstrBot 官方 KV。
+
+### Added
+
+- **统一管理页 `pages/tts_studio`（合并音色管理与合成记录）**：原独立的「音色管理页 `pages/tts_manager`」与「合成记录页 `pages/synthesis_records`」合并为单一单页应用；左栏切换「音色管理 / 合成记录」两个视图，一次进入即可同时管理音色与回放历史，无需在两页间跳转。
+- **合成记录功能（首次发布）**：每次 TTS 合成（聊天语音 / 音色预览 / 设计试听 / Agent 主动发送）均落盘为一条记录；管理页内可回放音频、查看元数据（来源 / 供应商 / 时间 / 文本 / 格式 / 时长 / 体积 / 增强参数 / 配置快照）并支持单条删除与一键清空。新增后端路由 `/<name>/synthesis-records`（列表）、`/synthesis-records/audio`、`/synthesis-records/delete`、`/synthesis-records/clear`、`/synthesis-records/record`（前端回传试听音频）。
+- **合成记录存储迁移至 AstrBot 官方 KV**：新增 `src/synthesis_store.py`（`SynthesisRecordStore`），元数据存于官方 KV 单 key `synthesis_index`（按插件命名空间自动隔离），音频二进制落 `plugin_data/synthesis_records/`；全部写入经 `asyncio.Lock` 串行化，删除 / 取音频复用安全文件名白名单防路径穿越；新增配置项 `synthesis_record_max`（0 / 负数关闭落盘、`-1` 不限制、正整数保留最近 N 份、默认 50）控制保留策略。新增单元测试 `tests/test_synthesis_store.py` 与 `tests/test_synthesis_routes.py`。
+
+### Changed
+
+- **管理页渐进式渲染（外壳先行）**：移除顶层单一 `loading` 闸门，改为各视图独立的 `managerLoading` / `recordsLoading`；左栏与全局音量条立即渲染，表单 / 列表待各自数据就绪后局部刷新，消除整页白屏等待。
+- **修复加载期未编译模板闪现（FOUC）**：新增 `[v-cloak]{display:none}` 与挂载前的静态 `#boot-loader` 占位（挂载后由 `app.js` 移除），消除 ES 模块加载期间裸 `{{ }}` 模板短暂暴露、且模态框 / 通知条一并闪动的问题；同时移除 `.global-volume-bar` 与 `.page-content` 在加载期的 `content-fade-in` 动画。
+- **合成记录卡片视觉统一**：`.record-card` 背景改用 `rgba(var(--bg-rgb), 0.6)`，与既有半透明设计语言一致。
+- 文档同步：README（中 / 英）与 `docs/zh` 架构、开发指南的版本徽标及 `pages/tts_manager` 路径引用统一更新为 `pages/tts_studio`。
+
+### Removed
+
+- **`pages/tts_manager/` 整目录**：已被统一 `pages/tts_studio` 取代（旧代码归档至 `_archive/tts_manager`）。
+- **合成记录本地 JSON 索引方案**：元数据统一改为官方 KV 存储层，旧 JSON 索引不再读取。
+
 ## [0.6.0] - 2026-11-03
 
 ### Added

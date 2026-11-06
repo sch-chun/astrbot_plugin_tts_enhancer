@@ -262,7 +262,7 @@ flowchart TD
 
 ---
 
-## 8. 前端架构（`pages/tts_manager/`）
+## 8. 前端架构（`pages/tts_studio/`）
 
 前端是**无需构建**的 Vue 3 应用：
 

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TTS 增强 · 控制台</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <!-- 背景图层：仅在配置了背景图时由 JS 注入图片 + 透明度/模糊度；默认仅显示主题底色 -->
+    <div id="page-bg"><div id="page-bg-img"></div></div>
+    <!-- Vue 编译前的静态占位：避免裸模板 {{ }} 在 ES 模块加载期闪现；挂载后由 app.js 移除 -->
+    <div id="boot-loader">加载中…</div>
+    <div id="app" v-cloak>
+        <!-- 全局音量条（无数据依赖，立即渲染，不阻塞外壳与导航） -->
+        <Teleport to="body">
+            <div class="global-volume-bar">
+                <span class="global-volume-icon">🔊</span>
+                <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    v-model="volume"
+                    class="global-volume-slider"
+                    title="全局音量"
+                />
+                <span class="global-volume-value">{{ Math.round(volume * 100) }}%</span>
+            </div>
+        </Teleport>
+
+        <!-- 合并布局：左侧内部导航 + 主内容区（外壳始终渲染，不等待数据） -->
+        <div class="studio-layout">
+            <aside class="studio-sidebar">
+                <div class="studio-brand">
+                    <span class="brand-icon">🎙</span>
+                    <span class="brand-text">TTS 增强</span>
+                </div>
+                <div class="sidebar-divider"></div>
+                <nav class="studio-nav">
+                    <button
+                        class="nav-item"
+                        :class="{ active: activeView === 'manager' }"
+                        @click="switchView('manager')"
+                    >
+                        <span class="nav-icon">🎛</span>
+                        <span class="nav-label">音色管理</span>
+                    </button>
+                    <button
+                        class="nav-item"
+                        :class="{ active: activeView === 'records' }"
+                        @click="switchView('records')"
+                    >
+                        <span class="nav-icon">📜</span>
+                        <span class="nav-label">合成记录</span>
+                    </button>
+                </nav>
+            </aside>
+
+            <main class="studio-main">
+                <!-- ============ 音色管理视图 ============ -->
+                <div v-if="activeView === 'manager'" class="page-content">
+                    <h1>TTS 音色管理</h1>
+                    <div class="content-panel">
+                        <!-- 本视图数据就绪前显示局部加载占位，外壳与左栏已先行渲染 -->
+                        <div v-if="managerLoading" class="loading-block">
+                            <span class="spinner"></span> 加载中...
+                        </div>
+                        <template v-else>
+                            <div class="tabs" v-if="visibleGroups.length">
+                                <div class="tab-indicator"></div>
+                                <button
+                                    v-for="group in visibleGroups"
+                                    :key="group.template_key"
+                                    class="tab"
+                                    :data-label="getDisplayName(group.template_key)"
+                                    :class="{ active: currentTab === group.template_key }"
+                                    @click="switchTab(group.template_key)"
+                                >{{ getDisplayName(group.template_key) }}</button>
+                            </div>
+
+                            <div v-else class="empty-state" style="padding: 20px; color: var(--gray);">
+                                <template v-if="groups.length">
+                                    ⚠️ 已配置 {{ groups.length }} 个供应商（{{ groups.map(g => getDisplayName(g.template_key)).join('、') }}），但当前版本暂未提供其可视化面板。
+                                    如需在此面板内管理，请配置支持前端操作的服务商（如百炼 / MiniMax）。
+                                </template>
+                                <template v-else>
+                                    ⚠️ 暂无 TTS 供应商配置，请在插件配置中添加 providers 条目。
+                                </template>
+                            </div>
+
+                            <div class="tab-content" v-if="visibleGroups.length">
+                                <div class="tab-pane" :key="currentTab">
+                                    <component
+                                        :is="currentComponent"
+                                        :entries="currentEntries"
+                                        :bridge="bridge"
+                                        :template-key="currentTab"
+                                    />
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- ============ 合成记录视图 ============ -->
+                <div v-else class="page-content">
+                    <h1>TTS 合成记录</h1>
+                    <div class="content-panel">
+                        <!-- 本视图数据就绪前显示局部加载占位，外壳与左栏已先行渲染 -->
+                        <div v-if="recordsLoading" class="loading-block">
+                            <span class="spinner"></span> 加载中...
+                        </div>
+                        <template v-else>
+                            <div class="toolbar">
+                                <div class="toolbar-left">
+                                    <label class="filter-label">来源</label>
+                                    <select v-model="sourceFilter" class="filter-select">
+                                        <option value="all">全部</option>
+                                        <option value="chat">聊天语音</option>
+                                        <option value="preview">音色预览</option>
+                                        <option value="design_preview">设计试听</option>
+                                        <option value="agent">Agent 发送</option>
+                                    </select>
+                                    <span class="count-hint">共 {{ filteredRecords.length }} 条</span>
+                                </div>
+                                <button
+                                    class="btn btn-sm btn-danger"
+                                    :disabled="!records.length"
+                                    @click="confirmClear"
+                                >清空全部</button>
+                            </div>
+
+                            <div v-if="!filteredRecords.length" class="empty-state">
+                                <template v-if="records.length">
+                                    ⚠️ 当前筛选条件下没有合成记录。
+                                </template>
+                                <template v-else>
+                                    🎙️ 暂无合成记录。合成过的语音（聊天语音、音色预览、设计试听等）会自动出现在这里。
+                                </template>
+                            </div>
+
+                            <ul v-else class="record-list">
+                                <li
+                                    v-for="rec in filteredRecords"
+                                    :key="rec.id"
+                                    class="record-card"
+                                >
+                                    <div class="record-main">
+                                        <div class="record-head">
+                                            <span class="badge" :class="'badge-' + rec.source">
+                                                {{ sourceLabel(rec.source) }}
+                                            </span>
+                                            <span v-if="rec.format" class="format-tag">{{ rec.format.toUpperCase() }}</span>
+                                            <span class="provider">{{ rec.provider || '未知供应商' }}</span>
+                                            <span class="time">{{ formatTime(rec.created_at) }}</span>
+                                        </div>
+                                        <div class="record-text" :title="rec.text">{{ rec.text || '（无文本）' }}</div>
+                                        <div class="record-meta">
+                                            <span v-if="rec.duration != null">时长 {{ rec.duration.toFixed(1) }}s</span>
+                                            <span>{{ formatSize(rec.size) }}</span>
+                                            <span v-if="rec.source_detail" :title="rec.source_detail">来源：{{ rec.source_detail }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="record-actions">
+                                        <button
+                                            class="btn btn-sm"
+                                            :class="{'btn-danger': isPlaying(rec.id)}"
+                                            @click="togglePlay(rec)"
+                                        >{{ isPlaying(rec.id) ? '⏹ 停止' : '▶ 播放' }}</button>
+                                        <button class="btn btn-sm btn-danger" @click="confirmDelete(rec)">删除</button>
+                                        <button class="btn btn-sm btn-ghost" @click="toggleExpand(rec)">
+                                            {{ expanded[rec.id] ? '收起 ▴' : '详情 ▾' }}
+                                        </button>
+                                    </div>
+                                    <div v-if="expanded[rec.id]" class="record-detail">
+                                        <div v-if="recordParams(rec).length" class="detail-group">
+                                            <div class="detail-title">AI 增强参数</div>
+                                            <div class="detail-grid">
+                                                <span v-for="p in recordParams(rec)" :key="p.label" class="param-chip">
+                                                    <span class="param-key">{{ p.label }}</span><span class="param-val">{{ p.value }}</span>
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div v-if="recordConfig(rec).length" class="detail-group">
+                                            <div class="detail-title">配置参数</div>
+                                            <div class="detail-grid">
+                                                <span v-for="p in recordConfig(rec)" :key="p.label" class="param-chip">
+                                                    <span class="param-key">{{ p.label }}</span><span class="param-val">{{ p.value }}</span>
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div v-if="!recordParams(rec).length && !recordConfig(rec).length" class="detail-empty">
+                                            本次合成未记录参数详情。
+                                        </div>
+                                    </div>
+                                </li>
+                            </ul>
+                        </template>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- 共享删除确认弹层（瞬时层：初始加载完成后再挂载，避免加载期闪烁） -->
+        <Teleport to="body" v-if="booted">
+            <Transition name="modal">
+                <div v-if="confirm.visible" class="modal-overlay" @mousedown.self="cancelConfirm">
+                    <div class="modal-content">
+                        <h3>{{ confirm.title }}</h3>
+                        <p style="white-space: pre-line;">{{ confirm.message }}</p>
+                        <div style="display:flex; gap:12px; justify-content:flex-end;">
+                            <button class="btn btn-sm btn-secondary" @click="cancelConfirm">取消</button>
+                            <button class="btn btn-sm btn-danger" @click="doConfirm">确认</button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+
+            <!-- 通知条 -->
+            <Transition name="toast">
+                <div
+                    v-if="toast.visible"
+                    class="toast"
+                    :class="{'toast-error': toast.type === 'error'}"
+                    @mouseenter="toast.pause = true"
+                    @mouseleave="toast.pause = false"
+                >{{ toast.message }}</div>
+            </Transition>
+        </Teleport>
+    </div>
+    <script src="./static/vue.global.prod.js"></script>
+    <script type="module" src="./app.js"></script>
+</body>
+</html>

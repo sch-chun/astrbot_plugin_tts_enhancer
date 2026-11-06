@@ -25,12 +25,16 @@ class FakeSubAgent:
 
     async def call(
         self,
-        event,
-        sys_prompt,
+        system_prompt,
         user_message,
-        context_messages,
-        persona,
+        session_id=None,
+        *,
+        context_messages=None,
+        persona="",
         tool_set=None,
+        adapter=None,
+        max_attempts=2,
+        memory_context="",
         **kwargs,
     ):
         self.calls.append({"tool_set": tool_set, "persona": persona})

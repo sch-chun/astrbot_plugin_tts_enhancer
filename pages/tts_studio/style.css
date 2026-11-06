@@ -1,0 +1,771 @@
+:root {
+    --bg: #ffffff;
+    --bg-rgb: 255, 255, 255;
+    --text: #1a1a1a;
+    --border: #d0d7de;
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --danger: #dc2626;
+    --success: #16a34a;
+    --gray: #6b7280;
+    --radius: 6px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.1);
+
+    /* 内部侧边栏 */
+    --sidebar-w: 64px;
+    --sidebar-bg: rgba(var(--bg-rgb), 0.7);
+    --sidebar-active: var(--primary);
+}
+
+[data-theme="dark"] {
+    --bg: #1a1a1a;
+    --bg-rgb: 26, 26, 26;
+    --text: #e0e0e0;
+    --border: #374151;
+    --primary: #3b82f6;
+    --primary-hover: #60a5fa;
+    --gray: #9ca3af;
+}
+
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: transparent;
+    color: var(--text);
+    padding: 0;
+    margin: 0;
+}
+
+/* 防止 Vue 编译前裸模板 {{ }} 闪现（FOUC）：挂载前隐藏整个 #app，挂载后 Vue 自动移除 v-cloak。 */
+[v-cloak] { display: none !important; }
+#boot-loader {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--gray);
+    background: var(--bg);
+    z-index: 2000;
+}
+
+/* 管理页背景图层：固定铺满视口，置于内容之下。
+   默认仅显示主题底色（--bg），与未配置背景图时外观一致；
+   配置背景图后由 app.js 在 #page-bg-img 上叠加图片 + 透明度/模糊度。 */
+#page-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    background-color: var(--bg);
+}
+#page-bg-img {
+    position: absolute;
+    /* 负 inset 让模糊边缘溢出视口外，避免硬边 */
+    inset: -30px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-color: transparent;
+    /* 默认透明；图片解码后由 app.js 提升到目标透明度，配合 transition 实现淡入 */
+    opacity: 0;
+    transition: opacity 0.6s ease;
+    /* 提前提升为独立合成层：模糊滤镜只栅格化一次，淡入期间每帧仅做合成，避免掉帧 */
+    will-change: opacity;
+}
+h1 { font-size: 1.8rem; margin-top: 0; }
+
+/* 全局音量条（页面顶部 sticky，仅音量，无停止按钮） */
+/* 全局音量条：fixed 顶栏（经 Teleport 挂到 body），z-index 高于模态遮罩与 toast，
+   试听时可直接调音量。自带淡入与内容同步。 */
+.global-volume-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 44px;
+    z-index: 1001;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    background: rgba(var(--bg-rgb), 0.85);
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow);
+}
+.global-volume-icon { font-size: 1.1rem; }
+.global-volume-slider {
+    flex: 1;
+    max-width: 220px;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--primary);
+    border-radius: 2px;
+    outline: none;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+}
+.global-volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+}
+.global-volume-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+    border: none;
+}
+.global-volume-value {
+    font-size: 0.85rem;
+    min-width: 36px;
+    text-align: center;
+    color: var(--gray);
+}
+
+.tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 20px;
+    position: relative;
+}
+/* 标签高亮滑动条：贴在 tabs 底边框上，切换时平滑平移。 */
+.tab-indicator {
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 100px;
+    height: 2px;
+    background: var(--primary);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 0.2s ease;
+    will-change: transform;
+}
+.tab {
+    padding: 10px 20px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-size: 1rem;
+    color: var(--gray);
+    transition: 0.2s;
+}
+.tab:hover { color: var(--text); }
+/* 加粗幽灵文本：用不可见的加粗副本把标签盒子撑到加粗宽度，
+   激活时只改颜色不改宽度，避免字体度量重排导致高亮条测到漂移中的布局 */
+.tab::after {
+    content: attr(data-label);
+    display: block;
+    height: 0;
+    font-weight: 600;
+    visibility: hidden;
+}
+.tab.active {
+    color: var(--primary);
+    font-weight: 600;
+}
+.loading { color: var(--gray); padding: 40px 0; text-align: center; }
+/* 视图内局部加载占位：外壳（左栏 + 顶栏）已先行渲染，仅主内容区显示加载态 */
+.loading-block {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--gray);
+    padding: 48px 0;
+    font-size: 14px;
+}
+.spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+/* 页面内容容器：音量条 + 标题 + 内容卡片整体包在一起。
+   外壳（顶栏 + 左栏）立即渲染，故此处不再淡入，避免加载期出现「淡入闪现」。 */
+.page-content {
+    /* 音量条 fixed 后不再占流内空间：44px 条高，主区顶部留出间距 */
+    padding-top: 60px;
+}
+@keyframes content-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+/* 磨砂内容卡片：把选项卡与表单区整体包起来，统一半透明底色 + 内边距。 */
+.content-panel {
+    background: rgba(var(--bg-rgb), 0.82);
+    border-radius: var(--radius);
+    padding: 16px;
+}
+.tab-content {
+    background: transparent;
+}
+/* 切换供应商标签时的内容动画：tab-pane 带 :key 随标签重挂载，动画随每次切换重播 */
+.tab-pane {
+    animation: tab-fade-in 0.2s ease both;
+}
+@keyframes tab-fade-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+
+/* 通用表单样式 */
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-weight: 500; margin-bottom: 4px; }
+.form-group input, .form-group select, .form-group textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: rgba(var(--bg-rgb), 0.6);
+    color: var(--text);
+    box-sizing: border-box;
+}
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: var(--radius);
+    background: var(--primary);
+    color: white;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+.btn:hover { background: var(--primary-hover); }
+.btn-danger { background: var(--danger); }
+.btn-danger:hover { background: #b91c1c; }
+.btn-sm { padding: 4px 10px; font-size: 0.8rem; }
+.btn-secondary { background: var(--gray); color: white; }
+.btn-secondary:hover { background: #5a6268; }
+.btn-success { background: var(--success); color: white; }
+.btn-success:hover { background: #15803d; }
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: var(--gray);
+    pointer-events: none;
+}
+/* 确保 btn 本身有过渡效果 */
+.btn { transition: background-color 0.15s ease; }
+
+/* 表格操作按钮间距 */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+}
+th, td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+}
+th { background: rgba(var(--bg-rgb), 0.6); font-weight: 600; }
+.status-ok { color: var(--success); }
+.status-deploying { color: #f59e0b; }
+.status-undepoyed { color: var(--danger); }
+.copy-btn { background: transparent; border: none; cursor: pointer; color: var(--primary); }
+/* 语言复选框布局 */
+.language-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    padding: 4px 0;
+}
+.lang-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+.lang-checkbox input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.checkbox-group input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+.checkbox-group label {
+    margin: 0;
+    cursor: pointer;
+}
+.checkbox-group .hint {
+    flex-basis: 100%;
+    margin-top: 4px;
+}
+.enhance-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+    color: var(--text, #333);
+    cursor: pointer;
+    user-select: none;
+}
+.enhance-toggle input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+    cursor: pointer;
+}
+.language-radios {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    padding: 4px 0;
+}
+.lang-radio {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+.lang-radio input[type="radio"] {
+    width: auto;
+    margin: 0;
+}
+.hint {
+    font-size: 0.85rem;
+    color: var(--gray);
+    margin-top: 2px;
+}
+.hint-inline {
+    font-size: 0.85rem;
+    color: var(--gray);
+    margin-left: 8px;
+}
+.input-error {
+    border-color: var(--danger) !important;
+}
+.error-hint {
+    color: var(--danger);
+    font-size: 0.85rem;
+    margin-top: 2px;
+}
+
+/* 删除确认模态框内部布局 */
+.delete-confirm-body {
+    margin: 8px 0 4px 0;
+}
+.delete-confirm-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    margin-top: 16px;
+}
+
+/* ===================== 内部侧边栏（合并布局） ===================== */
+.studio-layout {
+    display: flex;
+    min-height: 100vh;
+    box-sizing: border-box;
+    padding-top: 44px; /* 让位给 fixed 全局音量条 */
+}
+.studio-sidebar {
+    width: var(--sidebar-w);
+    flex: 0 0 var(--sidebar-w);
+    position: sticky;
+    top: 44px;
+    align-self: flex-start;
+    height: calc(100vh - 44px);
+    box-sizing: border-box;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+    backdrop-filter: blur(6px);
+    padding: 16px 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+.studio-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    color: var(--text);
+    padding: 4px 0;
+}
+.brand-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+.brand-text {
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+    letter-spacing: 3px;
+    font-size: 0.8rem;
+}
+.sidebar-divider {
+    width: 44px;
+    height: 2px;
+    background: var(--gray);
+    opacity: 0.5;
+    margin: 6px 0;
+}
+.studio-nav {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+.nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px 4px;
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--gray);
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.nav-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+.nav-label {
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+    letter-spacing: 2px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+.nav-item:hover {
+    background: rgba(var(--bg-rgb), 0.55);
+    color: var(--text);
+}
+.nav-item.active {
+    background: var(--sidebar-active);
+    color: #fff;
+    font-weight: 600;
+}
+.studio-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 24px 40px 24px;
+    box-sizing: border-box;
+}
+
+/* ===================== 合成记录视图专属 ===================== */
+.toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.filter-label { color: var(--gray); font-size: 0.9rem; }
+.filter-select {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px 10px;
+    font-size: 0.9rem;
+}
+.count-hint { color: var(--gray); font-size: 0.85rem; }
+
+.record-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.record-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    background: rgba(var(--bg-rgb), 0.6);
+    animation: content-fade-in 0.25s ease both;
+}
+.record-main { min-width: 0; flex: 1; }
+.record-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+.badge {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--border);
+    color: var(--text);
+    white-space: nowrap;
+}
+.badge-chat { background: #dbeafe; color: #1e40af; }
+.badge-preview { background: #dcfce7; color: #166534; }
+.badge-design_preview { background: #fef3c7; color: #92400e; }
+.badge-agent { background: #fae8ff; color: #86198f; }
+[data-theme="dark"] .badge-chat { background: #1e3a8a; color: #bfdbfe; }
+[data-theme="dark"] .badge-preview { background: #14532d; color: #bbf7d0; }
+[data-theme="dark"] .badge-design_preview { background: #78350f; color: #fde68a; }
+[data-theme="dark"] .badge-agent { background: #701a75; color: #f5d0fe; }
+
+.provider { font-weight: 600; font-size: 0.95rem; }
+.time { color: var(--gray); font-size: 0.8rem; }
+/* 音频格式标签：中性描边小标签，区别于彩色来源徽章 */
+.format-tag {
+    font-size: 0.7rem;
+    padding: 1px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    color: var(--gray);
+    background: transparent;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+.record-text {
+    font-size: 0.95rem;
+    margin-bottom: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.record-meta {
+    display: flex;
+    gap: 14px;
+    color: var(--gray);
+    font-size: 0.8rem;
+    flex-wrap: wrap;
+}
+/* 合成参数：紧凑的「标签:值」小芯片，区别于来源徽章与格式标签 */
+.record-params {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 5px;
+}
+.param-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.72rem;
+    padding: 1px 8px;
+    border-radius: 6px;
+    background: rgba(127, 127, 127, 0.16);
+    color: var(--gray);
+    white-space: nowrap;
+}
+.param-key { opacity: 0.85; }
+.param-val {
+    font-weight: 600;
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+[data-theme="dark"] .param-chip { background: rgba(255, 255, 255, 0.1); }
+
+/* 记录卡片「展开详情」：点击后在卡片内换行显示，分 AI 增强参数 / 配置参数两组 */
+.record-detail {
+    flex: 1 1 100%;
+    margin-top: 4px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.detail-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--gray);
+    margin-bottom: 5px;
+    letter-spacing: 0.02em;
+}
+.detail-grid {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.detail-empty { color: var(--gray); font-size: 0.8rem; }
+/* 幽灵按钮（详情展开/收起），与实色按钮区分 */
+.btn-ghost {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--gray);
+}
+.btn-ghost:hover { background: rgba(127, 127, 127, 0.12); }
+.record-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+.empty-state {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--gray);
+}
+
+/* ===================== 模态框 / 通知条（全局，来自 tts_manager） ===================== */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    /* 用 vw/vh 而非 100%：经典滚动条会占掉约 15px，100% 会在右侧留下未变暗的竖条 */
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 999;
+}
+.modal-content {
+    background: rgba(var(--bg-rgb), 0.85);
+    color: var(--text);
+    padding: 24px;
+    border-radius: 8px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+/* 模态框出入场：由模板里的 <Transition name="modal"> 驱动。
+   动画类播放完毕即被 Vue 移除，元素回归无变换/无过渡的常态，
+   不会像 animation-fill-mode: both 那样留下合成层（层叠上下文）或单位矩阵变换（包含块） */
+.modal-enter-active {
+    transition: opacity 0.2s ease;
+}
+.modal-leave-active {
+    transition: opacity 0.15s ease;
+}
+.modal-enter-from,
+.modal-leave-to {
+    opacity: 0;
+}
+.modal-enter-active .modal-content {
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.modal-leave-active .modal-content {
+    transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.modal-enter-from .modal-content,
+.modal-leave-to .modal-content {
+    transform: translateY(8px) scale(0.97);
+    opacity: 0;
+}
+.modal-content h3 {
+    margin-top: 0;
+}
+.modal-content .form-group textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: rgba(var(--bg-rgb), 0.75);
+    color: var(--text);
+    resize: vertical;
+}
+/* 合成 / 关闭 行：左侧为合成后的播放器 + 时长提示，右侧为 合成 / 关闭 按钮 */
+.preview-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+.preview-play {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.preview-hint {
+    color: var(--gray);
+    font-size: 0.85rem;
+}
+/* margin-left:auto 保证「合成 / 关闭」始终靠右，不随左侧播放器出现与否而左右跳动 */
+.preview-buttons {
+    display: flex;
+    gap: 12px;
+    margin-left: auto;
+}
+.toast {
+    position: fixed;
+    bottom: 20px;
+    /* 50vw 而非 50%：经典滚动条下 50% 会偏左约 7px */
+    left: 50vw;
+    transform: translateX(-50%);
+    background: var(--primary);
+    color: white;
+    padding: 10px 20px;
+    border-radius: var(--radius);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    z-index: 1000;
+    font-size: 0.9rem;
+}
+.toast-error {
+    background: var(--danger);
+}
+/* Toast 出入场：同样由 <Transition name="toast"> 驱动。
+   注意 .toast 常态 transform: translateX(-50%) 承担水平居中（left: 50vw 方案），
+   动画端点必须写成 translateX(-50%) translateY(...) 的组合形式 */
+.toast-enter-active {
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.toast-leave-active {
+    transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.toast-enter-from,
+.toast-leave-to {
+    transform: translateX(-50%) translateY(16px);
+    opacity: 0;
+}
+
+/* 减少动态效果偏好：关闭内容淡入动画与背景图淡入过渡，直接呈现 */
+@media (prefers-reduced-motion: reduce) {
+    .page-content { animation: none; }
+    .tab-pane { animation: none; }
+    .tab-indicator { transition: none; }
+    #page-bg-img { transition: none; }
+    .global-volume-bar { animation: none; }
+    .record-card { animation: none; }
+    .spinner { animation: none; }
+    .modal-enter-active, .modal-leave-active,
+    .modal-enter-active .modal-content, .modal-leave-active .modal-content {
+        transition: none;
+    }
+    .toast-enter-active, .toast-leave-active {
+        transition: none;
+    }
+    .nav-item { transition: none; }
+}
