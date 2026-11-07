@@ -197,13 +197,16 @@ class TTSEnhancerPlugin(Star):
         # 合成记录存储：落盘所有合成过的语音，供「合成记录」管理页使用
         synthesis_records_dir = self.plugin_data_path / "synthesis_records"
         synthesis_records_dir.mkdir(parents=True, exist_ok=True)
-        # 0 = 关闭落盘；-1 = 不限制；正整数 = 保留最近 N 份（由 SynthesisRecordStore 解释）
+        # 0 或负数 = 关闭落盘；正整数 = 保留最近 N 份（不支持「不限制」）。
+        # 负数在此统一钳为 0，避免「-1 不限制」语义在多处打架。
         # 注意：不能用 `or 50` 兜底，否则会把 0 误判成「未配置」而变成 50。
         _max_raw = self.config.get("synthesis_record_max", 50)
         try:
             synthesis_max = int(_max_raw)
         except (TypeError, ValueError):
             synthesis_max = 50
+        if synthesis_max < 0:
+            synthesis_max = 0
         self.synthesis_store = SynthesisRecordStore(
             records_dir=synthesis_records_dir,
             kv=self,
@@ -225,6 +228,24 @@ class TTSEnhancerPlugin(Star):
 
         # 注册路由
         self._register_routes()
+
+    async def initialize(self) -> None:
+        """插件激活时由 AstrBot 调用：执行一次性启动对账。
+
+        对齐磁盘音频文件与 KV 索引，清理孤儿文件与悬挂索引项，保证「合成记录」
+        管理页的数据一致（详见 ``SynthesisRecordStore.reconcile``）。任何异常都
+        被静默吞掉，绝不影响插件正常激活。
+        """
+        await super().initialize()
+        if self.synthesis_store is not None:
+            try:
+                removed = await self.synthesis_store.reconcile()
+                if removed:
+                    logger.info(
+                        f"[TTS Enhancer] 启动对账清理 {removed} 条孤儿/悬挂记录"
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"[TTS Enhancer] 启动对账失败（已跳过）: {exc}")
 
     def _resolve_uploads_path(self, file_id: str) -> Path:
         """将 file_id 解析为 uploads 目录下的绝对路径，并二次确认未越权。

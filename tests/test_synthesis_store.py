@@ -2,11 +2,13 @@
 
 覆盖：
 - add 落盘音频 + 写入 KV 元数据 + 倒序列表
+- add_from_path 直接拷贝源文件落盘（省去读回内存）
 - get_record / get_audio_bytes 往返
 - delete 删除记录与音频文件
 - clear 清空并回报删除条数
 - record_from_base64 解码 / 非法 / 超限 / 关闭
 - 最多保留份数的 LRU 淘汰（删除最旧 + 删文件）
+- reconcile 对账：清理孤儿音频文件 / 剔除悬挂索引项 / 空索引安全护栏
 - 安全 id 白名单拒绝路径穿越
 - 关闭状态下 add 跳过但既有记录仍可读
 
@@ -316,3 +318,111 @@ class TestDisabledStore:
         # 既有记录仍可读 / 可删
         assert await store.list_records() == [rec]
         assert await store.delete(rec["id"]) is True
+
+
+class TestAddFromPath:
+    async def test_copies_source_file_and_records(self, tmp_path):
+        store = _make_store(tmp_path)
+        # 源文件位于 records_dir 之外（模拟合成器产出的临时文件）
+        src = tmp_path / "tmp_audio.mp3"
+        src.write_bytes(SAMPLE)
+        rec = await store.add_from_path(
+            source_path=str(src),
+            source=SOURCE_PREVIEW,
+            provider="Fish",
+            text="预览",
+            fmt="mp3",
+        )
+        assert rec is not None
+        assert rec["source"] == SOURCE_PREVIEW
+        assert rec["provider"] == "Fish"
+        # 落盘到 records_dir 且内容一致（直接拷贝，无读回内存）
+        dest = tmp_path / "rec" / rec["file"]
+        assert dest.is_file()
+        assert dest.read_bytes() == SAMPLE
+        # 源文件保持不动（拷贝而非移动）
+        assert src.is_file()
+        assert rec["size"] == len(SAMPLE)
+
+    async def test_missing_or_empty_source_returns_none(self, tmp_path):
+        store = _make_store(tmp_path)
+        assert (
+            await store.add_from_path(
+                source_path=str(tmp_path / "nope.mp3"),
+                source="chat",
+                provider="p",
+                text="x",
+                fmt="mp3",
+            )
+            is None
+        )
+        empty = tmp_path / "empty.mp3"
+        empty.write_bytes(b"")
+        assert (
+            await store.add_from_path(
+                source_path=str(empty),
+                source="chat",
+                provider="p",
+                text="x",
+                fmt="mp3",
+            )
+            is None
+        )
+        assert await store.list_records() == []
+
+    async def test_disabled_store_skips(self, tmp_path):
+        store = _make_store(tmp_path, max_records=0)
+        src = tmp_path / "s.mp3"
+        src.write_bytes(SAMPLE)
+        assert (
+            await store.add_from_path(
+                source_path=str(src),
+                source="chat",
+                provider="p",
+                text="x",
+                fmt="mp3",
+            )
+            is None
+        )
+
+
+class TestReconcile:
+    async def test_removes_orphan_files(self, tmp_path):
+        store = _make_store(tmp_path)
+        await _seed(store, 1)
+        # 人为丢一个未被索引引用的孤儿文件
+        orphan = tmp_path / "rec" / "rec_orphan.mp3"
+        orphan.write_bytes(SAMPLE)
+        removed = await store.reconcile()
+        assert removed == 1
+        assert not orphan.exists()
+        # 既有记录音频仍在
+        assert len(await store.list_records()) == 1
+
+    async def test_prunes_dangling_index_entries(self, tmp_path):
+        store = _make_store(tmp_path)
+        ids = await _seed(store, 2)
+        # 删掉第一条记录的音频文件（磁盘缺失），模拟悬挂索引项
+        (tmp_path / "rec" / f"{ids[0]}.mp3").unlink()
+        removed = await store.reconcile()
+        assert removed == 1
+        listed = await store.list_records()
+        assert len(listed) == 1
+        assert listed[0]["id"] == ids[1]
+
+    async def test_empty_index_does_not_delete_files(self, tmp_path):
+        store = _make_store(tmp_path)
+        # 索引为空但磁盘有文件：安全护栏，绝不应删除
+        leftover = tmp_path / "rec" / "rec_leftover.mp3"
+        leftover.write_bytes(SAMPLE)
+        assert await store.reconcile() == 0
+        assert leftover.exists()
+
+    async def test_foreign_file_untouched(self, tmp_path):
+        store = _make_store(tmp_path)
+        await _seed(store, 1)
+        foreign = tmp_path / "rec" / "not_a_record.txt"
+        foreign.write_bytes(b"x")
+        removed = await store.reconcile()
+        assert removed == 0  # 非本模块文件名，不动
+        assert foreign.exists()

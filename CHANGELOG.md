@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 - **统一管理页 `pages/tts_studio`（合并音色管理与合成记录）**：原独立的「音色管理页 `pages/tts_manager`」与「合成记录页 `pages/synthesis_records`」合并为单一单页应用；左栏切换「音色管理 / 合成记录」两个视图，一次进入即可同时管理音色与回放历史，无需在两页间跳转。
 - **合成记录功能（首次发布）**：每次 TTS 合成（聊天语音 / 音色预览 / 设计试听 / Agent 主动发送）均落盘为一条记录；管理页内可回放音频、查看元数据（来源 / 供应商 / 时间 / 文本 / 格式 / 时长 / 体积 / 增强参数 / 配置快照）并支持单条删除与一键清空。新增后端路由 `/<name>/synthesis-records`（列表）、`/synthesis-records/audio`、`/synthesis-records/delete`、`/synthesis-records/clear`、`/synthesis-records/record`（前端回传试听音频）。
-- **合成记录存储迁移至 AstrBot 官方 KV**：新增 `src/synthesis_store.py`（`SynthesisRecordStore`），元数据存于官方 KV 单 key `synthesis_index`（按插件命名空间自动隔离），音频二进制落 `plugin_data/synthesis_records/`；全部写入经 `asyncio.Lock` 串行化，删除 / 取音频复用安全文件名白名单防路径穿越；新增配置项 `synthesis_record_max`（0 / 负数关闭落盘、`-1` 不限制、正整数保留最近 N 份、默认 50）控制保留策略。新增单元测试 `tests/test_synthesis_store.py` 与 `tests/test_synthesis_routes.py`。
+- **合成记录存储迁移至 AstrBot 官方 KV**：新增 `src/synthesis_store.py`（`SynthesisRecordStore`），元数据存于官方 KV 单 key `synthesis_index`（按插件命名空间自动隔离），音频二进制落 `plugin_data/synthesis_records/`；全部写入经 `asyncio.Lock` 串行化，删除 / 取音频复用安全文件名白名单防路径穿越；新增配置项 `synthesis_record_max`（0 或负数关闭落盘；正整数保留最近 N 份；默认 50；**不支持「不限制」**，以避免无上限占满磁盘）控制保留策略。新增单元测试 `tests/test_synthesis_store.py` 与 `tests/test_synthesis_routes.py`。
 
 ### Changed
 
@@ -24,9 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Removed
 
-- **`pages/tts_manager/` 整目录**：已被统一 `pages/tts_studio` 取代（旧代码归档至 `_archive/tts_manager`）。
+- **`pages/tts_manager/`**：已被统一 `pages/tts_studio` 取代（经 git 重命名保留历史，不再作为独立页面维护）。
 - **合成记录本地 JSON 索引方案**：元数据统一改为官方 KV 存储层，旧 JSON 索引不再读取。
 - **调试开关 `log_enhanced_params`（打印增强参数到日志）**：合成记录已持久化增强参数，该开关冗余，已从代码 / 配置 schema / 文档 / 测试一并移除。
+
+### Fixed
+
+- **合成记录落盘不再阻塞 TTS 主链路**：落盘改为后台任务（调用方 `asyncio.create_task` 即返回），且音频文件用 `shutil.copyfile` 直接拷贝、音频时长探测经 `asyncio.to_thread` 卸载到线程，消除了「先 `read_bytes` 读回内存再 `write_bytes` 写回」的双倍磁盘 IO 与事件循环阻塞。
+- **KV 索引与磁盘音频对账**：新增 `SynthesisRecordStore.reconcile()`，插件激活时清理磁盘孤儿音频文件（存在但未被索引引用）与指向缺失文件的悬挂索引项；同时 KV 索引写回失败时回滚刚写入的音频文件，避免历史/异常场景下孤儿文件累积占满磁盘。
+- **统一 `synthesis_record_max` 语义**：负数（含 `-1`）现在统一视为「关闭落盘」（配置读取与 `set_max_records` 均钳为 0），彻底移除「-1 不限制」的歧义，避免无上限占满磁盘。
 
 ## [0.6.0] - 2026-11-03
 

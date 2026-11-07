@@ -16,10 +16,13 @@
 
 import asyncio
 import re
+import shutil
 import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
+from astrbot.api import logger
 
 # 合成来源（source）常量与中文标签
 SOURCE_CHAT = "chat"  # 聊天语音（发给某个 UMO / Agent 发送）
@@ -136,8 +139,11 @@ class SynthesisRecordStore:
     # —————— 配置热更新（AstrBot 重载插件时重建实例，这里主要给测试用） ——————
 
     def set_max_records(self, value: int) -> None:
-        """更新最多保留份数（0 关闭 / -1 不限制 / 正整数保留最近 N 份）。"""
-        self.max_records = value
+        """更新最多保留份数（0 或负数关闭落盘 / 正整数保留最近 N 份）。
+
+        负数会被钳为 0（关闭落盘），本存储层不支持「不限制」。
+        """
+        self.max_records = value if value > 0 else 0
 
     # —————— 元数据读写（走官方 KV，单 key 存全量列表） ——————
 
@@ -201,7 +207,13 @@ class SynthesisRecordStore:
             records = await self._read_index()
             rec_id = f"rec_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
             filename = f"{rec_id}.{ext}"
-            (self.records_dir / filename).write_bytes(audio_bytes)
+            dest = self.records_dir / filename
+            # 落盘音频：写文件是阻塞 IO，卸载到线程，避免卡住事件循环。
+            try:
+                await asyncio.to_thread(dest.write_bytes, audio_bytes)
+            except OSError as exc:
+                logger.warning(f"合成记录音频落盘失败（已跳过）: {exc}")
+                return None
             record = {
                 "id": rec_id,
                 "created_at": datetime.now(timezone.utc).isoformat(),
@@ -218,15 +230,167 @@ class SynthesisRecordStore:
             }
             records.append(record)
             # 超出保留上限：按时间升序淘汰最旧的，并删除其音频文件。
-            # 仅当 max_records > 0 时生效；-1 表示不限制，0 表示已关闭。
+            # max_records 已被调用方钳为 >=0，仅正整数生效；0 表示已关闭。
             if self.max_records > 0 and len(records) > self.max_records:
                 records.sort(key=lambda r: r.get("created_at", ""))
                 excess = records[: len(records) - self.max_records]
                 for old in excess:
                     self._delete_file(old.get("file"))
                 records = records[len(records) - self.max_records :]
-            await self._write_index(records)
+            try:
+                await self._write_index(records)
+            except Exception as exc:  # noqa: BLE001
+                # KV 索引写回失败：回滚刚写入的音频文件，避免产生孤儿文件。
+                self._delete_file(filename)
+                logger.warning(f"合成记录索引写回失败，已回滚音频文件: {exc}")
+                return None
             return record
+
+    async def add_from_path(
+        self,
+        *,
+        source_path: str,
+        source: str,
+        provider: str,
+        text: str,
+        fmt: str,
+        source_detail: str = "",
+        duration: float | None = None,
+        params: dict | None = None,
+        config: dict | None = None,
+    ) -> dict | None:
+        """从已有音频文件直接落盘一条合成记录（省去读回内存那一步）。
+
+        与 :meth:`add` 不同，本方法用 ``shutil.copyfile`` 把 ``source_path``
+        直接拷贝到 ``records_dir``，避免「先 read_bytes 再 write_bytes」带来的
+        双倍磁盘 IO；所有阻塞 IO（拷贝 / 索引写回）均经 ``asyncio.to_thread``
+        卸载到线程，绝不阻塞事件循环。索引写回失败时同样回滚刚写入的音频文件。
+
+        Args:
+            source_path: 已有音频文件的绝对路径（合成器产出的临时文件）。
+            source: 合成来源（见本模块 SOURCE_* 常量）。
+            provider: 供应商显示名。
+            text: 合成文本。
+            fmt: 音频格式（扩展名或 MIME 子类型）。
+            source_detail: 来源补充信息（如 UMO 标识）。
+            duration: 音频时长（秒），可为 None。
+            params: AI 增强参数；为 None 时记为空 dict。
+            config: 本次合成使用的供应商配置快照；为 None 时记为空 dict。
+
+        Returns:
+            成功时返回记录 dict；已关闭（max_records<=0）/ 源文件缺失或为空时返回 None。
+        """
+        if self.max_records <= 0 or not source_path:
+            return None
+        src = Path(source_path)
+        # 前置校验：源文件必须存在且非空，避免拷空文件或异常。
+        try:
+            if not src.is_file() or src.stat().st_size == 0:
+                return None
+        except OSError:
+            return None
+        ext = _normalize_ext(fmt)
+        async with self._lock:
+            records = await self._read_index()
+            rec_id = f"rec_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
+            filename = f"{rec_id}.{ext}"
+            dest = self.records_dir / filename
+            # 直接拷贝源文件（阻塞 IO，卸载到线程）。
+            try:
+                await asyncio.to_thread(shutil.copyfile, str(src), str(dest))
+            except OSError as exc:
+                logger.warning(f"合成记录音频落盘失败（已跳过）: {exc}")
+                return None
+            record = {
+                "id": rec_id,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "source": source,
+                "source_detail": source_detail or "",
+                "provider": provider or "",
+                "text": text or "",
+                "format": ext,
+                "duration": duration,
+                "size": dest.stat().st_size,
+                "file": filename,
+                "params": params or {},
+                "config": config or {},
+            }
+            records.append(record)
+            if self.max_records > 0 and len(records) > self.max_records:
+                records.sort(key=lambda r: r.get("created_at", ""))
+                excess = records[: len(records) - self.max_records]
+                for old in excess:
+                    self._delete_file(old.get("file"))
+                records = records[len(records) - self.max_records :]
+            try:
+                await self._write_index(records)
+            except Exception as exc:  # noqa: BLE001
+                self._delete_file(filename)
+                logger.warning(f"合成记录索引写回失败，已回滚音频文件: {exc}")
+                return None
+            return record
+
+    async def reconcile(self) -> int:
+        """启动对账：对齐磁盘音频与 KV 索引，清理孤儿文件与悬挂索引项。
+
+        - 孤儿文件：``records_dir`` 中存在、但未被任何索引记录引用的音频文件
+          （多因历史 KV 写失败 / 索引被清空而产生），予以删除。
+        - 悬挂索引项：索引中引用的音频文件在磁盘已缺失的记录，从索引剔除并
+          写回，避免管理页列出无法播放的条目。
+
+        安全护栏：当索引整体为空（或读取异常）时，**不**删除任何磁盘文件——
+        此时无法可靠区分「确实无记录」与「索引暂不可达」，保守起见保留磁盘文件。
+
+        Returns:
+            被清理的条目总数（孤儿文件数 + 悬挂索引项数）。
+        """
+        async with self._lock:
+            records = await self._read_index()
+            if not isinstance(records, list) or not records:
+                # 索引为空：保守跳过，避免误删磁盘上可能仍有效的音频。
+                return 0
+            referenced = {
+                r.get("file") for r in records if isinstance(r, dict) and r.get("file")
+            }
+            try:
+                on_disk = [p for p in self.records_dir.iterdir() if p.is_file()]
+            except OSError:
+                on_disk = []
+            removed = 0
+            # 1) 孤儿文件：磁盘有、索引未引用。仅动本模块产出的音频文件
+            #    （以 "rec_" 前缀开头且扩展名在白名单内），绝不误删其它文件
+            #    （如 .txt / 临时文件 / 非 rec_ 前缀的文件）。
+            for p in on_disk:
+                name = p.name
+                if not name.startswith("rec_"):
+                    continue
+                suffix = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+                if suffix not in _ALLOWED_AUDIO_EXT:
+                    continue
+                if name not in referenced:
+                    try:
+                        p.unlink()
+                        removed += 1
+                    except OSError:
+                        pass
+            # 2) 悬挂索引项：索引有、磁盘文件缺失 → 剔除并写回索引。
+            alive: list[dict] = []
+            for r in records:
+                fname = r.get("file")
+                if (
+                    fname
+                    and _SAFE_ID_RE.match(fname)
+                    and (self.records_dir / fname).is_file()
+                ):
+                    alive.append(r)
+                else:
+                    removed += 1
+            if len(alive) != len(records):
+                try:
+                    await self._write_index(alive)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(f"合成记录对账后索引写回失败: {exc}")
+            return removed
 
     async def list_records(self) -> list[dict]:
         """返回全部记录，按合成时间倒序（最新在前）。"""

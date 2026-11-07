@@ -51,6 +51,8 @@ class TTSService:
         self.config = config
         self.audio_data_dir = audio_data_dir
         self.synthesis_store = synthesis_store
+        # 后台落盘任务集合：避免 asyncio.create_task 产生的任务被 GC 提前回收。
+        self._record_tasks: set[asyncio.Task] = set()
         self.sub_agent = TTSSubAgent(context, config.raw_config)
         # LivingMemory 桥接：合成前召回长期记忆作为 SubAgent 上下文（未安装时自动降级）
         self.lm_bridge = LivingMemoryBridge(context)
@@ -309,7 +311,7 @@ class TTSService:
                 logger.warning(f"纯文本 TTS 失败 ({entry_name}): {e}")
                 return None, raw_text
             if audio_path:
-                await self._record_synthesis(
+                self._spawn_record(
                     audio_path,
                     raw_text,
                     entry_name,
@@ -374,7 +376,7 @@ class TTSService:
             )
             if audio_path:
                 logger.info(f"TTS 合成成功，供应商: {entry_name}")
-                await self._record_synthesis(
+                self._spawn_record(
                     audio_path,
                     enhanced_text,
                     entry_name,
@@ -428,6 +430,33 @@ class TTSService:
         ext = Path(audio_path).suffix.lstrip(".") or "mp3"
         return audio_path, ext
 
+    def _spawn_record(
+        self,
+        audio_path: str,
+        text: str,
+        provider: str,
+        event: AstrMessageEvent | None,
+        source: str = SOURCE_CHAT,
+        params: dict | None = None,
+        config: dict | None = None,
+    ) -> None:
+        """后台触发一次合成记录落盘，绝不阻塞调用方（TTS 主链路）。
+
+        通过 ``asyncio.create_task`` 把 :meth:`_record_synthesis` 派发到事件循环，
+        立即返回；落盘本身的阻塞 IO（文件拷贝、时长探测）会在其内部经
+        ``asyncio.to_thread`` 卸载到线程，进一步避免占用事件循环。任务引用保存在
+        ``self._record_tasks`` 中，完成后自动移除，防止被提前回收。
+        """
+        if self.synthesis_store is None or self.synthesis_store.max_records <= 0:
+            return
+        task = asyncio.create_task(
+            self._record_synthesis(
+                audio_path, text, provider, event, source, params, config
+            )
+        )
+        self._record_tasks.add(task)
+        task.add_done_callback(self._record_tasks.discard)
+
     async def _record_synthesis(
         self,
         audio_path: str,
@@ -438,7 +467,11 @@ class TTSService:
         params: dict | None = None,
         config: dict | None = None,
     ) -> None:
-        """把一次成功的合成结果落盘为合成记录（失败静默跳过，绝不阻塞 TTS）。
+        """把一次成功的合成结果落盘为合成记录（后台任务，失败静默跳过）。
+
+        由 :meth:`_spawn_record` 经 ``asyncio.create_task`` 调用，因此任何异常都
+        不应冒泡影响当次 TTS 合成。内部所有阻塞 IO（直接拷贝音频文件、探测音频
+        时长）均经 ``asyncio.to_thread`` 卸载到线程，不占用事件循环。
 
         Args:
             audio_path: 合成产生的音频文件绝对路径。
@@ -454,26 +487,22 @@ class TTSService:
         if self.synthesis_store is None or self.synthesis_store.max_records <= 0:
             return
         try:
-            from pathlib import Path as _Path
-
-            data = _Path(audio_path).read_bytes()
-            if not data:
-                return
+            # 音频时长探测（mediainfo/ffprobe 子进程）放到线程，避免阻塞循环。
+            duration = None
+            try:
+                duration = await asyncio.to_thread(get_audio_duration, audio_path)
+            except Exception:  # noqa: BLE001
+                duration = None
             detail = ""
             if event is not None:
                 detail = getattr(event, "unified_msg_origin", "") or ""
-            duration = None
-            try:
-                duration = get_audio_duration(audio_path)
-            except Exception:
-                duration = None
-            fmt = _Path(audio_path).suffix.lstrip(".") or "mp3"
-            await self.synthesis_store.add(
-                audio_bytes=data,
+            # 直接按源文件路径落盘（shutil.copyfile），省去读回内存那一步。
+            await self.synthesis_store.add_from_path(
+                source_path=audio_path,
                 source=source,
                 provider=provider,
                 text=text,
-                fmt=fmt,
+                fmt=Path(audio_path).suffix.lstrip(".") or "mp3",
                 source_detail=detail,
                 duration=duration,
                 params=params,
