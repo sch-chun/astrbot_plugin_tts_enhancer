@@ -25,12 +25,16 @@ class FakeSubAgent:
 
     async def call(
         self,
-        event,
-        sys_prompt,
+        system_prompt,
         user_message,
-        context_messages,
-        persona,
+        session_id=None,
+        *,
+        context_messages=None,
+        persona="",
         tool_set=None,
+        adapter=None,
+        max_attempts=2,
+        memory_context="",
         **kwargs,
     ):
         self.calls.append({"tool_set": tool_set, "persona": persona})
@@ -346,32 +350,11 @@ class TestSubAgentResultHandling:
 class TestAcceptedBehavior:
     """已接受的行为 / 上游责任的绿测守卫。
 
-    原 xfail 标记的 #14 / #15 经二轮复核判定为「生产路径不可达 / 归上游责任，故不修代码」，
+    原 xfail 标记的 #15 经二轮复核判定为「生产路径不可达 / 归上游责任，故不修代码」
+    （#14 对应的 log_enhanced_params 日志功能已在 v1.0.0 移除，其守卫用例随之删除）；
     但「不修代码 ≠ 删测试」——用例都成功构造了入参、测的是本仓库代码，故转为绿测守卫，
     既锁定当前行为又保留回归哨兵。决策与依据见 docs/zh/KNOWN_LIMITATIONS.md。
     """
-
-    async def test_unserializable_params_log_does_not_abort(
-        self, monkeypatch, conv_mgr, persona_mgr
-    ):
-        """原缺陷#14（已修代码 + 保留守卫）：log_enhanced_params 开启时 api_params 含
-        不可序列化对象，日志 json.dumps 已纳入 try，不再中断 synthesize。
-
-        守卫意义：#14「不可达」的论证前提是「api_params 三来源均为 JSON 原生类型」，而
-        sub_agent 返回路径重构后该前提可能失效；保留此用例可在新来源引入时报警。
-        """
-        adapter = RecordingAdapter(docs="# docs", return_path="/tmp/x.mp3")
-        service = _make_service(
-            monkeypatch,
-            [{"__template_key": "x"}],
-            {"log_enhanced_params": True},
-            adapter=adapter,
-            conversation_manager=conv_mgr,
-            persona_manager=persona_mgr,
-        )
-        service.sub_agent = FakeSubAgent(results=[{"text": "hi", "junk": object()}])
-        result = await service.synthesize("原始", DummyEvent(), [])
-        assert result is not None
 
     async def test_bool_context_window_silently_accepted(self, persona_mgr):
         """上游担保（原缺陷#15）：context_window 用 isinstance(x, int) 校验，

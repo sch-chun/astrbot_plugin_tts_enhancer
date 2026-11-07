@@ -105,3 +105,53 @@ class TestVoiceQueryRoute:
         handler = _make_voice_query_plugin(tmp_path, {"providers": [PROVIDER_ENTRY]})
         resp = await _call(handler, {"entry_id": 0})
         assert resp.status_code == 400
+
+
+def _make_providers_plugin(tmp_path, raw_config):
+    """构造插件并抓取已注册的 providers 路由 handler。"""
+    plugin = object.__new__(TTSEnhancerPlugin)
+    plugin.config = TTSEnhancerConfig(raw_config)
+    plugin.providers = plugin.config.get_providers()
+    plugin.plugin_data_path = Path(tmp_path)
+    plugin.name = "astrbot_plugin_tts_enhancer"
+    ctx = _RecordingContext()
+    plugin.context = ctx
+    plugin._register_routes()
+    suffix = f"/{plugin.name}/providers"
+    handler = next((h for p, h in ctx.routes.items() if p.endswith(suffix)), None)
+    assert handler is not None, "providers 路由未注册"
+    return handler
+
+
+class TestProvidersDescriptor:
+    """/providers 应作为「单一数据源」回传展示名与能力标记，前端不再硬编码。"""
+
+    async def test_enriches_display_name_and_capabilities(self, tmp_path):
+        raw_config = {
+            "providers": [
+                {"__template_key": "bailian_qwen_audio_3_0_tts", "api_key": "sk-secret-12345"},
+                {"__template_key": "fish_audio_s2", "api_key": "sk-secret-12345"},
+                {"__template_key": "minimax_speech_2_8", "api_key": "sk-secret-12345"},
+            ]
+        }
+        handler = _make_providers_plugin(tmp_path, raw_config)
+        resp = await handler()
+        body = json.loads(resp.body)
+        assert body["code"] == 0
+        by_key = {g["template_key"]: g for g in body["data"]}
+
+        # 展示名来自后端适配器的 DISPLAY_NAME，而非前端硬编码映射。
+        assert by_key["bailian_qwen_audio_3_0_tts"]["display_name"] == "百炼 Qwen Audio 3.0 TTS"
+        assert by_key["fish_audio_s2"]["display_name"] == "Fish Audio S2"
+
+        # 能力标记来自 mixin 继承关系：百炼支持音色管理、MiniMax 二者皆支持、
+        # Fish Audio 二者皆不支持。
+        assert by_key["bailian_qwen_audio_3_0_tts"]["capabilities"]["voice_management"] is True
+        assert by_key["bailian_qwen_audio_3_0_tts"]["capabilities"]["file_management"] is False
+        assert by_key["minimax_speech_2_8"]["capabilities"]["voice_management"] is True
+        assert by_key["minimax_speech_2_8"]["capabilities"]["file_management"] is True
+        assert by_key["fish_audio_s2"]["capabilities"]["voice_management"] is False
+        assert by_key["fish_audio_s2"]["capabilities"]["file_management"] is False
+
+        # ui_component 约定 = template_key，供前端按文件名懒加载组件。
+        assert by_key["minimax_speech_2_8"]["ui_component"] == "minimax_speech_2_8"

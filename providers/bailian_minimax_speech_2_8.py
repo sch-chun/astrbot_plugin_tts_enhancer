@@ -13,11 +13,13 @@ from astrbot.api import logger
 from astrbot.core.agent.tool import FunctionTool
 
 from .base import TTSProviderAdapter
+from .mixins import VoiceManageable
 from .utils import http
 from .utils.audio import save_audio_bytes
 
 
-class BailianMinimaxSpeech2_8Adapter(TTSProviderAdapter):
+class BailianMinimaxSpeech2_8Adapter(TTSProviderAdapter, VoiceManageable):
+    DISPLAY_NAME = "百炼 MiniMax Speech 2.8"
     """百炼 MiniMax Speech 2.8 TTS 适配器。
 
     通过阿里云百炼平台调用 MiniMax Speech 2.8 模型，支持 HD 和 Turbo 两种模型，

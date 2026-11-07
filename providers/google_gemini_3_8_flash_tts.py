@@ -36,6 +36,7 @@ GEMINI_TTS_MODELS = [
 
 
 class GoogleGemini3_8FlashTTSAdapter(TTSProviderAdapter):
+    DISPLAY_NAME = "Gemini 3.8 Flash TTS"
     """Google Gemini 3.8 Flash TTS 适配器。"""
 
     def __init__(self, entry: dict) -> None:

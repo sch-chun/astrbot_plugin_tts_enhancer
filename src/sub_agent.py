@@ -5,7 +5,6 @@ import traceback
 from typing import Any
 
 from astrbot.api import logger
-from astrbot.api.event import AstrMessageEvent
 from astrbot.api.star import Context
 from astrbot.core.agent.message import (
     AssistantMessageSegment,
@@ -171,9 +170,10 @@ class TTSSubAgent:
 
     async def call(
         self,
-        event: AstrMessageEvent,
         system_prompt: str,
         user_message: str,
+        session_id: str | None = None,
+        *,
         context_messages: list[dict[str, str]] | None = None,
         persona: str = "",
         tool_set: ToolSet | None = None,
@@ -183,15 +183,21 @@ class TTSSubAgent:
     ) -> dict[str, Any] | None:
         """调用 LLM 生成 TTS 参数（含工具执行与重试）。
 
+        与聊天会话解耦：不再依赖 ``AstrMessageEvent``，改由 ``session_id`` 解析
+        增强用的 LLM Provider。``session_id`` 为 None 时（预览等无会话场景），
+        使用合成标识并回退到默认聊天模型，避免误用用户会话模型产生意外费用。
+
         Args:
-            event (AstrMessageEvent): 消息事件对象，包含会话信息
             system_prompt (str): 系统提示词，用于指导 LLM 生成 TTS 参数
             user_message (str): 用户输入的消息内容
+            session_id (Optional[str]): 会话标识；用于解析增强 LLM 与 text_chat 会话键。
+                为 None 时使用合成标识并回退到默认聊天模型。
             context_messages (Optional[list[dict[str, str]]]): 对话上下文消息列表，每个消息包含 role 和 content
             persona (str): 说话人人格描述
             tool_set (Optional[ToolSet]): 可用的工具集，包含 tts_enhance 工具
             adapter (Any): 供应商适配器，用于末轮非法参数时的清洗兜底；可为 None
             max_attempts (int): 最大尝试次数（含首次）
+            memory_context (str): 长期记忆上下文（仅聊天路径注入）
 
         Returns:
             Optional[dict[str, Any]]: 成功时返回包含 TTS 参数的字典，失败时返回 None
@@ -200,9 +206,11 @@ class TTSSubAgent:
                 - 其他 TTS 相关参数（经工具校验 / 清洗后）
         """
         try:
-            session_id = event.unified_msg_origin
+            # 预览等无会话场景（session_id 为 None）时，使用合成标识，
+            # 使 get_using_provider 能解析到默认聊天模型，且 text_chat 拿到有效会话键。
+            eff_session = session_id or "tts_enhancer_preview"
 
-            provider = self._resolve_provider(session_id)
+            provider = self._resolve_provider(eff_session)
             if provider is None:
                 return None
 
@@ -225,7 +233,7 @@ class TTSSubAgent:
                 try:
                     response = await provider.text_chat(
                         prompt=prompt,
-                        session_id=session_id,
+                        session_id=eff_session,
                         system_prompt=system_prompt,
                         func_tool=tool_set,
                         tool_calls_result=pending_tool_result,

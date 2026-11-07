@@ -28,11 +28,16 @@ def test_discovery_finds_expected_adapters():
 
 
 def test_module_name_matches_template_key_convention():
-    """自动发现以模块名为 key，因此配置里的 __template_key 必须等于文件名。"""
+    """自动发现以模块名为 key，因此配置里的 __template_key 必须等于文件名。
+
+    ``base.py`` 与 ``mixins.py`` 为支撑模块而非适配器，不参与自动发现，须排除。
+    """
     py_files = {
         p.stem
         for p in (Path(__file__).parents[1] / "providers").glob("*.py")
-        if not p.name.startswith("_") and p.name != "base.py"
+        if not p.name.startswith("_")
+        and p.name != "base.py"
+        and p.name != "mixins.py"
     }
     assert set(_adapters().keys()) == py_files
 
@@ -144,7 +149,7 @@ class TestBailian3_1ModelWhitelist:
         js_path = (
             self._REPO_ROOT
             / "pages"
-            / "tts_manager"
+            / "tts_studio"
             / "components"
             / "bailian_qwen_audio_3_1_tts.js"
         )

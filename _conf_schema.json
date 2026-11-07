@@ -30,11 +30,11 @@
     "default": "当你想要发送语音时，使用 <tts></tts> 标签包裹需要转换为语音的文字。使用标签触发 TTS 相较使用工具触发能减少一轮工具调用，节约对话轮数。工具更适用于在 Agent Loop 中顺手发送语音",
     "hint": "提示词注入主模型"
   },
-  "log_enhanced_params": {
-    "description": "打印增强参数",
-    "type": "bool",
-    "default": false,
-    "hint": "开启后，会在 INFO 级别记录 SubAgent 生成的语音参数"
+  "synthesis_record_max": {
+    "description": "合成记录保留份数",
+    "type": "int",
+    "default": 50,
+    "hint": "0 或负数表示关闭合成记录落盘（不再记录新合成，但既有的记录仍可查看 / 删除）；正整数表示仅保留最近 N 份，超出自动删除最旧的；不支持「不限制」"
   },
   "page_background": {
     "description": "管理页背景图",

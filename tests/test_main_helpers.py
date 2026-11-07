@@ -7,9 +7,9 @@
 import re
 
 import pytest
-from astrbot_plugin_tts_enhancer.main import (
+from astrbot_plugin_tts_enhancer.main import TTSEnhancerPlugin
+from astrbot_plugin_tts_enhancer.src.routes.helpers import (
     _SAFE_FILE_ID_RE,
-    TTSEnhancerPlugin,
     _parse_entry_id,
     _validate_file_id,
 )
@@ -17,7 +17,7 @@ from astrbot_plugin_tts_enhancer.src.config import TTSEnhancerConfig
 from conftest import DummyEvent
 
 # P0-1 修复前的基线正则（仅用于「修复必须严格强于现状」的对照断言）。
-# 实际生效的正则以插件 main._SAFE_FILE_ID_RE 为准，避免本地复制漂移。
+# 实际生效的正则以插件 src.routes.helpers._SAFE_FILE_ID_RE 为准，避免本地复制漂移。
 _PRE_FIX_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,128}$")
 
 
@@ -179,7 +179,7 @@ class TestAcceptedBehavior:
 class TestFileIdRegexCandidate:
     """P0-1 修复后真实正则的验收标尺。
 
-    直接复用插件 ``main._SAFE_FILE_ID_RE``（修复已落地），确保测试不漂移。
+    直接复用插件 ``src.routes.helpers._SAFE_FILE_ID_RE``（修复已落地），确保测试不漂移。
     ``_PRE_FIX_FILE_ID_RE`` 仅作「修复必须严格强于现状」的对照基线。
     """
 
