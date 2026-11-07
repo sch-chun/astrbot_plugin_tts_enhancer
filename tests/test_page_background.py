@@ -4,8 +4,9 @@
 配置缺失 / 类型异常 / 路径穿越 / 文件缺失，正常返回 Data URL，
 以及 ETag 语义（稳定 / 随内容变化 / 空响应无 ETag）。
 
-路由闭包 ``get_page_background`` 写在 ``_register_routes`` 里，经替身
-context 捕获真实注册的 handler 后驱动，覆盖缓存头附加、If-None-Match
+路由闭包 ``get_page_background`` 由 ``src/routes/records.register_records`` 经
+``_register_routes`` 注册，经替身 context 捕获真实注册的 handler 后驱动，覆盖
+缓存头附加、If-None-Match
 解析（RFC 7232 弱比较：多值列表 / W/ 前缀）与 304 分支。
 无需启动 AstrBot 主程序。
 """
@@ -20,8 +21,8 @@ from starlette.datastructures import Headers
 
 pytest.importorskip("astrbot.api.star")
 
-from astrbot_plugin_tts_enhancer.main import (
-    TTSEnhancerPlugin,
+from astrbot_plugin_tts_enhancer.main import TTSEnhancerPlugin
+from astrbot_plugin_tts_enhancer.src.routes.helpers import (
     _build_page_background_response,
     _if_none_match_matches,
 )

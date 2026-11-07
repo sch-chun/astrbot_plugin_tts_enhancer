@@ -131,20 +131,6 @@ const app = createApp({
             requestAnimationFrame(() => moveTabIndicator(true));
         }
 
-        function getDisplayName(key) {
-            const map = {
-                'bailian_qwen_audio_3_0_tts': '百炼 Qwen Audio 3.0 TTS',
-                'bailian_qwen_audio_3_1_tts': '百炼 Qwen Audio 3.1 TTS',
-                'bailian_cosyvoice_v3_5': '百炼 Cosyvoice-V3.5',
-                'minimax_speech_2_8': 'MiniMax Speech 2.8',
-                'bailian_minimax_speech_2_8': '百炼 MiniMax Speech 2.8',
-                'google_gemini_3_8_flash_tts': 'Gemini 3.8 Flash TTS',
-                'mimo_v2_5_tts': 'Mimo 2.5 TTS',
-                // 未来扩展
-            };
-            return map[key] || key;
-        }
-
         let resizeRafId = 0;
         function onResize() {
             if (resizeRafId) return;
@@ -394,7 +380,6 @@ const app = createApp({
             currentComponent,
             currentEntries,
             switchTab,
-            getDisplayName,
 
             // 合成记录视图
             records,

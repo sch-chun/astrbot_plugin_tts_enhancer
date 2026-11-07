@@ -13,12 +13,12 @@ import json
 from pathlib import Path
 
 import pytest
-from astrbot_plugin_tts_enhancer.main import (
-    SOURCE_PREVIEW,
-    TTSEnhancerPlugin,
-)
+from astrbot_plugin_tts_enhancer.main import TTSEnhancerPlugin
 from astrbot_plugin_tts_enhancer.src.config import TTSEnhancerConfig
-from astrbot_plugin_tts_enhancer.src.synthesis_store import SynthesisRecordStore
+from astrbot_plugin_tts_enhancer.src.synthesis_store import (
+    SOURCE_PREVIEW,
+    SynthesisRecordStore,
+)
 
 from astrbot.api import web as web_mod
 

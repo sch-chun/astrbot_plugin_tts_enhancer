@@ -12,6 +12,7 @@ from astrbot.api import logger
 from astrbot.core.agent.tool import FunctionTool
 
 from .base import TTSProviderAdapter
+from .mixins import VoiceManageable
 from .utils import http
 from .utils.audio import save_audio_bytes
 
@@ -67,7 +68,7 @@ def _validate_clone_data_url(value: str) -> tuple[str, int]:
     return mime_type, len(audio_bytes)
 
 
-class BailianSpeechSynthesizerAdapter(TTSProviderAdapter):
+class BailianSpeechSynthesizerAdapter(TTSProviderAdapter, VoiceManageable):
     """百炼 Speech Synthesizer 端点公共基类。
     
     该适配器实现了阿里云百炼平台的 Speech Synthesizer 服务，支持通过 Function Calling

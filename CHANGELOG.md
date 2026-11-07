@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 - **修复加载期未编译模板闪现（FOUC）**：新增 `[v-cloak]{display:none}` 与挂载前的静态 `#boot-loader` 占位（挂载后由 `app.js` 移除），消除 ES 模块加载期间裸 `{{ }}` 模板短暂暴露、且模态框 / 通知条一并闪动的问题；同时移除 `.global-volume-bar` 与 `.page-content` 在加载期的 `content-fade-in` 动画。
 - **合成记录卡片视觉统一**：`.record-card` 背景改用 `rgba(var(--bg-rgb), 0.6)`，与既有半透明设计语言一致。
 - 文档同步：README（中 / 英）与 `docs/zh` 架构、开发指南的版本徽标及 `pages/tts_manager` 路径引用统一更新为 `pages/tts_studio`。
+- **后端 Web 路由按职责拆分**：原 755 行的 `main._register_routes` 巨型方法拆分为 `src/routes/` 下的 `voice`（供应商列表 + 音色 CRUD + 预览）、`file`（音频上传 + 供应商文件管理）、`kv`（通用键值存储）、`records`（合成记录管理 + 管理页背景图）四个 `register_*(plugin)`；`main._register_routes` 退化为依次调用这四个函数，`main.py` 由 1129 行降至约 250 行。
+- **供应商适配器可选能力 mixin 化**：原 `TTSProviderAdapter` 内「音色管理」「供应商文件管理」两类可选方法抽离为 `providers/mixins.py` 的 `VoiceManageable` / `FileManageable`（默认抛 `NotImplementedError`）；核心基类只保留全部适配器共享的合成 / 参数校验 / 能力文档 / 工具构建契约，让「不支持」成为结构上的能力缺失；路由侧统一用 `hasattr` 检测并返回 501，与显式 `NotImplementedError` 语义一致。
+- **前后端供应商注册对齐**：后端 `/providers` 现作为「单一数据源」回传每个供应商的 `display_name`（取自各适配器 `DISPLAY_NAME`）与 `capabilities`（是否支持音色管理 / 文件管理，由 mixin 继承关系推导），前端不再各自硬编码展示名映射，避免前后端漂移；前端 `componentMap`（「哪个 Vue 组件实现该供应商 UI」）因属前端关切保留。
 
 ### Removed
 

@@ -1,5 +1,7 @@
 """TTS Enhancer 插件配置管理模块。"""
 
+import copy
+
 from astrbot.api import logger
 
 
@@ -31,8 +33,14 @@ class TTSEnhancerConfig:
         Args:
             raw_config (Optional[dict]): 原始配置数据字典，包含 providers 等配置项。
                                          如果为None，将使用空字典作为默认配置。
+
+        注意：此处对 ``raw_config`` 做深拷贝，绝不在内部修改调用方传入的配置字典
+        （例如 ``_load_providers`` 会写入私有的 ``__resolved_name`` 字段，仅作用于
+        拷贝后的条目对象；调用方的原始 providers 配置保持干净）。
         """
-        self.raw_config = raw_config or {}
+        # 深拷贝：避免后续对 providers 条目的私有字段写入（__resolved_name 等）
+        # 回写到调用方（AstrBot）持有的原始配置字典。
+        self.raw_config = copy.deepcopy(raw_config) if raw_config else {}
         self._providers = None
         self._load_providers()
 
