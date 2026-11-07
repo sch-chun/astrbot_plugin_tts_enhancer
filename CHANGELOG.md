@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 - **合成记录落盘不再阻塞 TTS 主链路**：落盘改为后台任务（调用方 `asyncio.create_task` 即返回），且音频文件用 `shutil.copyfile` 直接拷贝、音频时长探测经 `asyncio.to_thread` 卸载到线程，消除了「先 `read_bytes` 读回内存再 `write_bytes` 写回」的双倍磁盘 IO 与事件循环阻塞。
 - **KV 索引与磁盘音频对账**：新增 `SynthesisRecordStore.reconcile()`，插件激活时清理磁盘孤儿音频文件（存在但未被索引引用）与指向缺失文件的悬挂索引项；同时 KV 索引写回失败时回滚刚写入的音频文件，避免历史/异常场景下孤儿文件累积占满磁盘。
 - **统一 `synthesis_record_max` 语义**：负数（含 `-1`）现在统一视为「关闭落盘」（配置读取与 `set_max_records` 均钳为 0），彻底移除「-1 不限制」的歧义，避免无上限占满磁盘。
+- **音色管理默认 tab / 切换兜底（防整页空白，P3）**：`fetchProviders` 默认选中的 tab 由 `visibleGroups.value[0]` 改为「既有后端 `voice_management` 能力、又在前端 `componentMap` 注册了组件」的第一个供应商（经 `firstUsableTab` 挑选）；`switchTab` 新增 `if (!comp) return` 拦截未注册组件的 tab。避免「后端新增 `VoiceManageable` 供应商、但前端尚未注册组件」时，整页音色管理视图落到空白组件。tab 筛选 / 默认选中逻辑抽到新增纯函数模块 `pages/tts_studio/voiceTabs.js`（`selectVoiceTabs` / `firstUsableTab`，与 Vue 解耦），并补 `tests/voiceTabs.test.mjs`（`node --test`、浏览器无关、6 例含 P3 回归），填补此前前端 JS 零测试覆盖的缺口。
 
 ## [0.6.0] - 2026-11-03
 

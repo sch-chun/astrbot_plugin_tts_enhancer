@@ -9,6 +9,7 @@ import BailianCosyvoiceV3_5 from './components/bailian_cosyvoice_v3_5.js';
 import MinimaxSpeech2_8 from './components/minimax_speech_2_8.js';
 import BailianMinimaxSpeech2_8 from './components/bailian_minimax_speech_2_8.js';
 import { useAudioManager, base64ToBlobUrl } from './composables/useAudioManager.js';
+import { selectVoiceTabs, firstUsableTab } from './voiceTabs.js';
 
 const bridge = window.AstrBotPluginPage;
 
@@ -77,14 +78,16 @@ const app = createApp({
             'minimax_speech_2_8': MinimaxSpeech2_8,
             'bailian_minimax_speech_2_8': BailianMinimaxSpeech2_8,
             // template_key → 前端 Vue 组件，仅负责「该供应商的 UI 由哪个组件实现」。
-            // tab 可见性已由后端 capabilities.voice_management 决定；此处只需在新增支持
-            // 音色管理的供应商时同步注册其组件，否则该 tab 会渲染空白。
+            // 可见性已由后端 capabilities.voice_management 决定（见 visibleGroups），不再依赖此 map；
+            // 若新增支持音色管理的供应商，务必在此同步注册组件，否则 switchTab 会
+            // 以 `if (!comp) return` 拦截该 tab（点击无响应、视图不会空白）。
         };
 
         const visibleGroups = computed(() =>
             // tab 可见性由后端 capabilities.voice_management 决定（单一数据源），
             // 不再依赖前端 componentMap 硬编码，避免「后端说支持、前端 tab 不显示」的漂移。
-            groups.value.filter(g => g.capabilities?.voice_management)
+            // 筛选逻辑抽到 voiceTabs.js 的 selectVoiceTabs，便于单测（tests/voiceTabs.test.mjs）。
+            selectVoiceTabs(groups.value)
         );
 
         async function fetchProviders() {
@@ -94,9 +97,15 @@ const app = createApp({
                 const data = result.data || result;
                 groups.value = data;
                 if (visibleGroups.value.length > 0) {
-                    currentTab.value = visibleGroups.value[0].template_key;
-                    switchTab(currentTab.value);
-                    requestAnimationFrame(() => moveTabIndicator(false));
+                    // 默认选中第一个「既有后端能力、又注册了前端组件」的供应商，
+                    // 避免排序后第一个恰好是未注册组件者，导致整个音色管理视图空白（P3）。
+                    // 选择逻辑抽到 voiceTabs.js 的 firstUsableTab，便于单测。
+                    const first = firstUsableTab(visibleGroups.value, (k) => Boolean(componentMap[k]));
+                    if (first) {
+                        currentTab.value = first.template_key;
+                        switchTab(currentTab.value);
+                        requestAnimationFrame(() => moveTabIndicator(false));
+                    }
                 }
             } catch (e) {
                 console.error('获取供应商列表失败:', e);
@@ -128,10 +137,13 @@ const app = createApp({
         function switchTab(templateKey) {
             const group = groups.value.find(g => g.template_key === templateKey);
             if (!group) return;
+            const comp = componentMap[templateKey];
+            // 后端标记支持音色管理、但前端尚未注册组件的供应商：直接拦截，
+            // 避免切到空组件导致整页音色管理视图变空白（P3，对照 componentMap 注释）。
+            if (!comp) return;
             currentTab.value = templateKey;
             currentEntries.value = group.entries;
-            const comp = componentMap[templateKey];
-            currentComponent.value = comp || null;
+            currentComponent.value = comp;
             requestAnimationFrame(() => moveTabIndicator(true));
         }
 
