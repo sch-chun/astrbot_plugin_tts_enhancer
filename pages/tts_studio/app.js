@@ -76,11 +76,15 @@ const app = createApp({
             'bailian_cosyvoice_v3_5': BailianCosyvoiceV3_5,
             'minimax_speech_2_8': MinimaxSpeech2_8,
             'bailian_minimax_speech_2_8': BailianMinimaxSpeech2_8,
-            // 未来添加新供应商时在此处增加映射
+            // template_key → 前端 Vue 组件，仅负责「该供应商的 UI 由哪个组件实现」。
+            // tab 可见性已由后端 capabilities.voice_management 决定；此处只需在新增支持
+            // 音色管理的供应商时同步注册其组件，否则该 tab 会渲染空白。
         };
 
         const visibleGroups = computed(() =>
-            groups.value.filter(g => componentMap[g.template_key])
+            // tab 可见性由后端 capabilities.voice_management 决定（单一数据源），
+            // 不再依赖前端 componentMap 硬编码，避免「后端说支持、前端 tab 不显示」的漂移。
+            groups.value.filter(g => g.capabilities?.voice_management)
         );
 
         async function fetchProviders() {
