@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 - **`pages/tts_manager/` 整目录**：已被统一 `pages/tts_studio` 取代（旧代码归档至 `_archive/tts_manager`）。
 - **合成记录本地 JSON 索引方案**：元数据统一改为官方 KV 存储层，旧 JSON 索引不再读取。
+- **调试开关 `log_enhanced_params`（打印增强参数到日志）**：合成记录已持久化增强参数，该开关冗余，已从代码 / 配置 schema / 文档 / 测试一并移除。
 
 ## [0.6.0] - 2026-11-03
 

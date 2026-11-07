@@ -258,7 +258,6 @@ flowchart TD
 - **上下文感知**：将最近对话、`persona` 提示注入 SubAgent，使情感/语速/语种判断贴合语境。
 - **降级链**：工具调用失败 → 文本解析降级 → 返回 `None` → 主流程切换供应商或纯文本。
 - **无文档即纯文本**：保证"缺少说明书的供应商"不会白跑一次 LLM。
-- 调试开关：`log_enhanced_params` 在 INFO 级打印 SubAgent 生成的参数。
 
 ---
 
@@ -295,7 +294,6 @@ flowchart TD
 | `context_window` | int | 10 | SubAgent 上下文窗口（按 user 消息数） |
 | `dual_output` | bool | false | 同时输出文本与语音 |
 | `tts_prompt` | text | 触发提示词 | 注入主模型的 TTS 触发说明 |
-| `log_enhanced_params` | bool | false | 打印增强参数 |
 | `page_background` | file | [] | 管理页背景图（留空=不显示） |
 | `page_background_opacity` | float | 0.5 | 背景不透明度（0~1，仅配置了背景图时生效） |
 | `page_background_blur` | int | 0 | 背景模糊度（0~30px，仅配置了背景图时生效） |

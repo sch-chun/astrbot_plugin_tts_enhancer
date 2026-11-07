@@ -364,14 +364,6 @@ class TTSService:
         if api_params and api_params.get("text"):
             enhanced_text = api_params["text"]
 
-        if self.config.get("log_enhanced_params", False) and api_params:
-            try:
-                logger.info(
-                    f"增强参数: {json.dumps(api_params, ensure_ascii=False)}"
-                )
-            except (TypeError, ValueError):
-                logger.warning("增强参数含不可序列化对象，跳过日志输出")
-
         # 调用 API
         try:
             audio_path = await adapter.call_api(

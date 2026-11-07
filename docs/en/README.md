@@ -133,7 +133,6 @@ enable_enhance: true              # Enable SubAgent auto-enhancement
 enhance_llm_provider: ""          # Model used for enhancement (a cheaper/free model is fine)
 context_window: 10                # Context window (in turns)
 dual_output: false                # Output both text and voice
-log_enhanced_params: false        # Log generated parameters
 # ---- Long-term memory retrieval (LivingMemory, optional) ----
 memory_retrieval_top_k: 0         # Recall count (0 = disabled)
 memory_retrieval_query_strategy: "user_message"  # Query source: user_message / prefix

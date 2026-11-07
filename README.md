@@ -141,7 +141,6 @@ enable_enhance: true              # 启用 SubAgent 自动增强
 enhance_llm_provider: ""          # 用于增强的模型（为了省钱可以选择能力稍差的便宜甚至免费模型）
 context_window: 10                # 上下文轮次
 dual_output: false                # 同时输出文本和语音
-log_enhanced_params: false        # 打印生成的参数
 # ---- 长期记忆检索（LivingMemory，可选）----
 memory_retrieval_top_k: 0         # 召回条数（0=关闭）
 memory_retrieval_query_strategy: "user_message"  # 关键词来源：user_message / prefix
