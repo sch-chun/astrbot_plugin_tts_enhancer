@@ -40,7 +40,12 @@ class TTSEnhancerConfig:
         """
         # 深拷贝：避免后续对 providers 条目的私有字段写入（__resolved_name 等）
         # 回写到调用方（AstrBot）持有的原始配置字典。
-        self.raw_config = copy.deepcopy(raw_config) if raw_config else {}
+        # 注意：AstrBot 传入的 raw_config 实际是 AstrBotConfig(dict 子类) 实例，
+        # 其内部用 object.__setattr__ 挂了 threading.Lock() 等非 pickle 属性，
+        # 直接 copy.deepcopy 会抛 ``TypeError: cannot pickle '_thread.lock' object``，
+        # 该异常会被 star_manager 的 ``except TypeError`` 兜底逻辑吞掉并导致插件以
+        # config=None 实例化（进而报 providers 为空）。先 dict() 剥成纯 dict 再深拷贝。
+        self.raw_config = copy.deepcopy(dict(raw_config)) if raw_config else {}
         self._providers = None
         self._load_providers()
 

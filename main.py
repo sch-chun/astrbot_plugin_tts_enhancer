@@ -52,6 +52,9 @@ class TTSEnhancerPlugin(Star):
         super().__init__(context, config)
         self.config = TTSEnhancerConfig(config)
         self.providers = self.config.get_providers()
+        logger.info(
+            f"TTS Enhancer: 已加载 {len(self.providers)} 个 TTS 供应商。"
+        )
 
         # 初始化数据目录
         self.plugin_data_path = (
