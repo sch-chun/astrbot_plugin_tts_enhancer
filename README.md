@@ -8,7 +8,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v0.6.0-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.0.0-green)](CHANGELOG.md)
 
 ---
 
@@ -102,6 +102,13 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 
 ---
 
+## 合成记录（可选）
+
+插件会把每一次 TTS 合成结果（聊天语音 / 音色预览 / 设计试听 / Agent 主动发送等）落盘为一条「合成记录」，在统一的管理页（`pages/tts_studio`）内可回放、查看元数据并支持单条删除与一键清空。
+
+- **存储分层（遵循 AstrBot 规范）**：元数据（来源 / 供应商 / 时间 / 文本 / 格式 / 时长 / 体积 / 增强参数）走官方 KV（按插件命名空间自动隔离，单 key `synthesis_index`）；音频二进制落 `plugin_data/synthesis_records/`，不进 KV。
+- **保留策略**由配置项 `synthesis_record_max` 控制：`0` 或负数关闭落盘；`-1` 不限制；正整数仅保留最近 N 份，超出自动淘汰最旧记录及其音频文件。
+
 ## 长期记忆检索（LivingMemory，可选）
 
 若同一 AstrBot 实例已安装并启用 LivingMemory 插件、且配置了向量嵌入模型，TTS Enhancer 可在合成语音前召回相关长期记忆，注入 SubAgent 作为语音风格判断的参考（例如用户稳定的语音偏好、对话背景），让语音更具「记忆感」。
@@ -134,7 +141,6 @@ enable_enhance: true              # 启用 SubAgent 自动增强
 enhance_llm_provider: ""          # 用于增强的模型（为了省钱可以选择能力稍差的便宜甚至免费模型）
 context_window: 10                # 上下文轮次
 dual_output: false                # 同时输出文本和语音
-log_enhanced_params: false        # 打印生成的参数
 # ---- 长期记忆检索（LivingMemory，可选）----
 memory_retrieval_top_k: 0         # 召回条数（0=关闭）
 memory_retrieval_query_strategy: "user_message"  # 关键词来源：user_message / prefix
@@ -142,6 +148,7 @@ memory_retrieval_prefix: "用户语音偏好"  # 固定检索前缀（仅 prefix
 page_background: []               # 管理页背景图（file 类型，留空=不显示）
 page_background_opacity: 0.5       # 背景图不透明度（0~1，仅配置了背景图时生效）
 page_background_blur: 0            # 背景图模糊度（0~30px，仅配置了背景图时生效）
+synthesis_record_max: 50           # 合成记录最大保留份数（0=关闭；−1=不限制；正整数=保留最近 N 份）
 providers:                        # 供应商列表（支持多个回退）
   - __template_key: bailian_qwen_audio_3_0_tts
     display_name: "我的语音"
@@ -198,7 +205,7 @@ providers:                        # 供应商列表（支持多个回退）
 1. **编写适配器**：在 `providers/` 下新建 `<vendor>_<model>.py`，继承 `TTSProviderAdapter` 或已有的公共基类。
 2. **撰写能力说明书**：创建 `providers/docs/<template_key>.md`，详细描述参数、标签、示例。
 3. **前端接入（按需）**：
-   - 需要 UI：在 `pages/tts_manager/components/` 下新建 Vue 组件，引用 `components/common/` 的通用组件并配置 `providerConfig`；在 `app.js` 中注册映射。
+   - 需要 UI：在 `pages/tts_studio/components/` 下新建 Vue 组件，引用 `components/common/` 的通用组件并配置 `providerConfig`；在 `app.js` 中注册映射。
    - 已有官方控制台：仅在 `app.js` 中配置外链即可。
    - 有特殊交互需求（如 MiniMax 的「未激活 → 预览 → 激活」三段式）：独立写自定义组件。
 4. **添加配置模板**：在 `_conf_schema.json` 中补充供应商配置项。

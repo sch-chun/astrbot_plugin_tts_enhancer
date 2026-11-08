@@ -2,159 +2,26 @@
 
 本模块为 AstrBot 提供 TTS（Text-to-Speech）增强功能，支持多供应商智能语音合成。
 """
-from pathlib import Path
-import base64
-import hashlib
-import mimetypes
-import time
-import re
 
-from astrbot.api.star import Star
-from astrbot.api.event.filter import on_llm_request, on_decorating_result
-from astrbot.api.message_components import Plain
+from pathlib import Path
+
 from astrbot.api import logger
-from astrbot.api.web import request, json_response, error_response
+from astrbot.api.event import AstrMessageEvent
+from astrbot.api.event.filter import on_decorating_result, on_llm_request
+from astrbot.api.message_components import Plain
+from astrbot.api.star import Context, Star
+from astrbot.core.provider.entities import ProviderRequest
 from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 
 from .src.config import TTSEnhancerConfig
-from .src.tts_parser import split_by_tts_tags, TTS_START_TAG, TTS_END_TAG
-from .src.tts_service import TTSService
+from .src.routes.file import register_file
+from .src.routes.kv import register_kv
+from .src.routes.records import register_records
+from .src.routes.voice import register_voice
+from .src.synthesis_store import SynthesisRecordStore
 from .src.tools import SendVoiceTool
-from .providers import ProviderFactory
-
-from typing import Optional
-from fastapi.responses import JSONResponse, Response
-from astrbot.core.provider.entities import ProviderRequest
-from astrbot.api.event import AstrMessageEvent
-from astrbot.api.star import Context
-
-
-# 放行点号以支持 "upload_<毫秒时间戳>.mp3" 这类真实文件名；
-# 首字符限定为 [A-Za-z0-9_]，从而挡住 "." / ".." / ".hidden" / ".env"。
-# 点号不是路径分隔符，"/" 与 "\" 仍被排除；即便有误放行，
-# _resolve_uploads_path() 的 resolve() + 父目录比较仍会拦截穿越。
-_SAFE_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.\-]{0,127}$")
-
-
-def _validate_file_id(file_id: str) -> str:
-    """校验 file_id 是否为安全文件名片段。
-
-    Args:
-        file_id: 调用方传入的文件标识符。
-
-    Returns:
-        校验通过的 file_id（原样返回）。
-
-    Raises:
-        ValueError: file_id 为空、非字符串或不匹配白名单时。
-    """
-    if not isinstance(file_id, str) or not _SAFE_FILE_ID_RE.match(file_id):
-        raise ValueError(f"非法 file_id: {file_id!r}")
-    return file_id
-
-
-def _parse_entry_id(entry_id, providers_count: int) -> int | None:
-    """校验请求体中的 entry_id 并返回合法索引。
-
-    Args:
-        entry_id: 待校验的 entry_id，类型未知。
-        providers_count: 当前已配置的供应商数量。
-
-    Returns:
-        合法时返回 entry_id；类型错误或越界时返回 None。
-    """
-    # bool 是 int 子类，需显式排除，避免 {"entry_id": true} 被当作索引 1
-    if isinstance(entry_id, bool) or not isinstance(entry_id, int):
-        return None
-    if entry_id < 0 or entry_id >= providers_count:
-        return None
-    return entry_id
-
-
-def _build_page_background_response(config, plugin_data_path) -> tuple[dict, str | None]:
-    """构造管理页背景图响应数据（纯函数，便于单测）。
-
-    仅当配置了背景图且文件可读时返回 data_url；否则 data_url 为空，前端不渲染背景。
-    图片以 base64 Data URL 返回，避免二进制穿桥与跨域/外链，保持离线可用。
-    路径解析后强制锁定在 plugin_data 目录内，防止路径穿越；不做硬编码体积上限
-    （由配置 hint 提示用户图片不宜过大，避免超大 base64 拖慢页面加载）。
-
-    同时按文件字节计算内容 ETag：路由据此应答条件请求，文件未变更时返回 304，
-    浏览器经 HTTP 缓存把已存 base64 透明交给 XHR，大图不再每次进入页面全量重传。
-
-    Args:
-        config: 插件配置（dict 或带 .get 的配置对象），可为 None。
-        plugin_data_path: 插件数据目录（Path 或等价字符串）。
-
-    Returns:
-        (响应 dict, ETag 或 None) 二元组。响应 dict 含 data_url / opacity / blur，
-        尚未包裹 JSONResponse；未配置背景图或读取失败时 ETag 为 None，
-        路由不附加缓存头（空响应体积极小，无缓存意义）。
-        ETag 由图片字节与 opacity / blur 共同哈希：任一变（换图或调显示参数）
-        缓存即失效，避免条件请求把旧参数继续发给前端。
-    """
-    empty = {"code": 0, "data": {"data_url": "", "opacity": 1.0, "blur": 0}}
-    if config is None:
-        return empty, None
-    background_files = config.get("page_background") or []
-    if not isinstance(background_files, list) or not background_files:
-        return empty, None
-
-    rel_path = background_files[0]
-    if not isinstance(rel_path, str) or not rel_path:
-        return empty, None
-
-    # 锁定在 plugin_data 目录内，防止路径穿越
-    base = Path(plugin_data_path).resolve()
-    target = (base / rel_path).resolve()
-    if target != base and base not in target.parents:
-        return empty, None
-
-    if not target.is_file():
-        return empty, None
-
-    try:
-        raw = target.read_bytes()
-    except OSError:
-        return empty, None
-
-    mime, _ = mimetypes.guess_type(target.name)
-    if not mime:
-        mime = "application/octet-stream"
-    data_url = f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
-    opacity = config.get("page_background_opacity", 0.5)
-    blur = config.get("page_background_blur", 0)
-    # ETag 必须覆盖整个响应表示：图片字节 + 显示参数。
-    # 只哈希文件字节时，用户仅调透明度/模糊度（不换图）ETag 不变，
-    # 304 会把旧 opacity/blur 接着发给前端，调整被缓存挡住。
-    etag_material = b"|".join(
-        [raw, str(opacity).encode("utf-8"), str(blur).encode("utf-8")]
-    )
-    etag = f'"{hashlib.sha256(etag_material).hexdigest()[:16]}"'
-    return {"code": 0, "data": {"data_url": data_url, "opacity": opacity, "blur": blur}}, etag
-
-
-def _if_none_match_matches(if_none_match: str | None, etag: str) -> bool:
-    """按 RFC 7232 弱比较判断 If-None-Match 头是否命中 etag。
-
-    请求头按规范可能是逗号分隔的多值列表，列表项也可带 W/ 弱验证器前缀；
-    If-None-Match 语义上使用弱比较（弱验证器与强验证器等价），逐项剥离
-    W/ 后与 etag 比对，任一项相同即命中。头缺失或全不命中返回 False。
-
-    Args:
-        if_none_match: 请求头 If-None-Match 的值，可为 None。
-        etag: 服务端生成的强 ETag（带引号的十六进制串）。
-
-    Returns:
-        命中返回 True，否则 False。
-    """
-    if not if_none_match:
-        return False
-    for candidate in if_none_match.split(","):
-        candidate = candidate.strip().removeprefix("W/")
-        if candidate == etag:
-            return True
-    return False
+from .src.tts_parser import TTS_END_TAG, TTS_START_TAG, split_by_tts_tags
+from .src.tts_service import TTSService
 
 
 class TTSEnhancerPlugin(Star):
@@ -172,7 +39,8 @@ class TTSEnhancerPlugin(Star):
         plugin_data_path (Path): 插件数据存储路径。
         tts_service (TTSService): TTS 核心服务实例。
     """
-    def __init__(self, context: Context, config: Optional[dict] = None) -> None:
+
+    def __init__(self, context: Context, config: dict | None = None) -> None:
         """初始化 TTS Enhancer 插件。
 
         依次完成数据目录初始化、核心服务初始化、LLM Tool 注册和 Web API 路由注册。
@@ -184,18 +52,43 @@ class TTSEnhancerPlugin(Star):
         super().__init__(context, config)
         self.config = TTSEnhancerConfig(config)
         self.providers = self.config.get_providers()
+        logger.info(
+            f"TTS Enhancer: 已加载 {len(self.providers)} 个 TTS 供应商。"
+        )
 
         # 初始化数据目录
-        self.plugin_data_path = Path(get_astrbot_data_path()) / "plugin_data" / self.name
+        self.plugin_data_path = (
+            Path(get_astrbot_data_path()) / "plugin_data" / self.name
+        )
         (self.plugin_data_path / "uploads").mkdir(parents=True, exist_ok=True)
         (self.plugin_data_path / "audio").mkdir(parents=True, exist_ok=True)
+
+        # 合成记录存储：落盘所有合成过的语音，供「合成记录」管理页使用
+        synthesis_records_dir = self.plugin_data_path / "synthesis_records"
+        synthesis_records_dir.mkdir(parents=True, exist_ok=True)
+        # 0 或负数 = 关闭落盘；正整数 = 保留最近 N 份（不支持「不限制」）。
+        # 负数在此统一钳为 0，避免「-1 不限制」语义在多处打架。
+        # 注意：不能用 `or 50` 兜底，否则会把 0 误判成「未配置」而变成 50。
+        _max_raw = self.config.get("synthesis_record_max", 50)
+        try:
+            synthesis_max = int(_max_raw)
+        except (TypeError, ValueError):
+            synthesis_max = 50
+        if synthesis_max < 0:
+            synthesis_max = 0
+        self.synthesis_store = SynthesisRecordStore(
+            records_dir=synthesis_records_dir,
+            kv=self,
+            max_records=synthesis_max,
+        )
 
         # 初始化核心服务
         self.tts_service = TTSService(
             context=self.context,
             providers=self.providers,
             config=self.config,
-            audio_data_dir=self.plugin_data_path / "audio"
+            audio_data_dir=self.plugin_data_path / "audio",
+            synthesis_store=self.synthesis_store,
         )
 
         # 注册 Tool
@@ -204,6 +97,24 @@ class TTSEnhancerPlugin(Star):
 
         # 注册路由
         self._register_routes()
+
+    async def initialize(self) -> None:
+        """插件激活时由 AstrBot 调用：执行一次性启动对账。
+
+        对齐磁盘音频文件与 KV 索引，清理孤儿文件与悬挂索引项，保证「合成记录」
+        管理页的数据一致（详见 ``SynthesisRecordStore.reconcile``）。任何异常都
+        被静默吞掉，绝不影响插件正常激活。
+        """
+        await super().initialize()
+        if self.synthesis_store is not None:
+            try:
+                removed = await self.synthesis_store.reconcile()
+                if removed:
+                    logger.info(
+                        f"[TTS Enhancer] 启动对账清理 {removed} 条孤儿/悬挂记录"
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"[TTS Enhancer] 启动对账失败（已跳过）: {exc}")
 
     def _resolve_uploads_path(self, file_id: str) -> Path:
         """将 file_id 解析为 uploads 目录下的绝对路径，并二次确认未越权。
@@ -263,7 +174,9 @@ class TTSEnhancerPlugin(Star):
     # ———————— 事件钩子 ————————
 
     @on_llm_request()
-    async def on_llm_req(self, event: AstrMessageEvent, request: ProviderRequest) -> None:
+    async def on_llm_req(
+        self, event: AstrMessageEvent, request: ProviderRequest
+    ) -> None:
         """处理 LLM 请求事件，将配置中的 TTS 提示词追加到系统提示词中。
 
         Args:
@@ -318,7 +231,9 @@ class TTSEnhancerPlugin(Star):
                 TTS_START_TAG in comp.text or TTS_END_TAG in comp.text
             ):
                 # 替换为 TTS 处理后的组件列表
-                components = await self._process_tts_text(comp.text, event, context_messages)
+                components = await self._process_tts_text(
+                    comp.text, event, context_messages
+                )
                 new_chain.extend(components)
                 modified = True
             else:
@@ -331,595 +246,15 @@ class TTSEnhancerPlugin(Star):
     # ————————————————————————
 
     def _register_routes(self) -> None:
-        """注册音色管理相关的 Web API 路由。
+        """注册 Web API 路由（按职责拆分到 ``src/routes`` 各模块）。
 
-        包含以下路由：
-            - GET  /providers: 获取分组后的供应商列表。
-            - POST /voice/create: 创建音色。
-            - POST /voice/query: 查询音色部署状态（前端轮询审核进度）。
-            - POST /voice/list: 查询音色列表。
-            - POST /voice/delete: 删除音色。
-            - POST /upload: 上传音频文件。
-            - POST /voice/preview: 预览音色。
+        各路由组以闭包捕获 ``self``，分别由对应 ``register_*(self)`` 注册：
+            - voice   : 供应商列表 + 音色 CRUD + 预览；
+            - file    : 音频上传 + 供应商文件管理；
+            - kv      : 通用键值存储；
+            - records : 合成记录管理 + 管理页背景图。
         """
-        async def get_providers() -> JSONResponse:
-            """获取分组后的供应商列表。
-
-            将供应商按 template_key 分组，并对 api_key 进行脱敏处理。
-
-            Returns:
-                JSONResponse: 包含分组后供应商列表的 JSON 响应。
-            """
-            providers_raw = self.config.get_providers()
-            groups = {}
-            for idx, entry in enumerate(providers_raw):
-                template_key = entry.get("__template_key", "unknown")
-                if template_key not in groups:
-                    groups[template_key] = []
-
-                # 深拷贝原始配置，脱敏 api_key
-                item = dict(entry)
-                api_key = item.get("api_key", "")
-                if len(api_key) > 5:
-                    item["api_key"] = "*****" + api_key[-5:]
-                else:
-                    item["api_key"] = "*****"
-                item["id"] = idx
-                groups[template_key].append(item)
-            result = [{"template_key": k, "entries": v} for k, v in groups.items()]
-            return json_response({"code": 0, "data": result})
-
-        self.context.register_web_api(
-            f"/{self.name}/providers",
-            get_providers,
-            ["GET"],
-            "获取分组后的供应商列表"
-        )
-
-        async def get_page_background() -> Response:
-            """获取管理页背景图（Data URL）与显示参数。
-
-            仅当配置了背景图时返回 data_url；否则 data_url 为空，前端不渲染背景。
-            图片以 base64 Data URL 返回，避免二进制穿桥与跨域/外链，保持离线可用。
-            配置了背景图时附加 ETag 与 Cache-Control: private, no-cache：
-            浏览器再次请求自动携带 If-None-Match，文件未变更则返回 304，
-            已存 base64 由 HTTP 缓存透明复用，大图不再每次进入页面全量重传。
-
-            Returns:
-                Response: 包含 data_url / opacity / blur 的 JSON 响应；
-                条件请求命中时为 304 空响应。
-            """
-            payload, etag = _build_page_background_response(
-                self.config, self.plugin_data_path
-            )
-            if not etag:
-                return json_response(payload)
-            cache_headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
-            if _if_none_match_matches(request.headers.get("if-none-match"), etag):
-                return Response(status_code=304, headers=cache_headers)
-            response = json_response(payload)
-            response.headers.update(cache_headers)
-            return response
-
-        self.context.register_web_api(
-            f"/{self.name}/page-background",
-            get_page_background,
-            ["GET"],
-            "获取管理页背景图与显示参数"
-        )
-
-        async def create_voice() -> JSONResponse:
-            """创建音色。
-
-            Args (JSON Body):
-                entry_id (int): 供应商配置的索引 ID。
-                **kwargs: 供应商特定的创建参数。
-
-            Returns:
-                JSONResponse: 包含创建结果的 JSON 响应。
-            """
-            payload = await request.json(default={})
-            if not payload:
-                return error_response("payload required", status_code=400)
-            entry_id = payload.get("entry_id")
-            if entry_id is None:
-                return error_response("entry_id required", status_code=400)
-            params = {k: v for k, v in payload.items() if k != "entry_id"}
-            providers_raw = self.config.get_providers()
-            entry_idx = _parse_entry_id(entry_id, len(providers_raw))
-            if entry_idx is None:
-                return error_response("entry not found", status_code=404)
-            entry = providers_raw[entry_idx]
-            adapter = ProviderFactory.get_adapter(entry)
-            if not adapter:
-                return error_response("无法创建适配器，请检查配置", status_code=500)
-            try:
-                result = await adapter.create_voice(params)
-                return json_response({"code": 0, "data": result})
-            except NotImplementedError:
-                return error_response("该供应商不支持音色创建", status_code=501)
-            except Exception as e:
-                logger.error(f"创建音色失败: {e}")
-                return error_response(str(e), status_code=500)
-
-        self.context.register_web_api(
-            f"/{self.name}/voice/create",
-            create_voice,
-            ["POST"],
-            "创建音色（请求体包含 entry_id 及供应商特定参数）"
-        )
-
-        async def query_voice_status() -> JSONResponse:
-            """查询音色部署状态（前端轮询审核进度用）。
-
-            仅做转发：按 entry_id 取出适配器后调用其 ``query_voice``，
-            不在此耦合任何供应商特有的查询逻辑；适配器未实现时返回 501。
-            """
-            payload = await request.json(default={})
-            if not payload:
-                return error_response("payload required", status_code=400)
-            entry_id = payload.get("entry_id")
-            voice_id = payload.get("voice_id")
-            if entry_id is None:
-                return error_response("entry_id required", status_code=400)
-            if not voice_id:
-                return error_response("voice_id required", status_code=400)
-            providers_raw = self.config.get_providers()
-            entry_idx = _parse_entry_id(entry_id, len(providers_raw))
-            if entry_idx is None:
-                return error_response("entry not found", status_code=404)
-            entry = providers_raw[entry_idx]
-            adapter = ProviderFactory.get_adapter(entry)
-            if not adapter:
-                return error_response("无法创建适配器，请检查配置", status_code=500)
-            # 适配器根本未实现 query_voice（方法缺失）即视为「供应商不支持」，
-            # 与显式抛 NotImplementedError 等价，统一返回 501。
-            if not callable(getattr(adapter, "query_voice", None)):
-                return error_response("该供应商不支持查询音色状态", status_code=501)
-            try:
-                status = await adapter.query_voice(voice_id)
-                return json_response(
-                    {"code": 0, "data": {"voice_id": voice_id, "status": status}}
-                )
-            except NotImplementedError:
-                # 仅「明确未实现」视为供应商不支持；其它异常（含真实 bug 抛出的
-                # AttributeError）不应被误判为不支持，应交由下方通用分支如实记录。
-                return error_response("该供应商不支持查询音色状态", status_code=501)
-            except Exception as e:
-                logger.error(f"查询音色状态失败: {e}")
-                # 不把原始异常字符串回传前端（可能泄漏 workspace_id 等内部信息）
-                return error_response("查询音色状态失败，请稍后重试", status_code=500)
-
-        self.context.register_web_api(
-            f"/{self.name}/voice/query",
-            query_voice_status,
-            ["POST"],
-            "查询音色部署状态（前端轮询审核进度，请求体含 entry_id 与 voice_id）"
-        )
-
-        async def list_voices() -> JSONResponse:
-            """列出音色。
-
-            Args (JSON Body):
-                entry_id (int): 供应商配置的索引 ID。
-                **kwargs: 供应商特定的查询参数。
-
-            Returns:
-                JSONResponse: 包含音色列表的 JSON 响应。
-            """
-            payload = await request.json(default={})
-            if not payload:
-                return error_response("payload required", status_code=400)
-            entry_id = payload.get("entry_id")
-            if entry_id is None:
-                return error_response("entry_id required", status_code=400)
-            params = {k: v for k, v in payload.items() if k != "entry_id"}
-            providers_raw = self.config.get_providers()
-            entry_idx = _parse_entry_id(entry_id, len(providers_raw))
-            if entry_idx is None:
-                return error_response("entry not found", status_code=404)
-            entry = providers_raw[entry_idx]
-            adapter = ProviderFactory.get_adapter(entry)
-            if not adapter:
-                return error_response("无法创建适配器，请检查配置", status_code=500)
-            try:
-                result = await adapter.list_voice(**params)
-                return json_response({"code": 0, "data": result})
-            except NotImplementedError:
-                return error_response("该供应商不支持音色列表查询", status_code=501)
-            except Exception as e:
-                logger.error(f"查询音色列表失败: {e}")
-                return error_response(str(e), status_code=500)
-
-        self.context.register_web_api(
-            f"/{self.name}/voice/list",
-            list_voices,
-            ["POST"],
-            "查询音色列表（请求体包含 entry_id 及供应商特定参数）"
-        )
-
-        async def delete_voice() -> JSONResponse:
-            """删除音色。
-
-            Args (JSON Body):
-                entry_id (int): 供应商配置的索引 ID。
-                **kwargs: 供应商特定的标识参数。
-
-            Returns:
-                JSONResponse: 包含删除成功状态的 JSON 响应。
-            """
-            payload = await request.json(default={})
-            if not payload:
-                return error_response("payload required", status_code=400)
-            entry_id = payload.get("entry_id")
-            if entry_id is None:
-                return error_response("entry_id required", status_code=400)
-            params = {k: v for k, v in payload.items() if k != "entry_id"}
-            providers_raw = self.config.get_providers()
-            entry_idx = _parse_entry_id(entry_id, len(providers_raw))
-            if entry_idx is None:
-                return error_response("entry not found", status_code=404)
-            entry = providers_raw[entry_idx]
-            adapter = ProviderFactory.get_adapter(entry)
-            if not adapter:
-                return error_response("无法创建适配器，请检查配置", status_code=500)
-            try:
-                success = await adapter.delete_voice(**params)
-                return json_response({"code": 0, "data": {"success": success}})
-            except NotImplementedError:
-                return error_response("该供应商不支持音色删除", status_code=501)
-            except Exception as e:
-                logger.error(f"删除音色失败: {e}")
-                return error_response(str(e), status_code=500)
-
-        self.context.register_web_api(
-            f"/{self.name}/voice/delete",
-            delete_voice,
-            ["POST"],
-            "删除音色（请求体包含 entry_id 及供应商特定标识参数）"
-        )
-
-        async def upload_file() -> JSONResponse:
-            """上传音频文件。
-
-            支持的格式：wav, mp3, m4a。文件将重命名为包含时间戳的唯一文件名并保存。
-
-            Args (Form Data):
-                file: 上传的音频文件对象。
-
-            Returns:
-                JSONResponse: 包含 file_id 和 file_path 的 JSON 响应。
-            """
-            try:
-                files = await request.files()
-
-                file_field = files.get('file')
-                if not file_field:
-                    return error_response("缺少文件", status_code=400)
-
-                # 保存文件（先保存再校验，因为需要读取文件内容）
-                upload_dir = self.plugin_data_path / "uploads"
-                upload_dir.mkdir(parents=True, exist_ok=True)
-                original_filename = file_field.filename or "file.bin"
-                ext = Path(original_filename).suffix.lower()
-                
-                # 白名单化扩展名，防止 .php / .sh 等异常后缀被写入 uploads 目录
-                if ext not in {".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac"}:
-                    return error_response(
-                        f"不支持的文件格式: {ext or '(无扩展名)'}，仅允许 wav/mp3/m4a/aac/ogg/flac",
-                        status_code=400,
-                    )
-                timestamp = int(time.time() * 1000)
-                unique_name = f"upload_{timestamp}{ext}"
-                file_path = upload_dir / unique_name
-                await file_field.save(file_path)
-
-                # 返回结果
-                return json_response({
-                    "code": 0,
-                    "data": {
-                        "file_id": unique_name,
-                        "file_path": str(file_path)
-                    }
-                })
-            
-            except Exception as e:
-                logger.error(f"文件上传失败: {e}")
-                return error_response(str(e), status_code=500)
-
-        self.context.register_web_api(
-            f"/{self.name}/upload",
-            upload_file,
-            ["POST"],
-            "上传音频文件，返回 file_id"
-        )
-
-        async def preview_voice() -> JSONResponse:
-            """预览音色：合成语音并返回 Base64 编码的音频。
-
-            Args (JSON Body):
-                entry_id (int): 供应商配置的索引 ID。
-                voice_id (str): 待预览的音色 ID。
-                text (str, optional): 预览合成的文本，默认为 "欢迎使用语音合成预览功能。"。
-
-            Returns:
-                JSONResponse: 包含 Base64 编码音频数据 (audio_base64) 和音频格式 (format) 的 JSON 响应。
-            """
-            try:
-                payload = await request.json()
-                if not payload:
-                    return error_response("payload required", status_code=400)
-                entry_id = payload.get("entry_id")
-                voice_id = payload.get("voice_id")
-                text = payload.get("text", "欢迎使用语音合成预览功能。")
-                if entry_id is None or not voice_id:
-                    return error_response("entry_id 和 voice_id 是必需的", status_code=400)
-
-                providers_raw = self.config.get_providers()
-                entry_idx = _parse_entry_id(entry_id, len(providers_raw))
-                if entry_idx is None:
-                    return error_response("entry not found", status_code=404)
-                entry = providers_raw[entry_idx]
-
-                entry_with_data_dir = dict(entry)
-                entry_with_data_dir["_data_dir"] = str(self.plugin_data_path / "audio")
-
-                adapter = ProviderFactory.get_adapter(entry_with_data_dir)
-                if not adapter:
-                    return error_response("无法创建适配器，请检查配置", status_code=500)
-
-                audio_path = await adapter.call_api(
-                    text=text,
-                    raw_params={},
-                    config=entry_with_data_dir,
-                    voice_id=voice_id,
-                )
-                if not audio_path:
-                    return error_response("合成失败", status_code=500)
-
-                # 读取音频文件并 Base64 编码
-                with open(audio_path, 'rb') as f:
-                    audio_bytes = f.read()
-                audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
-                ext = Path(audio_path).suffix.lstrip('.')
-
-                # 删除临时文件
-                Path(audio_path).unlink(missing_ok=True)
-
-                return json_response({
-                    "code": 0,
-                    "data": {
-                        "audio_base64": audio_base64,
-                        "format": ext
-                    }
-                })
-            except NotImplementedError:
-                return error_response("该适配器不支持预览", status_code=501)
-            except Exception as e:
-                logger.error(f"预览音色失败: {e}")
-                return error_response(str(e), status_code=500)
-
-        self.context.register_web_api(
-            f"/{self.name}/voice/preview",
-            preview_voice,
-            ["POST"],
-            "预览音色，返回音频文件"
-        )
-
-        # ========== 通用 KV 存储（供前端/供应商存取元数据，如 prompt_text） ==========
-        async def kv_set() -> JSONResponse:
-            """存储键值对（字符串）。"""
-            try:
-                payload = await request.json()
-                if not payload:
-                    return error_response("payload required", status_code=400)
-                key = payload.get("key")
-                value = payload.get("value")
-                if not key or value is None:
-                    return error_response("key 和 value 都是必需的", status_code=400)
-                
-                # 允许存储任何字符串，由前端控制键名规范，如 "minimax_prompt_{file_id}"
-                await self.put_kv_data(key, value)
-                return json_response({"code": 0, "data": {"success": True}})
-            except Exception as e:
-                logger.error(f"KV 存储失败: {e}")
-                return error_response(str(e), status_code=500)
-
-        async def kv_get() -> JSONResponse:
-            """获取键值对。"""
-            try:
-                payload = await request.json()
-                if not payload:
-                    return error_response("payload required", status_code=400)
-                key = payload.get("key")
-                if not key:
-                    return error_response("key 是必需的", status_code=400)
-                value = await self.get_kv_data(key, None)
-                return json_response({"code": 0, "data": {"value": value}})
-            except Exception as e:
-                logger.error(f"KV 获取失败: {e}")
-                return error_response(str(e), status_code=500)
-
-        async def kv_delete() -> JSONResponse:
-            """删除键值对。"""
-            try:
-                payload = await request.json()
-                if not payload:
-                    return error_response("payload required", status_code=400)
-                key = payload.get("key")
-                if not key:
-                    return error_response("key 是必需的", status_code=400)
-                await self.delete_kv_data(key)
-                return json_response({"code": 0, "data": {"success": True}})
-            except Exception as e:
-                logger.error(f"KV 删除失败: {e}")
-                return error_response(str(e), status_code=500)
-
-        # 注册
-        self.context.register_web_api(
-            f"/{self.name}/kv/set",
-            kv_set,
-            ["POST"],
-            "通用 KV 存储"
-        )
-        self.context.register_web_api(
-            f"/{self.name}/kv/get",
-            kv_get,
-            ["POST"],
-            "通用 KV 获取"
-        )
-        self.context.register_web_api(
-            f"/{self.name}/kv/delete",
-            kv_delete,
-            ["POST"],
-            "通用 KV 删除"
-        )
-
-        # ---------- 供应商文件管理（上传、列表、获取、删除） ----------
-        async def file_upload() -> JSONResponse:
-            """上传文件到供应商（适配器需实现 upload_file 方法）。所有额外参数透传给适配器。"""
-            try:
-                payload = await request.json()
-                if not payload:
-                    return error_response("payload required", status_code=400)
-
-                entry_id = payload.get("entry_id")
-                file_id = payload.get("file_id")
-                if entry_id is None or file_id is None:
-                    return error_response("entry_id 和 file_id 都是必需的", status_code=400)
-
-                # 查找本地文件
-                try:
-                    file_id = _validate_file_id(file_id)
-                    file_path = self._resolve_uploads_path(file_id)
-                except ValueError as e:
-                    return error_response(str(e), status_code=400)
-                if not file_path.is_file():
-                    return error_response("本地文件不存在", status_code=404)
-
-                # 获取适配器
-                providers_raw = self.config.get_providers()
-                entry_idx = _parse_entry_id(entry_id, len(providers_raw))
-                if entry_idx is None:
-                    return error_response("entry not found", status_code=404)
-                entry = providers_raw[entry_idx]
-                adapter = ProviderFactory.get_adapter(entry)
-                if not adapter or not hasattr(adapter, 'upload_file'):
-                    return error_response("该适配器不支持文件上传", status_code=501)
-
-                # 提取所有参数，去除 entry_id 和 file_id，其余全部作为 kwargs 透传
-                kwargs = {k: v for k, v in payload.items() if k not in ['entry_id', 'file_id']}
-
-                # 调用适配器的 upload_file
-                result = await adapter.upload_file(  # type: ignore
-                    file_path=str(file_path),
-                    **kwargs
-                )
-
-                # 适配器返回的结果直接透传
-                return json_response({"code": 0, "data": result})
-
-            except Exception as e:
-                logger.error(f"文件上传到供应商失败: {e}")
-                return error_response(str(e), status_code=500)
-
-        async def file_list() -> JSONResponse:
-            """列出供应商的文件（适配器需实现 list_files）。"""
-            try:
-                payload = await request.json()
-                if not payload:
-                    return error_response("payload required", status_code=400)
-                
-                entry_id = payload.get("entry_id")
-                if entry_id is None:
-                    return error_response("entry_id 是必需的", status_code=400)
-
-                kwargs = {k: v for k, v in payload.items() if k != "entry_id"}
-
-                providers_raw = self.config.get_providers()
-                entry_idx = _parse_entry_id(entry_id, len(providers_raw))
-                if entry_idx is None:
-                    return error_response("entry not found", status_code=404)
-                entry = providers_raw[entry_idx]
-                adapter = ProviderFactory.get_adapter(entry)
-                if not adapter or not hasattr(adapter, 'list_files'):
-                    return error_response("该适配器不支持文件列表", status_code=501)
-
-                result = await adapter.list_files(**kwargs)  # type: ignore
-                return json_response({"code": 0, "data": result})
-            except Exception as e:
-                logger.error(f"文件列表失败: {e}")
-                return error_response(str(e), status_code=500)
-
-        async def file_get() -> JSONResponse:
-            """获取文件内容（适配器需实现 get_file_content）。"""
-            try:
-                payload = await request.json()
-                if not payload:
-                    return error_response("payload required", status_code=400)
-                entry_id = payload.get("entry_id")
-                file_id = payload.get("file_id")
-                if entry_id is None or file_id is None:
-                    return error_response("entry_id 和 file_id 都是必需的", status_code=400)
-
-                providers_raw = self.config.get_providers()
-                entry_idx = _parse_entry_id(entry_id, len(providers_raw))
-                if entry_idx is None:
-                    return error_response("entry not found", status_code=404)
-                entry = providers_raw[entry_idx]
-                adapter = ProviderFactory.get_adapter(entry)
-                if not adapter or not hasattr(adapter, 'get_file_content'):
-                    return error_response("该适配器不支持文件获取", status_code=501)
-
-                content = await adapter.get_file_content(int(file_id))  # type: ignore
-                audio_base64 = base64.b64encode(content).decode('utf-8')
-                return json_response({
-                    "code": 0,
-                    "data": {
-                        "audio_base64": audio_base64
-                    }
-                })
-            except Exception as e:
-                logger.error(f"获取文件失败: {e}")
-                return error_response(str(e), status_code=500)
-
-        async def file_delete() -> JSONResponse:
-            """删除供应商的文件（适配器需实现 delete_file）。"""
-            try:
-                payload = await request.json()
-                if not payload:
-                    return error_response("payload required", status_code=400)
-                entry_id = payload.get("entry_id")
-                file_id = payload.get("file_id")
-                kwargs = {k: v for k, v in payload.items() if k not in ["entry_id", "file_id"]}
-                if entry_id is None or file_id is None:
-                    return error_response("entry_id 和 file_id 都是必需的", status_code=400)
-
-                providers_raw = self.config.get_providers()
-                entry_idx = _parse_entry_id(entry_id, len(providers_raw))
-                if entry_idx is None:
-                    return error_response("entry not found", status_code=404)
-                entry = providers_raw[entry_idx]
-                adapter = ProviderFactory.get_adapter(entry)
-                if not adapter or not hasattr(adapter, 'delete_file'):
-                    return error_response("该适配器不支持文件删除", status_code=501)
-                
-                success = await adapter.delete_file(int(file_id), **kwargs)  # type: ignore
-                return json_response({"code": 0, "data": {"success": success}})
-            except Exception as e:
-                logger.error(f"删除文件失败: {e}")
-                return error_response(str(e), status_code=500)
-
-        # 注册
-        self.context.register_web_api(
-            f"/{self.name}/file/upload", file_upload, ["POST"], "上传文件到供应商"
-        )
-        self.context.register_web_api(
-            f"/{self.name}/file/list", file_list, ["POST"], "列出供应商的文件"
-        )
-        self.context.register_web_api(
-            f"/{self.name}/file/get", file_get, ["POST"], "获取文件内容（Base64）"
-        )
-        self.context.register_web_api(
-            f"/{self.name}/file/delete", file_delete, ["POST"], "删除供应商的文件"
-        )
+        register_voice(self)
+        register_file(self)
+        register_kv(self)
+        register_records(self)

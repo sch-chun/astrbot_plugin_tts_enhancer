@@ -5,7 +5,6 @@ import json
 from astrbot_plugin_tts_enhancer.src.sub_agent import TTSSubAgent
 from conftest import (
     DummyContext,
-    DummyEvent,
     DummyProvider,
     DummyResponse,
     RecordingAdapter,
@@ -22,7 +21,7 @@ def _agent(config=None, context=None):
 class TestProviderSelection:
     async def test_no_provider_returns_none(self):
         agent = _agent()
-        assert await agent.call(DummyEvent(), "sys", "你好") is None
+        assert await agent.call("sys", "你好", session_id="test-session") is None
 
     async def test_named_provider_used(self):
         provider = DummyProvider(
@@ -32,7 +31,7 @@ class TestProviderSelection:
         )
         ctx = DummyContext(provider=provider, provider_by_id=provider)
         agent = _agent({"enhance_llm_provider": "my-provider"}, ctx)
-        result = await agent.call(DummyEvent(), "sys", "你好")
+        result = await agent.call("sys", "你好", session_id="test-session")
         assert result == {"text": "你好"}
 
     async def test_missing_named_provider_falls_back(self):
@@ -40,14 +39,22 @@ class TestProviderSelection:
         provider = DummyProvider(DummyResponse(completion_text="ok"))
         ctx = DummyContext(provider=provider, provider_by_id=None)
         agent = _agent({"enhance_llm_provider": "ghost"}, ctx)
-        result = await agent.call(DummyEvent(), "sys", "你好")
+        result = await agent.call("sys", "你好", session_id="test-session")
         assert result == {"text": "ok"}
 
     async def test_wrong_provider_type_returns_none(self):
         """非 Provider 实例的对象应被拒绝并记录日志。"""
         ctx = DummyContext(provider=object())
         agent = _agent({}, ctx)
-        assert await agent.call(DummyEvent(), "sys", "你好") is None
+        assert await agent.call("sys", "你好", session_id="test-session") is None
+
+    async def test_none_session_falls_back_to_default_provider(self):
+        """预览等无会话场景（session_id 为 None）应回退到默认聊天模型。"""
+        provider = DummyProvider(DummyResponse(completion_text="ok"))
+        ctx = DummyContext(provider=provider, provider_by_id=None)
+        agent = _agent({}, ctx)
+        # 不传 session_id（模拟预览），仍可解析到默认模型并完成一次纯文本降级。
+        assert await agent.call("sys", "你好") == {"text": "ok"}
 
 
 class TestToolCallParsing:
@@ -59,7 +66,7 @@ class TestToolCallParsing:
             )
         )
         agent = _agent({}, DummyContext(provider=provider))
-        assert await agent.call(DummyEvent(), "sys", "hi") == {
+        assert await agent.call("sys", "hi", session_id="test-session") == {
             "text": "hi",
             "speed": 1.2,
         }
@@ -71,7 +78,7 @@ class TestToolCallParsing:
             )
         )
         agent = _agent({}, DummyContext(provider=provider))
-        assert await agent.call(DummyEvent(), "sys", "hi") is None
+        assert await agent.call("sys", "hi", session_id="test-session") is None
 
     async def test_multiple_tool_calls_picks_tts_enhance(self):
         provider = DummyProvider(
@@ -81,7 +88,7 @@ class TestToolCallParsing:
             )
         )
         agent = _agent({}, DummyContext(provider=provider))
-        assert await agent.call(DummyEvent(), "sys", "hi") == {"text": "选我"}
+        assert await agent.call("sys", "hi", session_id="test-session") == {"text": "选我"}
 
     async def test_mismatched_name_args_length_is_truncated(self):
         """tools_call_name 比 args 长时 zip 截断，多余项被静默忽略。"""
@@ -92,30 +99,34 @@ class TestToolCallParsing:
             )
         )
         agent = _agent({}, DummyContext(provider=provider))
-        assert await agent.call(DummyEvent(), "sys", "hi") == {"text": "hi"}
+        assert await agent.call("sys", "hi", session_id="test-session") == {"text": "hi"}
 
 
 class TestTextFallback:
     async def test_completion_text_wrapped_as_text_key(self):
         provider = DummyProvider(DummyResponse(completion_text="  纯文本回复  "))
         agent = _agent({}, DummyContext(provider=provider))
-        assert await agent.call(DummyEvent(), "sys", "hi") == {"text": "纯文本回复"}
+        assert await agent.call("sys", "hi", session_id="test-session") == {
+            "text": "纯文本回复"
+        }
 
     async def test_empty_completion_text_returns_none(self):
         provider = DummyProvider(DummyResponse(completion_text="   "))
         agent = _agent({}, DummyContext(provider=provider))
-        assert await agent.call(DummyEvent(), "sys", "hi") is None
+        assert await agent.call("sys", "hi", session_id="test-session") is None
 
     async def test_no_tool_and_no_text_returns_none(self):
         agent = _agent({}, DummyContext(provider=DummyProvider(DummyResponse())))
-        assert await agent.call(DummyEvent(), "sys", "hi") is None
+        assert await agent.call("sys", "hi", session_id="test-session") is None
 
 
 class TestPromptAssembly:
     async def test_persona_included_in_prompt(self):
         provider = DummyProvider(DummyResponse(completion_text="ok"))
         agent = _agent({}, DummyContext(provider=provider))
-        await agent.call(DummyEvent(), "sys", "目标文本", persona="温柔姐姐")
+        await agent.call(
+            "sys", "目标文本", session_id="test-session", persona="温柔姐姐"
+        )
         prompt = provider.calls[0]["prompt"]
         assert "温柔姐姐" in prompt
         assert "目标文本" in prompt
@@ -124,9 +135,9 @@ class TestPromptAssembly:
         provider = DummyProvider(DummyResponse(completion_text="ok"))
         agent = _agent({}, DummyContext(provider=provider))
         await agent.call(
-            DummyEvent(),
             "sys",
             "目标文本",
+            session_id="test-session",
             context_messages=[
                 {"role": "user", "content": "今天天气如何"},
                 {"role": "assistant", "content": "晴"},
@@ -144,21 +155,20 @@ class TestPromptAssembly:
     async def test_system_prompt_forwarded(self):
         provider = DummyProvider(DummyResponse(completion_text="ok"))
         agent = _agent({}, DummyContext(provider=provider))
-        await agent.call(DummyEvent(), "SYS_MARKER", "hi")
+        await agent.call("SYS_MARKER", "hi", session_id="test-session")
         assert provider.calls[0]["system_prompt"] == "SYS_MARKER"
 
     async def test_session_id_forwarded(self):
         provider = DummyProvider(DummyResponse(completion_text="ok"))
         agent = _agent({}, DummyContext(provider=provider))
-        event = DummyEvent(umo="my-session")
-        await agent.call(event, "sys", "hi")
+        await agent.call("sys", "hi", session_id="my-session")
         assert provider.calls[0]["session_id"] == "my-session"
 
 
 class TestExceptionIsolation:
     async def test_provider_exception_returns_none(self):
         agent = _agent({}, DummyContext(provider=DummyProvider(raise_on_call=True)))
-        assert await agent.call(DummyEvent(), "sys", "hi") is None
+        assert await agent.call("sys", "hi", session_id="test-session") is None
 
     async def test_tool_set_forwarded(self):
         from astrbot.core.agent.tool import ToolSet
@@ -166,7 +176,9 @@ class TestExceptionIsolation:
         provider = DummyProvider(DummyResponse(completion_text="ok"))
         agent = _agent({}, DummyContext(provider=provider))
         tool_set = ToolSet(tools=[])
-        await agent.call(DummyEvent(), "sys", "hi", tool_set=tool_set)
+        await agent.call(
+            "sys", "hi", session_id="test-session", tool_set=tool_set
+        )
         assert provider.calls[0]["func_tool"] is tool_set
 
 
@@ -210,7 +222,8 @@ class TestToolExecutionAndRetry:
 
         agent = _agent({}, DummyContext(provider=provider))
         result = await agent.call(
-            DummyEvent(), "sys", "hi", tool_set=ToolSet(tools=[_make_tool(handler)])
+            "sys", "hi", session_id="test-session",
+            tool_set=ToolSet(tools=[_make_tool(handler)]),
         )
         assert result == {"text": "hi", "speed": 1.2}
 
@@ -244,7 +257,8 @@ class TestToolExecutionAndRetry:
 
         agent = _agent({}, DummyContext(provider=provider))
         result = await agent.call(
-            DummyEvent(), "sys", "hi", tool_set=ToolSet(tools=[_make_tool(handler)])
+            "sys", "hi", session_id="test-session",
+            tool_set=ToolSet(tools=[_make_tool(handler)]),
         )
         assert result == {"text": "abc", "speed": 1.0}
         assert len(provider.calls) == 2
@@ -276,9 +290,7 @@ class TestToolExecutionAndRetry:
         # RecordingAdapter.sanitize_params 仅保留 text
         adapter = RecordingAdapter()
         result = await agent.call(
-            DummyEvent(),
-            "sys",
-            "hi",
+            "sys", "hi", session_id="test-session",
             tool_set=ToolSet(tools=[_make_tool(handler)]),
             adapter=adapter,
         )
@@ -298,7 +310,8 @@ class TestToolExecutionAndRetry:
 
         agent = _agent({}, DummyContext(provider=provider))
         result = await agent.call(
-            DummyEvent(), "sys", "hi", tool_set=ToolSet(tools=[_make_tool(handler)])
+            "sys", "hi", session_id="test-session",
+            tool_set=ToolSet(tools=[_make_tool(handler)]),
         )
         assert result is None
         assert len(provider.calls) == 2
@@ -306,7 +319,7 @@ class TestToolExecutionAndRetry:
     async def test_no_tool_call_returns_none_on_empty(self):
         provider = DummyProvider(DummyResponse())  # 无工具调用、无文本
         agent = _agent({}, DummyContext(provider=provider))
-        result = await agent.call(DummyEvent(), "sys", "hi")
+        result = await agent.call("sys", "hi", session_id="test-session")
         assert result is None
 
     async def test_handler_exception_uses_structured_tool_result(self):
@@ -337,7 +350,8 @@ class TestToolExecutionAndRetry:
 
         agent = _agent({}, DummyContext(provider=provider))
         result = await agent.call(
-            DummyEvent(), "sys", "hi", tool_set=ToolSet(tools=[_make_tool(handler)])
+            "sys", "hi", session_id="test-session",
+            tool_set=ToolSet(tools=[_make_tool(handler)]),
         )
         assert result == {"text": "hi", "speed": 1.0}
         # 工具执行异常同样以 role:'tool' 结构化回灌
@@ -359,9 +373,9 @@ class TestMemoryContext:
         )
         agent = _agent({}, DummyContext(provider=provider))
         await agent.call(
-            DummyEvent(),
             "sys",
             "你好",
+            session_id="test-session",
             memory_context="【LivingMemory 长期记忆参考】\n- 记忆A",
         )
         assert len(provider.calls) == 1

@@ -13,21 +13,20 @@ from mcp.types import CallToolResult, TextContent
 
 class TTSProviderAdapter(ABC):
     """TTS 供应商适配器抽象基类
-    
-    该类定义了所有 TTS 供应商适配器必须实现的接口和基础功能。
-    每个具体的 TTS 供应商都需要继承这个基类并实现所有抽象方法。
-    
-    主要功能：
-    - 提供 TTS 参数验证和清洗
-    - 管理供应商特定的文档内容
-    - 定义与 SubAgent 交互的接口
-    - 提供 API 调用的抽象方法
-    
-    抽象方法：
+
+    该类定义了所有 TTS 供应商适配器必须实现的「核心」接口和基础功能：
+    参数验证/清洗、能力文档加载、与 SubAgent 交互的工具构建、以及合成 API 调用。
+
+    抽象方法（所有适配器必须实现）：
     - get_subagent_system_prompt: 生成 SubAgent 的系统提示词
     - get_tool_schema: 返回 TTS 参数增强的 Function Tool
-    - parse_subagent_response: 解析 SubAgent 返回的数据
     - call_api: 调用具体的 TTS API
+
+    可选能力（见 ``providers.mixins``，按需多继承，缺失即视为不支持）：
+    - VoiceManageable: 音色创建 / 列表 / 删除；
+    - FileManageable: 供应商侧文件上传 / 列表 / 获取 / 删除。
+    基类不再为可选能力提供 NotImplementedError 兜底，让「不支持」成为结构上的
+    能力缺失，路由侧用 ``hasattr`` 检测并返回 501。
     """
 
     # 文档文件名（不含 .md 后缀）。子类可覆盖，实现多供应商共享同一份能力文档。
@@ -243,49 +242,6 @@ class TTSProviderAdapter(ABC):
             dict: 清洗后的参数字典
         """
         return params
-
-    # ————————————————————————
-
-    # ———————— 音色管理 ————————
-
-    async def create_voice(self, params: dict) -> dict:
-        """创建语音
-
-        调用 TTS API 进行语音合成，并返回合成结果。
-
-        Args:
-            params (dict): TTS 参数字典
-
-        Returns:
-            dict: 包含合成结果的字典
-        """
-        raise NotImplementedError
-
-    async def list_voice(self, **kwargs) -> dict:
-        """列出语音
-
-        调用 TTS API 列出已有的语音，并返回结果。
-
-        Args:
-            由供应商自定义
-
-        Returns:
-            dict: 包含语音列表结果的字典
-        """
-        raise NotImplementedError
-
-    async def delete_voice(self, **kwargs) -> bool:
-        """删除语音
-
-        调用 TTS API 删除指定的语音，并返回删除结果。
-
-        Args:
-            由供应商自定义
-
-        Returns:
-            bool: 删除结果，True 表示删除成功，False 表示删除失败
-        """
-        raise NotImplementedError
 
     # ————————————————————————
 

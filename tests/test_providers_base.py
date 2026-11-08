@@ -2,10 +2,24 @@
 
 import pytest
 from astrbot_plugin_tts_enhancer.providers.base import TTSProviderAdapter
+from astrbot_plugin_tts_enhancer.providers.mixins import VoiceManageable
 
 
 class ConcreteAdapter(TTSProviderAdapter):
     """用于实例化抽象基类的最小实现。"""
+
+    def get_subagent_system_prompt(self) -> str:
+        return "prompt"
+
+    def get_tool_schema(self):
+        return None
+
+    async def call_api(self, text, raw_params, config, voice_id=None):
+        return ""
+
+
+class ConcreteVoiceAdapter(TTSProviderAdapter, VoiceManageable):
+    """用于实例化 VoiceManageable 的最小实现（未覆写音色管理方法）。"""
 
     def get_subagent_system_prompt(self) -> str:
         return "prompt"
@@ -124,19 +138,31 @@ class TestDocsLoading:
 
 
 class TestVoiceLifecycleDefaults:
-    """基类未实现的音色管理方法应明确抛 NotImplementedError。"""
+    """未覆写 VoiceManageable 的适配器，其音色管理方法应明确抛 NotImplementedError。"""
 
-    async def test_create_voice_not_implemented(self, adapter):
+    async def test_create_voice_not_implemented(self):
+        ad = ConcreteVoiceAdapter({"__template_key": "voice"})
         with pytest.raises(NotImplementedError):
-            await adapter.create_voice({})
+            await ad.create_voice({})
 
-    async def test_list_voice_not_implemented(self, adapter):
+    async def test_list_voice_not_implemented(self):
+        ad = ConcreteVoiceAdapter({"__template_key": "voice"})
         with pytest.raises(NotImplementedError):
-            await adapter.list_voice()
+            await ad.list_voice()
 
-    async def test_delete_voice_not_implemented(self, adapter):
+    async def test_delete_voice_not_implemented(self):
+        ad = ConcreteVoiceAdapter({"__template_key": "voice"})
         with pytest.raises(NotImplementedError):
-            await adapter.delete_voice()
+            await ad.delete_voice()
+
+
+class TestBaseIsLean:
+    """核心基类不应再承载可选的音色管理方法（应为结构上的能力缺失）。"""
+
+    def test_base_lacks_voice_methods(self, adapter):
+        assert not hasattr(adapter, "create_voice")
+        assert not hasattr(adapter, "list_voice")
+        assert not hasattr(adapter, "delete_voice")
 
 
 class TestRegressionGuards:

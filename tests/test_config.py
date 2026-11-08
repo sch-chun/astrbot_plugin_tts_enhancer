@@ -119,22 +119,26 @@ class TestGet:
 
 
 class TestAcceptedBehavior:
-    """已接受的行为 / 上游责任的绿测守卫。
+    """上游责任的绿测守卫。
 
-    原 xfail 标记的 #5（设计取舍）与 #6（上游担保）经二轮复核判定「不修代码」，
-    但「不修代码 ≠ 删测试」——两条用例都成功构造了入参、测的是本仓库代码，故转为绿测守卫，
-    锁定当前行为并保留回归哨兵。决策与依据见 docs/zh/KNOWN_LIMITATIONS.md。
+    原 xfail 标记的 #6（上游担保）判定「不修代码」，转为绿测守卫锁定当前行为；
+    原 #5（调用方配置被就地写入 __resolved_name）已在 P2⑥ 修复为深拷贝、不再污染调用方，
+    相关用例改为断言「不污染」。决策与依据见 docs/zh/KNOWN_LIMITATIONS.md。
     """
 
-    def test_resolves_name_into_caller_config(self):
-        """设计取舍（原缺陷#5）：_load_providers 会就地写入调用方传入的 raw_config。
+    def test_does_not_mutate_caller_config(self):
+        """P2⑥ 修复：_load_providers 不再就地写入调用方传入的 raw_config。
 
-        __resolved_name 仅为去重显示名、非敏感信息，且 AstrBot 对 schema 外字段宽容，
-        不会污染保存流程，故接受该行为。
+        __resolved_name 仅存在于深拷贝后的内部条目，调用方原始配置保持干净；
+        解析后的显示名仍可在插件内部的 providers 副本上取到。
         """
         raw = _prov({"display_name": "小明"})
         TTSEnhancerConfig(raw)
-        assert raw["providers"][0]["__resolved_name"] == "小明"
+        # 调用方原始配置不被污染
+        assert "__resolved_name" not in raw["providers"][0]
+        # 内部副本仍持有解析名
+        cfg = TTSEnhancerConfig(raw)
+        assert cfg.get_providers()[0].get("__resolved_name") == "小明"
 
     def test_providers_as_dict_raises_attribute_error(self):
         """上游担保（原缺陷#6）：providers 误配为 dict 时触发 AttributeError。
