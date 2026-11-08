@@ -71,3 +71,60 @@ jobs:
           name: pytest-log
           path: pytest.log
           if-no-files-found: warn
+
+  frontend:
+    name: Frontend unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Run frontend unit tests
+        run: |
+          set -o pipefail
+          node --test 'tests/**/*.test.mjs' 2>&1 | tee node-test.log
+
+      # 与 pytest job 同款的「防假绿」守卫：
+      # node --test 的汇总形如 "pass 6" / "fail 0"（数字在后），
+      # 故用 [1-9][0-9]* 排除恒为 0 的 fail 0 / skipped 0 误判。
+      - name: Guard against silent all-skip
+        if: always()
+        run: |
+          tail -n 20 node-test.log || true
+          if ! grep -Eq 'pass [1-9][0-9]*' node-test.log; then
+            echo "::error::前端套件 0 passed — 疑似整体未执行，拒绝假绿。"
+            exit 1
+          fi
+          if grep -Eq 'fail [1-9][0-9]*' node-test.log; then
+            echo "::error::前端套件存在失败用例。"
+            exit 1
+          fi
+          if grep -Eq 'skipped [1-9][0-9]*' node-test.log; then
+            echo "::error::检测到 skipped 用例 — 套件未完整执行，拒绝假绿。"
+            exit 1
+          fi
+
+      - name: Summarize frontend test results
+        if: always()
+        run: |
+          SUMMARY=$(grep -E '(tests|pass|fail) [0-9]+' node-test.log | tail -n 3 || true)
+          echo "frontend: ${SUMMARY:-未取到汇总}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f node-test.log ]; then
+            {
+              echo '```'
+              tail -n 30 node-test.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload frontend test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-log
+          path: node-test.log
+          if-no-files-found: warn
