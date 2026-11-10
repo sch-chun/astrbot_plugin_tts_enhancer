@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [1.1.0] - 2026-11-10
+
+前端音色列表增加缓存：切换标签页 / 视图时复用上一次结果，避免重复请求 `/voice/list`；创建 / 删除 / 预览激活 / 手动刷新等变更操作强制回源。
+
+### Added
+
+- **音色列表前端缓存**：新增 `pages/tts_studio/composables/useVoiceListCache.js`（模块级单例，以 `entry_id + 请求参数` 为键）。切换供应商 tab / 顶层视图导致的组件重新挂载改为命中缓存、跳过网络请求；`fetchVoices` / `fetchVoiceList` 新增 `force` 参数，创建、删除、预览激活与手动刷新按钮传入 `force: true` 强制回源并覆盖缓存。覆盖 `common/bailian_speech_synthesizer.js`（百炼 Qwen 3.0 / 3.1 / Cosyvoice）、`components/minimax_speech_2_8.js`、`components/bailian_minimax_speech_2_8.js`。
+- **缓存单测**：新增 `tests/useVoiceListCache.test.mjs`（`node --test`，5 例覆盖命中、跨 entry 隔离、百炼与 MiniMax 列表不串味等）。
+
 ## [1.0.0] - 2026-11-07
 
 首个稳定里程碑：将分散的管理体验整合为统一单页应用，并把合成记录存储迁移到 AstrBot 官方 KV。

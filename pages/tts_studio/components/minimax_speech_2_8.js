@@ -5,6 +5,7 @@ import { useToast } from '../composables/useToast.js';
 import { useClipboard } from '../composables/useClipboard.js';
 import { useAudioManager } from '../composables/useAudioManager.js';
 import { validateText, countChars } from '../composables/useTextValidator.js'
+import { getVoiceList, setVoiceList } from '../composables/useVoiceListCache.js'
 import { base64ToBlobUrl, hexToBlobUrl } from '../composables/useAudioManager.js';
 import VoicePreviewModal from './common/voice_preview_modal.js';
 import DeleteConfirmModal from './common/delete_confirm_modal.js';
@@ -387,8 +388,8 @@ export default {
                         cloneResultModalVisible.value = true;
                     } else {
 
-                        // 无试听，直接刷新音色列表
-                        await fetchVoiceList();
+                    // 无试听，直接刷新音色列表
+                    await fetchVoiceList(true);
                     }
                 } else {
                     showError('克隆失败: ' + (result.message || result.error || '未知错误'));
@@ -406,7 +407,7 @@ export default {
         function closeCloneResult() {
             cloneResultModalVisible.value = false;
             cloneResult.value = null;
-            fetchVoiceList();  // 刷新音色列表
+            fetchVoiceList(true);  // 刷新音色列表
         }
 
         function playDemoAudio() {
@@ -458,7 +459,7 @@ export default {
                         designResult.value = result;
                         designResultModalVisible.value = true;
                     } else {
-                        await fetchVoiceList();
+                        await fetchVoiceList(true);
                     }
                 } else {
                     showError('设计失败: ' + (result.message || result.error || '未知错误'));
@@ -473,7 +474,7 @@ export default {
         function closeDesignResult() {
             designResultModalVisible.value = false;
             designResult.value = null;
-            fetchVoiceList();
+            fetchVoiceList(true);
         }
 
         function playTrialAudio() {
@@ -491,20 +492,29 @@ export default {
         const voiceLoading = ref(false);
         const voiceListRefresh = ref(0);
 
-        async function fetchVoiceList() {
+        // force=true 时绕过缓存、强制回源（用于创建 / 删除 / 预览激活 / 手动刷新等操作后的刷新）；
+        // 回源成功后自动覆盖缓存。切换标签页 / 视图导致的重新挂载默认走缓存，避免重复加载。
+        async function fetchVoiceList(force = false) {
             if (!selectedEntryId.value) return;
+            const params = { entry_id: selectedEntryId.value, voice_type: 'all' };
+            if (!force) {
+                const cached = getVoiceList(params);
+                if (cached) {
+                    voiceList.value = cached;
+                    return;
+                }
+            }
             voiceLoading.value = true;
             try {
-                const result = await props.bridge.apiPost('voice/list', {
-                    entry_id: selectedEntryId.value,
-                    voice_type: 'all' // 获取所有类型
-                });
+                const result = await props.bridge.apiPost('voice/list', params);
 
                 // 后端 list_voice 返回 items 和 total，但 MiniMax 适配器 list_voice 返回包含 items
-                voiceList.value = result.items || [];
+                const items = result.items || [];
+                setVoiceList(params, items);
+                voiceList.value = items;
 
                 // 检查未激活音色是否已出现在自定义列表中
-                const activeVoiceIds = new Set(voiceList.value.map(v => v.voice_id));
+                const activeVoiceIds = new Set(items.map(v => v.voice_id));
                 const unactivated = unactivatedVoices.value.filter(
                     v => activeVoiceIds.has(v.voice_id)
                 );
@@ -535,7 +545,7 @@ export default {
                         voice_type: voiceType
                     });
                     showSuccess('删除成功');
-                    await fetchVoiceList();
+                    await fetchVoiceList(true);
                 }
             );
         }
@@ -552,7 +562,7 @@ export default {
         // 预览成功后：若该音色属于未激活列表，则刷新以让它「消失」（被激活）
         async function onVoicePreviewed({ voiceId }) {
             if (unactivatedVoices.value.some(v => v.voice_id === voiceId)) {
-                await fetchVoiceList();
+                await fetchVoiceList(true);
                 await loadUnactivatedVoices();
             }
         }
@@ -1330,7 +1340,7 @@ export default {
         <div v-if="currentTab === 'list'">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                 <h3 style="margin:0;">音色列表</h3>
-                <button class="btn btn-sm" @click="fetchVoiceList" :disabled="voiceLoading">刷新</button>
+                <button class="btn btn-sm" @click="fetchVoiceList(true)" :disabled="voiceLoading">刷新</button>
             </div>
             <div v-if="voiceLoading">加载中...</div>
 
