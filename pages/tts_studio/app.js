@@ -10,6 +10,7 @@ import MinimaxSpeech2_8 from './components/minimax_speech_2_8.js';
 import BailianMinimaxSpeech2_8 from './components/bailian_minimax_speech_2_8.js';
 import { useAudioManager, base64ToBlobUrl } from './composables/useAudioManager.js';
 import { selectVoiceTabs, firstUsableTab } from './voiceTabs.js';
+import { clearVoiceListCache } from './composables/useVoiceListCache.js';
 
 const bridge = window.AstrBotPluginPage;
 
@@ -92,6 +93,9 @@ const app = createApp({
 
         async function fetchProviders() {
             managerLoading.value = true;
+            // providers 列表重新加载意味着后端配置可能已变化（增删 entry 等），
+            // 旧的音色列表缓存会指向失效的 entry_id / 参数，这里先清掉，避免命中脏数据。
+            clearVoiceListCache();
             try {
                 const result = await bridge.apiGet('providers');
                 const data = result.data || result;

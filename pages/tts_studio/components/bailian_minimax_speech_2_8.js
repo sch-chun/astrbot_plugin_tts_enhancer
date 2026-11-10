@@ -185,15 +185,26 @@ export default {
         const voiceList = ref([]);
         const voiceLoading = ref(false);
 
+        // 把「已出现在自定义列表中的未激活音色」从本地未激活清单移除，避免两处重复显示。
+        // 命中缓存与回源两条路径都调用，确保切 tab 不复请求时未激活区块也保持同步（P2）。
+        async function syncUnactivated(items) {
+            const activeVoiceIds = new Set((items || []).map(v => v.voice_id));
+            const toRemove = unactivatedVoices.value.filter(v => activeVoiceIds.has(v.voice_id));
+            if (toRemove.length === 0) return;
+            const remaining = unactivatedVoices.value.filter(v => !activeVoiceIds.has(v.voice_id));
+            await saveUnactivatedVoices(remaining);
+        }
+
         // force=true 时绕过缓存、强制回源（用于创建 / 删除 / 预览激活 / 手动刷新等操作后的刷新）；
-        // 回源成功后自动覆盖缓存。切换标签页 / 视图导致的重新挂载默认走缓存，避免重复加载。
+        // 回源成功后自动覆盖缓存（非终态内部跳过）。切换标签页 / 视图导致的重新挂载默认走缓存，避免重复加载。
         async function fetchVoiceList(force = false) {
             if (!selectedEntryId.value) return;
             const params = { entry_id: selectedEntryId.value, voice_type: 'all' };
             if (!force) {
                 const cached = getVoiceList(params);
                 if (cached) {
-                    voiceList.value = cached;
+                    voiceList.value = cached; // 副本，组件 mutate 不污染缓存
+                    await syncUnactivated(cached);
                     return;
                 }
             }
@@ -201,21 +212,13 @@ export default {
             try {
                 const result = await props.bridge.apiPost('voice/list', params);
                 const items = result.items || [];
-                setVoiceList(params, items);
-                voiceList.value = items;
+                setVoiceList(params, items); // 非终态内部跳过，不写缓存
 
-                // 检查未激活音色是否已出现在自定义列表中
-                const activeVoiceIds = new Set(items.map(v => v.voice_id));
-                const activated = unactivatedVoices.value.filter(
-                    v => activeVoiceIds.has(v.voice_id)
-                );
-                if (activated.length > 0) {
-                    // 从未激活列表中移除已激活的
-                    const remaining = unactivatedVoices.value.filter(
-                        v => !activeVoiceIds.has(v.voice_id)
-                    );
-                    await saveUnactivatedVoices(remaining);
+                // 回填前校验 entry：await 期间切供应商会被旧响应覆盖（P3）
+                if (selectedEntryId.value === params.entry_id) {
+                    voiceList.value = items;
                 }
+                await syncUnactivated(items);
             } catch (e) {
                 showError('获取音色列表失败: ' + e.message);
             } finally {

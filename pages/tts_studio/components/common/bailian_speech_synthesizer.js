@@ -215,8 +215,11 @@ export default {
             try {
                 const result = await props.bridge.apiPost('voice/list', params);
                 const items = result.items || [];
-                setVoiceList(params, items);
-                voiceList.value = items;
+                setVoiceList(params, items); // 非终态内部跳过，不写缓存
+                // 回填前校验 entry：await 期间切供应商会被旧响应覆盖（P3）
+                if (selectedEntryId.value === entryId) {
+                    voiceList.value = items;
+                }
             } catch (e) {
                 console.error('获取音色列表失败:', e);
                 showError('获取音色列表失败: ' + e.message);
