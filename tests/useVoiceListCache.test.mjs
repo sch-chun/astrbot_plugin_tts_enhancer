@@ -100,3 +100,15 @@ test('非终态（含 DEPLOYING）不写缓存，强制回源推进状态（P2 s
     setVoiceList(params, [{ voice_id: 'd1', status: 'OK' }]);
     assert.deepEqual(getVoiceList(params), [{ voice_id: 'd1', status: 'OK' }]);
 });
+
+test('setVoiceList 存副本：调用方就地 unshift / 下标赋值不污染缓存（P2 脏数组残留）', () => {
+    const params = { entry_id: 8, page_size: 50 };
+    const source = [{ voice_id: 'a1' }, { voice_id: 'a2' }];
+    setVoiceList(params, source);
+    // 模拟创建音色后组件侧 mutate（upsertVoiceItem 对 voiceList.value 的操作）：
+    // 新条目 unshift + 既有条目整条替换（list[idx] = {...}）。
+    source.unshift({ voice_id: 'new', status: 'DEPLOYING' });
+    source[1] = { voice_id: 'a1', status: 'OK' };
+    // 缓存应是写入时的快照，不被调用方后续就地改动污染
+    assert.deepEqual(getVoiceList(params), [{ voice_id: 'a1' }, { voice_id: 'a2' }]);
+});
