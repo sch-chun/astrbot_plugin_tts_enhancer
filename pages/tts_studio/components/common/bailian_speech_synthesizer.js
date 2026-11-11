@@ -6,6 +6,7 @@ import { useToast } from '../../composables/useToast.js';
 import { useAudioManager } from '../../composables/useAudioManager.js';
 import { validateText } from '../../composables/useTextValidator.js';
 import { base64ToBlobUrl } from '../../composables/useAudioManager.js';
+import { getVoiceList, setVoiceList } from '../../composables/useVoiceListCache.js';
 import VoicePreviewModal from './voice_preview_modal.js';
 import DeleteConfirmModal from './delete_confirm_modal.js';
 
@@ -197,15 +198,28 @@ export default {
     }, { immediate: true });
 
         // ----- 获取音色列表 -----
-        async function fetchVoices() {
-            if (selectedEntryId.value === null || selectedEntryId.value === undefined) return;
+        // force=true 时绕过缓存、强制回源（用于创建 / 删除 / 预览 / 手动刷新等操作后的刷新）；
+        // 回源成功后自动覆盖缓存。切换标签页 / 视图导致的重新挂载默认走缓存，避免重复加载。
+        async function fetchVoices(force = false) {
+            const entryId = selectedEntryId.value;
+            if (entryId === null || entryId === undefined) return;
+            const params = { entry_id: entryId, page_size: 50 };
+            if (!force) {
+                const cached = getVoiceList(params);
+                if (cached) {
+                    voiceList.value = cached;
+                    return;
+                }
+            }
             loading.value = true;
             try {
-                const result = await props.bridge.apiPost('voice/list', {
-                    entry_id: selectedEntryId.value,
-                    page_size: 50,
-                });
-                voiceList.value = result.items || [];
+                const result = await props.bridge.apiPost('voice/list', params);
+                const items = result.items || [];
+                setVoiceList(params, items); // 非终态内部跳过，不写缓存
+                // 回填前校验 entry：await 期间切供应商会被旧响应覆盖（P3）
+                if (selectedEntryId.value === entryId) {
+                    voiceList.value = items;
+                }
             } catch (e) {
                 console.error('获取音色列表失败:', e);
                 showError('获取音色列表失败: ' + e.message);
@@ -405,7 +419,7 @@ export default {
                     const initialStatus = result.status; // 可能 undefined（部分供应商不返回）
                     // 立即在列表中展示该音色（含初始状态），避免等待期间列表无反馈
                     upsertVoiceItem({ voice_id: voiceId, status: initialStatus || 'DEPLOYING', created_at: '' });
-                    const reconcile = async () => { try { await fetchVoices(); } catch {} };
+                    const reconcile = async () => { try { await fetchVoices(true); } catch {} };
                     if (initialStatus === 'OK') {
                         showSuccess('音色创建成功！Voice ID: ' + voiceId);
                         await reconcile();
@@ -499,7 +513,7 @@ export default {
                     const voiceId = result.voice_id || result.voice;
                     const initialStatus = result.status; // 可能 undefined
                     upsertVoiceItem({ voice_id: voiceId, status: initialStatus || 'DEPLOYING', created_at: '' });
-                    const reconcile = async () => { try { await fetchVoices(); } catch {} };
+                    const reconcile = async () => { try { await fetchVoices(true); } catch {} };
                     if (initialStatus === 'OK') {
                         openDesignPreview(result);
                     } else if (initialStatus === 'DEPLOYING' || initialStatus === 'UNDEPLOYED') {
@@ -604,7 +618,7 @@ export default {
         async function keepVoice() {
             showSuccess('音色已保留: ' + previewVoiceId.value);
             closePreviewModal();
-            await fetchVoices();
+            await fetchVoices(true);
         }
 
         async function confirmDeletePreview() {
@@ -615,7 +629,7 @@ export default {
                 });
                 showSuccess('音色已删除');
                 closePreviewModal();
-                await fetchVoices();
+                await fetchVoices(true);
             } catch (e) {
                 console.error('删除音色失败:', e);
                 showError('删除失败: ' + e.message);
@@ -651,7 +665,7 @@ export default {
                 showSuccess('删除成功');
                 deleteModalVisible.value = false;
                 deleteTargetId.value = '';
-                await fetchVoices();
+                await fetchVoices(true);
             } catch (e) {
                 console.error('删除音色失败:', e);
                 showError('删除失败: ' + e.message);
@@ -1020,7 +1034,7 @@ export default {
             <div>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                     <h3 style="margin:0;">音色列表</h3>
-                    <button class="btn btn-sm" @click="fetchVoices" :disabled="loading">刷新</button>
+                    <button class="btn btn-sm" @click="fetchVoices(true)" :disabled="loading">刷新</button>
                 </div>
                 <div v-if="loading">加载中...</div>
                 <table v-else>
