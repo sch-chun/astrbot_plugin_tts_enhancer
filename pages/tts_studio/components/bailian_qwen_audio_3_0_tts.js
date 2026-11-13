@@ -5,6 +5,7 @@ export default {
     props: ['entries', 'bridge', 'templateKey'],
     components: { BailianSpeechSynthesizer },
     setup(props) {
+        const t = (k, fb) => props.bridge && props.bridge.t ? props.bridge.t('views.tts_studio.components.' + k, fb) : fb;
         const config = {
             displayName: '百炼 Qwen Audio 3.0 TTS',
             supportedLanguages: [
@@ -18,10 +19,10 @@ export default {
             // 系统音色相关链接列表（用于显示多个链接）
             systemVoiceLinks: [
                 {
-                    label: '系统音色列表',
+                    label: t('sysVoiceList', '系统音色列表'),
                     url: 'https://help.aliyun.com/zh/model-studio/qwen-audio-tts-voice-list'
                 },
-                { label: '基础音色参考库', url: 'https://qwenaudio.tairitsu.work' }
+                { label: t('basicVoiceRef', '基础音色参考库'), url: 'https://qwenaudio.tairitsu.work' }
             ]
         };
         return { config };

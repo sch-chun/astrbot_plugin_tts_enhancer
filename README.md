@@ -1,4 +1,8 @@
-[English](docs/en/README.md) · 简体中文
+<div align="center">
+  <img src="logo.png" alt="TTS Enhancer" width="200"/>
+</div>
+
+[English](docs/en/README.md) · [Русский](docs/ru/README.md) · 简体中文
 
 # AstrBot TTS Enhancer
 
@@ -86,15 +90,15 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 
 | 供应商 | 模型 | 情感控制 | 系统音色 | 复刻 | 设计 | 方言 | 语种 | LaTeX |
 |---|---|---|---|---|---|---|---|---|
-| **百炼 Qwen Audio 3.0 TTS** | Flash / Plus | 富语言标签 + 自然语言指令 | ✅ | ✅ | ✅ | 21 种 | 16 种 | ❌ |
-| **百炼 Qwen Audio 3.1 TTS** | Flash / Plus | 富语言标签 + 自然语言指令 | ✅ | ✅ | ✅ | 21 种 | 16 种 | ❌ |
+| **百炼 Qwen Audio 3.0 TTS** | Flash / Plus | 富语言标签 + 自然语言指令 | ✅ | ✅ | ✅ | 21 种 | 16 种 | ✅ |
+| **百炼 Qwen Audio 3.1 TTS** | Flash / Plus | 富语言标签 + 自然语言指令 | ✅ | ✅ | ✅ | 21 种 | 16 种 | ✅ |
 | **百炼 CosyVoice v3.5** | Flash / Plus | 自然语言指令 | ❌ | ✅ | ✅ | 17 种 | 11 种 | ✅ |
 | **MiniMax Speech 2.8** | HD / Turbo | 文本内联语气词 | ✅ | ✅ | ✅ | 粤语 | 39 种 | ✅ |
 | **百炼 MiniMax Speech 2.8** | HD / Turbo | 文本内联语气词 | ✅ | ✅ | ✅ | 粤语 | 39 种 | ✅ |
 | **小米 MiMo V2.5 TTS** | 预置音色 / 文本设计 / 音频复刻 | 富语言标签 + 自然语言指令 | ✅ | ✅ | ✅ | ✅ | 中文为主 | ❌ |
 | **Google Gemini 3.8 Flash TTS** | Flash / Flash-Lite | 自然语言 style + 文本内联发声标记（`<laugh>`、`<sigh>`） | ✅ | ✅ | ✅ | ❌ | 多语种 | ❌ |
 | **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | 方括号情绪标记（64+ 种，跨句自由切换） | ✅ | ✅ | ❌ | ❌ | 13 种 | ❌ |
-| **ElevenLabs v4** | v4 / v4 Turbo | 方括号情绪标记 + `/IPA/` 发音 + `<break>` 停顿 | ✅ | ✅ | ✅ | ❌ | 多语种 | ❌ |
+| **Eleven v4** | v4 / v4 Turbo | 方括号情绪标记 + `/IPA/` 发音 + `<break>` 停顿 | ✅ | ✅ | ✅ | 粤语 | 90 种 | ❌ |
 
 > 多个供应商可以**同时配置并按 priority 回退**；每个供应商条目还可通过 `persona_id` **绑定到指定人格**，实现「不同人格使用不同音色」。
 
@@ -107,7 +111,7 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 插件会把每一次 TTS 合成结果（聊天语音 / 音色预览 / 设计试听 / Agent 主动发送等）落盘为一条「合成记录」，在统一的管理页（`pages/tts_studio`）内可回放、查看元数据并支持单条删除与一键清空。
 
 - **存储分层（遵循 AstrBot 规范）**：元数据（来源 / 供应商 / 时间 / 文本 / 格式 / 时长 / 体积 / 增强参数）走官方 KV（按插件命名空间自动隔离，单 key `synthesis_index`）；音频二进制落 `plugin_data/synthesis_records/`，不进 KV。
-- **保留策略**由配置项 `synthesis_record_max` 控制：`0` 或负数关闭落盘；`-1` 不限制；正整数仅保留最近 N 份，超出自动淘汰最旧记录及其音频文件。
+- **保留策略**由配置项 `synthesis_record_max` 控制：`0` 或负数关闭落盘；正整数仅保留最近 N 份（不支持「不限制」），超出自动淘汰最旧记录及其音频文件。
 
 ## 长期记忆检索（LivingMemory，可选）
 
@@ -148,7 +152,7 @@ memory_retrieval_prefix: "用户语音偏好"  # 固定检索前缀（仅 prefix
 page_background: []               # 管理页背景图（file 类型，留空=不显示）
 page_background_opacity: 0.5       # 背景图不透明度（0~1，仅配置了背景图时生效）
 page_background_blur: 0            # 背景图模糊度（0~30px，仅配置了背景图时生效）
-synthesis_record_max: 50           # 合成记录最大保留份数（0=关闭；−1=不限制；正整数=保留最近 N 份）
+synthesis_record_max: 50           # 合成记录最多保留份数（0 或负数=关闭；正整数=保留最近 N 份；不支持不限制）
 providers:                        # 供应商列表（支持多个回退）
   - __template_key: bailian_qwen_audio_3_0_tts
     display_name: "我的语音"
@@ -170,6 +174,9 @@ providers:                        # 供应商列表（支持多个回退）
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ [主模型]  输出 "<tts>今天天气真好</tts>"                     │
+│   - GoogleGemini3_8FlashTTSAdapter                          │
+│   - FishAudioS2Adapter                                      │
+│   - ElevenLabsV4Adapter                                     │
 └──────────────────────────┬──────────────────────────────────┘
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -193,6 +200,9 @@ providers:                        # 供应商列表（支持多个回退）
 │   - MinimaxSpeech2_8Adapter                                 │
 │   - BailianMinimaxSpeech2_8Adapter                          │
 │   - MimoV2_5TTSAdapter                                      │
+│   - GoogleGemini3_8FlashTTSAdapter                          │
+│   - FishAudioS2Adapter                                      │
+│   - ElevenLabsV4Adapter                                     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -221,6 +231,7 @@ providers:                        # 供应商列表（支持多个回退）
 - **开发指南** [docs/zh/DEVELOPMENT.md](docs/zh/DEVELOPMENT.md) – 环境准备、新增供应商清单、适配器开发、前端接入、测试规范、发布流程
 - **已知限制与上游责任** [docs/zh/KNOWN_LIMITATIONS.md](docs/zh/KNOWN_LIMITATIONS.md) – 设计取舍 / 上游担保 / 不可达项的处置与绿测守卫
 - **English README** [docs/en/README.md](docs/en/README.md) – 英文版说明
+- **Русский README** [docs/ru/README.md](docs/ru/README.md) – 俄文版说明
 - 能力说明书样例：
   - `providers/docs/bailian_qwen_audio_3_0_tts.md`
   - `providers/docs/bailian_qwen_audio_3_1_tts.md`

@@ -1,0 +1,1059 @@
+{
+  "metadata": {
+    "display_name": "TTS Enhancer",
+    "short_desc": "多供应商智能 TTS 插件，支持 SubAgent 自动注入情感标签与指令控制。",
+    "desc": "多供应商智能 TTS 插件，支持 SubAgent 自动注入情感标签与指令控制，提供统一管理页与 KV 落盘的合成记录。"
+  },
+  "config": {
+    "enable_enhance": {
+      "description": "SubAgent 语音增强",
+      "hint": "开启后调用 LLM 按 Provider 能力自动注入情感标签与指令控制"
+    },
+    "enhance_llm_provider": {
+      "description": "TTS 增强模型",
+      "hint": "用于生成情感标签与指令的模型；留空则用当前会话聊天模型"
+    },
+    "context_window": {
+      "description": "SubAgent 上下文窗口",
+      "hint": "取最近几轮对话作为 SubAgent 的上下文参考"
+    },
+    "dual_output": {
+      "description": "同时输出文本和语音",
+      "hint": "开启后，TTS 段落会同时保留文本和语音消息"
+    },
+    "tts_prompt": {
+      "description": "TTS 触发提示词",
+      "hint": "提示词注入主模型"
+    },
+    "synthesis_record_max": {
+      "description": "合成记录保留份数",
+      "hint": "0 或负数表示关闭合成记录落盘（不再记录新合成，但既有的记录仍可查看 / 删除）；正整数表示仅保留最近 N 份，超出自动删除最旧的；不支持「不限制」"
+    },
+    "page_background": {
+      "description": "管理页背景图",
+      "hint": "为 TTS 管理页设置背景图；留空则不显示背景。仅支持单张图片。建议图片不要过大（如控制在数 MB 内），过大将拖慢页面加载"
+    },
+    "page_background_opacity": {
+      "description": "背景图不透明度",
+      "hint": "背景图的不透明度（0 完全透明，1 完全不透明）"
+    },
+    "page_background_blur": {
+      "description": "背景图模糊度",
+      "hint": "背景图的模糊半径（像素）"
+    },
+    "memory_retrieval_top_k": {
+      "description": "记忆召回条数",
+      "hint": "LivingMemory 联动：需安装 LivingMemory 插件才可用，未安装则记忆检索不生效；召回返回的长期记忆条数，0 = 关闭记忆检索"
+    },
+    "memory_retrieval_query_strategy": {
+      "description": "检索关键词来源",
+      "hint": "user_message=用待合成文本作关键词；prefix=用固定前缀"
+    },
+    "memory_retrieval_prefix": {
+      "description": "固定检索前缀",
+      "hint": "仅在检索关键词来源为 prefix 时生效"
+    },
+    "providers": {
+      "description": "TTS 供应商列表（支持多个，按 priority 回退）",
+      "templates": {
+        "bailian_qwen_audio_3_0_tts": {
+          "hint": "支持情感标签和指令控制",
+          "name": "百炼 Qwen Audio 3.0 TTS",
+          "display_name": {
+            "description": "显示名称",
+            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+          },
+          "priority": {
+            "description": "优先级",
+            "hint": "数字越小越优先"
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+          },
+          "api_key": {
+            "description": "API Key"
+          },
+          "workspace_id": {
+            "description": "Workspace ID"
+          },
+          "model": {
+            "description": "模型版本"
+          },
+          "voice": {
+            "description": "音色 ID"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "hint": "单位：秒。合成较长文本时可能需要增加此值。调用超时与下载超时共用此值"
+          },
+          "format": {
+            "description": "音频格式"
+          },
+          "sample_rate": {
+            "description": "采样率"
+          },
+          "seed": {
+            "description": "随机种子",
+            "hint": "若设置为 [0, 65535] 之内的数字，则会固定种子，在模型版本、文本、音色及其他参数均相同的前提下，每次生成的音频都相同；若设置在该范围之外，则会随机生成种子"
+          },
+          "enable_aigc_tag": {
+            "description": "AIGC 隐性标识",
+            "hint": "开启时，会将隐性标识嵌入到支持格式（wav/mp3/opus）的音频中"
+          },
+          "aigc_propagator": {
+            "description": "传播者标识",
+            "hint": "设置 AIGC 隐性标识中的 ContentPropagator 字段，用于标识内容的传播者。仅在 AIGC 隐性标识开启时生效。留空则使用默认值：阿里云UID"
+          },
+          "aigc_propagate_id": {
+            "description": "传播行为 ID",
+            "hint": "设置 AIGC 隐性标识中的 PropagateID 字段，用于唯一标识一次具体的传播行为。仅在 AIGC 隐性标识开启时生效。留空则使用默认值：本次语音合成请求 Request ID"
+          }
+        },
+        "bailian_qwen_audio_3_1_tts": {
+          "hint": "支持情感标签和指令控制",
+          "name": "百炼 Qwen Audio 3.1 TTS",
+          "display_name": {
+            "description": "显示名称",
+            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+          },
+          "priority": {
+            "description": "优先级",
+            "hint": "数字越小越优先"
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+          },
+          "api_key": {
+            "description": "API Key"
+          },
+          "workspace_id": {
+            "description": "Workspace ID"
+          },
+          "model": {
+            "description": "模型版本",
+            "hint": "3.1 版本支持 flash（按 token 计费）与 plus（按字符计费，响应虽返回 token 字段但计费用字符）"
+          },
+          "voice": {
+            "description": "音色 ID"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "hint": "单位：秒。合成较长文本时可能需要增加此值。调用超时与下载超时共用此值"
+          },
+          "format": {
+            "description": "音频格式"
+          },
+          "sample_rate": {
+            "description": "采样率"
+          },
+          "seed": {
+            "description": "随机种子",
+            "hint": "若设置为 [0, 65535] 之内的数字，则会固定种子，在模型版本、文本、音色及其他参数均相同的前提下，每次生成的音频都相同；若设置在该范围之外，则会随机生成种子"
+          },
+          "enable_aigc_tag": {
+            "description": "AIGC 隐性标识",
+            "hint": "开启时，会将隐性标识嵌入到支持格式（wav/mp3/opus）的音频中"
+          },
+          "aigc_propagator": {
+            "description": "传播者标识",
+            "hint": "设置 AIGC 隐性标识中的 ContentPropagator 字段，用于标识内容的传播者。仅在 AIGC 隐性标识开启时生效。留空则使用默认值：阿里云UID"
+          },
+          "aigc_propagate_id": {
+            "description": "传播行为 ID",
+            "hint": "设置 AIGC 隐性标识中的 PropagateID 字段，用于唯一标识一次具体的传播行为。仅在 AIGC 隐性标识开启时生效。留空则使用默认值：本次语音合成请求 Request ID"
+          }
+        },
+        "bailian_cosyvoice_v3_5": {
+          "hint": "不支持情感标签，支持指令控制",
+          "name": "百炼 CosyVoice 3.5",
+          "display_name": {
+            "description": "显示名称",
+            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+          },
+          "priority": {
+            "description": "优先级",
+            "hint": "数字越小越优先"
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+          },
+          "api_key": {
+            "description": "API Key"
+          },
+          "workspace_id": {
+            "description": "Workspace ID"
+          },
+          "model": {
+            "description": "模型版本"
+          },
+          "voice": {
+            "description": "音色 ID",
+            "hint": "CosyVoice v3.5 不支持系统音色，请使用声音复刻或声音设计生成的音色 ID"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "hint": "单位：秒。合成较长文本时可能需要增加此值。调用超时与下载超时共用此值"
+          },
+          "format": {
+            "description": "音频格式"
+          },
+          "sample_rate": {
+            "description": "采样率"
+          },
+          "seed": {
+            "description": "随机种子",
+            "hint": "若设置为 [0, 65535] 之内的数字，则会固定种子，在模型版本、文本、音色及其他参数均相同的前提下，每次生成的音频都相同；若设置在该范围之外，则会随机生成种子"
+          },
+          "enable_aigc_tag": {
+            "description": "AIGC 隐性标识",
+            "hint": "开启时，会将隐性标识嵌入到支持格式（wav/mp3/opus）的音频中"
+          },
+          "aigc_propagator": {
+            "description": "传播者标识",
+            "hint": "设置 AIGC 隐性标识中的 ContentPropagator 字段，用于标识内容的传播者。仅在 AIGC 隐性标识开启时生效。留空则使用默认值：阿里云UID"
+          },
+          "aigc_propagate_id": {
+            "description": "传播行为 ID",
+            "hint": "设置 AIGC 隐性标识中的 PropagateID 字段，用于唯一标识一次具体的传播行为。仅在 AIGC 隐性标识开启时生效。留空则使用默认值：本次语音合成请求 Request ID"
+          }
+        },
+        "minimax_speech_2_8": {
+          "hint": "支持语气词标签、LaTeX 朗读",
+          "name": "Minimax Speech 2.8",
+          "display_name": {
+            "description": "显示名称",
+            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+          },
+          "priority": {
+            "description": "优先级",
+            "hint": "数字越小越优先"
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+          },
+          "api_key": {
+            "description": "API Key"
+          },
+          "voice_id": {
+            "description": "音色 ID"
+          },
+          "model": {
+            "description": "模型版本"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "hint": "单位：秒。合成较长文本时可能需要增加此值"
+          },
+          "text_normalization": {
+            "description": "文本规范化",
+            "hint": "开启后，模型会对文本进行规范化处理，如将数字转换为中文读法等"
+          },
+          "sample_rate": {
+            "description": "采样率"
+          },
+          "format": {
+            "description": "音频格式"
+          },
+          "bitrate": {
+            "description": "比特率",
+            "hint": "仅在音频格式为 mp3 时生效"
+          },
+          "channel": {
+            "description": "声道数",
+            "hint": "1 为单声道，2 为立体声"
+          }
+        },
+        "bailian_minimax_speech_2_8": {
+          "hint": "百炼调用 MiniMax 2.8",
+          "name": "百炼 MiniMax Speech 2.8",
+          "display_name": {
+            "description": "显示名称",
+            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+          },
+          "priority": {
+            "description": "优先级",
+            "hint": "数字越小越优先"
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+          },
+          "api_key": {
+            "description": "百炼 API Key"
+          },
+          "voice_id": {
+            "description": "音色 ID",
+            "hint": "支持系统音色、复刻音色。首次使用复刻音色需支付 9.9 元解锁费"
+          },
+          "model": {
+            "description": "模型版本"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "hint": "单位：秒。合成较长文本时可能需要增加此值"
+          },
+          "text_normalization": {
+            "description": "文本规范化",
+            "hint": "开启后，模型会对文本进行规范化处理，如将数字转换为中文读法等"
+          },
+          "sample_rate": {
+            "description": "采样率"
+          },
+          "format": {
+            "description": "音频格式"
+          },
+          "bitrate": {
+            "description": "比特率",
+            "hint": "仅在音频格式为 mp3 时生效"
+          },
+          "channel": {
+            "description": "声道数",
+            "hint": "1 为单声道，2 为立体声"
+          }
+        },
+        "mimo_v2_5_tts": {
+          "hint": "支持预置、设计、复刻三模型",
+          "name": "小米 MiMo V2.5 TTS",
+          "display_name": {
+            "description": "显示名称",
+            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+          },
+          "priority": {
+            "description": "优先级",
+            "hint": "数字越小越优先"
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+          },
+          "api_key": {
+            "description": "API Key"
+          },
+          "model": {
+            "description": "模型",
+            "hint": "预置音色 / 文本设计音色 / 音频复刻三选一"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "hint": "单位：秒。合成较长文本时可能需要增加此值"
+          },
+          "format": {
+            "description": "音频格式",
+            "hint": "输出音频格式。pcm 即 pcm16（非流式）"
+          },
+          "voice": {
+            "description": "预置音色"
+          },
+          "voice_prompt": {
+            "description": "音色设计描述",
+            "hint": "填写说明见 https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5?target=%E4%BD%BF%E7%94%A8%E6%96%87%E6%9C%AC%E8%AE%BE%E8%AE%A1%E9%9F%B3%E8%89%B2%E8%BF%9B%E8%A1%8C%E8%AF%AD%E9%9F%B3%E5%90%88%E6%88%90"
+          },
+          "optimize_text_preview": {
+            "description": "智能润色播报文本",
+            "hint": "开启后模型会根据音色描述自动润色/生成适配的播报文本，可以提高音色匹配度，但也可能更改主模型的原始文本"
+          },
+          "voice_sample": {
+            "description": "复刻音频样本",
+            "hint": "音频复刻样本。仅支持 mp3/wav，Base64 编码后不超过 10MB。可多选，实际取第一个"
+          }
+        },
+        "google_gemini_3_8_flash_tts": {
+          "hint": "官方生成式 TTS，自然语言风格",
+          "name": "Google Gemini 3.8 Flash TTS",
+          "display_name": {
+            "description": "显示名称",
+            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+          },
+          "priority": {
+            "description": "优先级",
+            "hint": "数字越小越优先"
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+          },
+          "api_key": {
+            "description": "Gemini API Key"
+          },
+          "model": {
+            "description": "模型版本",
+            "hint": "Gemini 3.8 系列模型"
+          },
+          "voice_id": {
+            "description": "音色 ID",
+            "hint": "音色 ID（如 Kore/Zephyr/Puck）；也可填自定义/设计/复刻返回的 voice_... ID。完整音色库与语音设计/复刻请见 https://aistudio.google.com/generate-speech"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "hint": "单位：秒。合成较长文本时可能需要增加此值"
+          },
+          "proxy": {
+            "description": "代理地址",
+            "hint": "访问 Google API 所需的代理（如 http://127.0.0.1:7890）。留空则直连。"
+          }
+        },
+        "fish_audio_s2": {
+          "hint": "情绪标记写进文本",
+          "name": "Fish Audio S2 Family",
+          "display_name": {
+            "description": "显示名称",
+            "hint": "用于区分多个相同类型的供应商"
+          },
+          "priority": {
+            "description": "优先级",
+            "hint": "数字越小越优先"
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "hint": "仅在该人格下使用；留空表示通用兜底音色"
+          },
+          "api_key": {
+            "description": "API Key",
+            "hint": "Fish Audio 密钥"
+          },
+          "model": {
+            "description": "模型",
+            "hint": "s2.1/s2 系列；s2.1-pro-free 为免费档（无 TTFA/DPA 保障），生产建议 s2.1-pro"
+          },
+          "reference_id": {
+            "description": "音色 ID",
+            "hint": "Voice Library 模型 ID；留空用默认音色，音色库见 https://fish.audio/zh-CN/discovery；或在 https://fish.audio/zh-CN/app/my-voices 中创建音色"
+          },
+          "format": {
+            "description": "输出格式"
+          },
+          "mp3_bitrate": {
+            "description": "MP3 码率",
+            "hint": "单位 kbps，仅 mp3 生效"
+          },
+          "sample_rate": {
+            "description": "采样率",
+            "hint": "单位 Hz，仅 wav/pcm 生效（支持 8000/16000/24000/32000/44100）；选 mp3/opus 时忽略"
+          },
+          "opus_bitrate": {
+            "description": "Opus 码率",
+            "hint": "单位 bps，-1000 为自动，仅 opus 生效"
+          },
+          "latency": {
+            "description": "延迟权衡"
+          },
+          "normalize": {
+            "description": "文本归一化",
+            "hint": "将数字/日期等重写为口语词后再合成（仅影响读法，不改变口音），默认开启"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "hint": "单位秒；长文本合成可能需要调大"
+          },
+          "proxy": {
+            "description": "代理地址",
+            "hint": "可选；国内访问可能需要，如 http://127.0.0.1:7890"
+          },
+          "use_pronunciation_dictionary": {
+            "description": "启用发音词典"
+          },
+          "pronunciation_dictionary_id": {
+            "description": "词典 ID",
+            "hint": "正则 ^[A-Za-z0-9_-]{1,128}$"
+          },
+          "pronunciation_dictionary_version": {
+            "description": "词典版本",
+            "hint": "必须显式给出（无 latest）；正则 ^[A-Za-z0-9_-]{1,128}$"
+          },
+          "temperature": {
+            "description": "采样温度",
+            "hint": "范围 0~1，建议保持默认"
+          },
+          "top_p": {
+            "description": "核采样",
+            "hint": "范围 0~1，建议保持默认"
+          },
+          "repetition_penalty": {
+            "description": "重复惩罚",
+            "hint": "需 >1.0，建议保持默认"
+          },
+          "chunk_length": {
+            "description": "文本分块大小",
+            "hint": "范围 100~300，建议保持默认"
+          },
+          "min_chunk_length": {
+            "description": "新块最小字符数",
+            "hint": "范围 0~100，建议保持默认"
+          },
+          "max_new_tokens": {
+            "description": "单块最大音频 token 数",
+            "hint": "每块音频 token 上限，建议保持默认"
+          },
+          "condition_on_previous_chunks": {
+            "description": "音色一致性",
+            "hint": "用前序音频保持音色一致，建议保持默认"
+          },
+          "early_stop_threshold": {
+            "description": "批处理早停阈值",
+            "hint": "范围 0~1，建议保持默认"
+          },
+          "normalize_loudness": {
+            "description": "响度归一化",
+            "hint": "建议保持默认"
+          },
+          "features": {
+            "description": "功能标志",
+            "hint": "逗号分隔，如 quality-guard；留空默认，建议保持默认"
+          }
+        },
+        "elevenlabs_v4": {
+          "hint": "v4/v4 Turbo：情绪写进文本[标签]",
+          "name": "Eleven v4",
+          "display_name": {
+            "description": "显示名称",
+            "hint": "用于区分多个相同类型的供应商"
+          },
+          "priority": {
+            "description": "优先级",
+            "hint": "数字越小越优先"
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "hint": "仅在该人格下使用；留空表示通用兜底音色"
+          },
+          "api_key": {
+            "description": "API Key",
+            "hint": "Eleven 密钥（xi-api-key）"
+          },
+          "model": {
+            "description": "模型",
+            "hint": "v4=质量优先；v4_turbo=低延迟实时"
+          },
+          "voice_id": {
+            "description": "音色 ID",
+            "hint": "Voice Library/克隆音色 ID；语音库 https://elevenlabs.io/app/voice-lab"
+          },
+          "language_code": {
+            "description": "默认语言代码",
+            "hint": "Eleven 支持的语言代码（自由文本，模型不支持的代码会被静默忽略）；留空用音色/平台默认语言。工具参数 language_code 可逐句覆盖。常用示例：zh、en、ja、ko、fr、yue、pt、es"
+          },
+          "base_url": {
+            "description": "API 地址",
+            "hint": "区域/可达性：api.us.*、api.eu.residency.* 等"
+          },
+          "proxy": {
+            "description": "代理地址",
+            "hint": "可选；国内访问可能需要，如 http://127.0.0.1:7890"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "hint": "单位秒；长文本合成可能需要调大"
+          },
+          "use_voice_settings": {
+            "description": "语音设置",
+            "hint": "覆盖该音色已保存的语音设置，仅对本次请求生效；关闭则不传（用音色默认）"
+          },
+          "stability": {
+            "description": "稳定性",
+            "hint": "越高越稳定/单调；越低越有表现力；超出 [0,1] 会自动夹紧"
+          },
+          "similarity_boost": {
+            "description": "相似度",
+            "hint": "越高越贴合参考音色，可能牺牲自然度；超出 [0,1] 会自动夹紧"
+          },
+          "use_speaker_boost": {
+            "description": "说话人增强",
+            "hint": "提升与原始说话者相似度，会增加延迟"
+          },
+          "output_codec": {
+            "description": "音频编码",
+            "hint": "MP3 通用；WAV 无损；Opus 最省流量"
+          },
+          "mp3_sample_rate": {
+            "description": "MP3 采样率",
+            "hint": "22050/24000 时码率随采样率固定（32k/48k），不可另选；仅 44100 可在下方选码率"
+          },
+          "mp3_bitrate": {
+            "description": "MP3 码率",
+            "hint": "MP3 码率（kbps）；192k 需 Creator 及以上"
+          },
+          "wav_sample_rate": {
+            "description": "WAV 采样率",
+            "hint": "44.1k/48k 需 Pro 及以上"
+          },
+          "opus_bitrate": {
+            "description": "Opus 码率"
+          },
+          "apply_text_normalization": {
+            "description": "文本归一化",
+            "hint": "auto=自动；on=始终；off=跳过"
+          },
+          "seed": {
+            "description": "随机种子",
+            "hint": "-1=不固定（不传）；0~4294967295=固定种子"
+          },
+          "use_pronunciation_dictionary": {
+            "description": "发音词典",
+            "hint": "开启后按词典替换专有名词发音；需先在 Eleven 建词典"
+          },
+          "pronunciation_dictionary_id": {
+            "description": "词典 ID"
+          },
+          "pronunciation_dictionary_version": {
+            "description": "词典版本",
+            "hint": "留空=最新版；每请求最多 3 个定位符"
+          },
+          "use_audio_effects": {
+            "description": "音频效果",
+            "hint": "开启后，AI 会为语音附加 Eleven 音频效果（电话/房间/噪点等空间质感）。插件会等目录就绪再暴露效果参数；若超时未就绪，本次不附加，但后台继续预热，下次合成即可用"
+          },
+          "catalog_fetch_timeout": {
+            "description": "目录拉取超时",
+            "hint": "拉取音频效果目录的网络超时（秒），也是合成时等待目录就绪的上限。超时则本次不附加效果，但预热继续后台跑"
+          },
+          "catalog_ttl": {
+            "description": "目录缓存时长",
+            "hint": "音频效果目录的缓存时长（秒）。越短越能及时感知目录变更（如新上线效果），越长越省去重复拉取"
+          },
+          "enable_logging": {
+            "description": "启用日志",
+            "hint": "零留存仅企业版可关；普通版强制开启"
+          },
+          "use_pvc_as_ivc": {
+            "description": "PVC 转 IVC",
+            "hint": "对专业音色使用 IVC 版本，可能提升表现力/降延迟；仅 PVC 音色生效"
+          }
+        }
+      }
+    }
+  },
+  "views": {
+    "tts_studio": {
+      "title": "TTS Enhancer",
+      "description": "跨供应商管理音色并浏览合成记录。",
+      "brand": "TTS 增强",
+      "navManager": "音色管理",
+      "navRecords": "合成记录",
+      "docTitle": "TTS 增强 · 控制台",
+      "globalVolume": "全局音量",
+      "managerTitle": "TTS 音色管理",
+      "recordsTitle": "TTS 合成记录",
+      "loading": "加载中...",
+      "emptyConfigured": "⚠️ 已配置 {n} 个供应商（{names}），但当前版本暂未提供其可视化面板。如需在此面板内管理，请配置支持前端操作的服务商（如百炼 / MiniMax）。",
+      "emptyNoProviders": "⚠️ 暂无 TTS 供应商配置，请在插件配置中添加 providers 条目。",
+      "filterLabel": "来源",
+      "sourceAll": "全部",
+      "sourceChat": "聊天语音",
+      "sourcePreview": "音色预览",
+      "sourceDesign": "设计试听",
+      "sourceAgent": "Agent 发送",
+      "countHint": "共 {n} 条",
+      "clearAll": "清空全部",
+      "emptyFiltered": "⚠️ 当前筛选条件下没有合成记录。",
+      "emptyNone": "🎙️ 暂无合成记录。合成过的语音（聊天语音、音色预览、设计试听等）会自动出现在这里。",
+      "unknownProvider": "未知供应商",
+      "noText": "（无文本）",
+      "durationPrefix": "时长 ",
+      "durationUnit": "s",
+      "sourcePrefix": "来源：",
+      "stop": "⏹ 停止",
+      "play": "▶ 播放",
+      "delete": "删除",
+      "collapse": "收起 ▴",
+      "details": "详情 ▾",
+      "enhanceInstruction": "指令",
+      "enhanceVolume": "音量",
+      "enhanceRate": "语速",
+      "enhancePitch": "音调",
+      "enhanceLanguage": "语言",
+      "configVoice": "音色",
+      "configFormat": "格式",
+      "configSampleRate": "采样率",
+      "configModel": "模型",
+      "enhanceParams": "AI 增强参数",
+      "configParams": "配置参数",
+      "noParams": "本次合成未记录参数详情。",
+      "cancel": "取消",
+      "confirm": "确认",
+      "confirmDeleteTitle": "⚠️ 确认删除",
+      "confirmClearTitle": "⚠️ 清空全部",
+      "confirmDeleteMsg": "确定要删除这条合成记录吗？此操作不可恢复。\n来源：{source}",
+      "confirmClearMsg": "确定要清空全部合成记录吗？此操作不可恢复。",
+      "toastDeleted": "已删除",
+      "toastCleared": "已清空 {n} 条记录",
+      "errLoadProviders": "无法加载供应商配置：",
+      "errReadRecords": "读取合成记录失败: ",
+      "errAudioMissing": "音频数据缺失",
+      "errPlayback": "播放失败: ",
+      "errFetchAudio": "获取合成音频失败: ",
+      "errInit": "初始化失败: ",
+      "unknown": "未知",
+      "components": {
+        "authConfig": "认证配置",
+        "createVoice": "创建新音色",
+        "sysVoiceList": "系统音色列表",
+        "basicVoiceRef": "基础音色参考库",
+        "sysVoicePrefix": "系统音色列表请参考",
+        "sysVoiceSuffix": "（点击复制链接）",
+        "sysVoiceSep": "、",
+        "helpDoc": "帮助文档",
+        "tabClone": "📁 声音复刻",
+        "tabDesign": "🎨 声音设计",
+        "selectAudioFile": "选择音频文件（wav (16bit), mp3, m4a）",
+        "audioHint": "推荐 10~20s，最长 60s，文件 ≤ 10MB，采样率 ≥ 16kHz。",
+        "voicePromptLabel": "声音描述（自然语言）",
+        "voicePromptPlaceholder": "例如：沉稳的中年男性播音员，音色低沉浑厚，富有磁性，语速平稳...",
+        "voicePromptHint": "用自然语言描述期望的声音特质，支持中文和英文，不超过 500 字符（汉字按 2 字符计算）。详见",
+        "voiceDesignGuide": "声音设计编写指南",
+        "voicePromptHintSuffix": "（点击复制链接，请手动粘贴到浏览器地址栏打开）",
+        "previewTextLabel": "预览文本",
+        "previewTextPlaceholder": "输入用于试听的文本...",
+        "previewTextHint": "最小 15 字符，最大 200 字符（汉字按 2 字符计算）",
+        "prefixLabel": "音色前缀",
+        "prefixPlaceholder": "例如：design",
+        "prefixInvalid": "⚠️ 仅字母数字，长度 1~10 字符",
+        "prefixFormatDesign": "生成的音色名格式：{target_model}-vd-{prefix}-{唯一标识}",
+        "prefixFormatClone": "生成的音色名格式：{target_model}-{prefix}-{唯一标识}",
+        "langHintLabel": "语言提示",
+        "langHintDesc": "辅助模型识别语种，提升合成效果。设计模式仅支持中文和英文。",
+        "volNormLabel": "启用音量归一化",
+        "preprocessLabel": "启用音频预处理",
+        "preprocessHint": "有背景噪音时建议开启",
+        "maxAudioLenLabel": "最大提示音频时长（s）",
+        "maxAudioLenInvalid": "⚠️ 请输入 3.0 ~ 30.0 之间的数值",
+        "sampleRateLabel": "采样率",
+        "formatLabel": "输出格式",
+        "modelVersionLabel": "模型版本",
+        "btnClone": "📁 复刻音色",
+        "btnDesign": "🎨 设计音色",
+        "cloneWait": "复刻中...",
+        "designWait": "创建中...",
+        "voiceListTitle": "音色列表",
+        "refresh": "刷新",
+        "loadingList": "加载中...",
+        "colCreated": "创建时间",
+        "colStatus": "状态",
+        "colActions": "操作",
+        "designBadge": "设计",
+        "copyBtn": "复制",
+        "previewBtn": "预览",
+        "deleteBtn": "删除",
+        "noVoices": "暂无音色",
+        "previewModalTitle": "🎧 音色预览",
+        "previewTextColon": "预览文本:",
+        "stopBtn": "⏹ 停止",
+        "auditionBtn": "▶ 试听",
+        "playBtn": "▶ 播放",
+        "keepBtn": "保留",
+        "closeBtn": "关闭",
+        "confirmDeletePreviewText": "⚠️ 确定要删除此音色吗？此操作不可恢复。",
+        "cancelBtn": "取消",
+        "confirmDeleteBtn": "确认删除",
+        "copyIdTip": "复制 ID",
+        "previewVoiceTip": "预览音色",
+        "defaultPreviewText": "欢迎使用声音设计功能，让我们听听这个音色的效果。",
+        "dlgTitle": "⚠️ 确认删除",
+        "dlgConfirm": "确认删除",
+        "dlgCancel": "取消",
+        "errNoEntry": "请先选择认证配置",
+        "errNoFile": "请选择音频文件",
+        "phaseUpload": "上传音频中…",
+        "phaseSubmitClone": "提交复刻请求…",
+        "phaseSubmitDesign": "提交设计请求…",
+        "phaseAuditing": "等待审核中…",
+        "phaseApproved": "审核通过，可正常使用",
+        "phaseRejected": "审核未通过，不可使用",
+        "createdOk": "音色创建成功！Voice ID:",
+        "auditRejected": "音色审核未通过，不可使用：",
+        "auditTimeout": "审核超时，请稍后刷新列表查看状态：",
+        "unsupportedQuery": "该供应商不支持进度查询，请稍后刷新列表",
+        "cloneFail": "复刻失败:",
+        "createFail": "创建失败:",
+        "createVoiceFail": "创建音色失败:",
+        "noAudioData": "没有可播放的音频数据",
+        "playFail": "播放失败:",
+        "keptOk": "音色已保留:",
+        "deletedOk": "音色已删除",
+        "deleteOk": "删除成功",
+        "deleteFail": "删除失败:",
+        "fetchListFail": "获取音色列表失败:",
+        "audioOnlyExt": "仅支持 wav、mp3、m4a 音频文件",
+        "audioEmpty": "音频文件不能为空",
+        "audioTooLarge": "音频文件不得超过 10MB",
+        "audioReadFail": "读取音频文件失败",
+        "audioEncodeFail": "音频文件编码失败",
+        "prefixAlnum": "prefix 必须为字母数字，长度 1-10",
+        "valLabelVoicePrompt": "声音描述",
+        "valLabelPreviewText": "预览文本",
+        "statusDeploying": "审核中/处理中",
+        "statusOk": "审核通过，可正常使用",
+        "statusUndeployed": "审核未通过，不可使用",
+        "langZh": "中文",
+        "langEn": "英语",
+        "langFr": "法语",
+        "langDe": "德语",
+        "langJa": "日语",
+        "langKo": "韩语",
+        "langRu": "俄语",
+        "langPt": "葡萄牙语",
+        "langTh": "泰语",
+        "langId": "印尼语",
+        "langVi": "越南语",
+        "langEs": "西班牙语",
+        "langIt": "意大利语",
+        "langMs": "马来西亚语",
+        "langFil": "菲律宾语",
+        "langAr": "阿拉伯语",
+        "previewTitle": "预览音色",
+        "enhanceToggle": "调用 SubAgent 增强（可选，将消耗一次 LLM 调用）",
+        "synthezing": "合成中...",
+        "btnSynthesize": "合成",
+        "synthedOk": "合成成功！音频时长：",
+        "calcDuration": "计算中…",
+        "durationSec": "秒",
+        "errPreviewText": "请输入预览文本",
+        "errNoAudio": "预览失败: 未返回音频数据",
+        "errPreviewFail": "预览失败:",
+        "copyFail": "复制失败，请手动复制",
+        "linkCopied": "链接已复制，请手动粘贴到浏览器地址栏访问",
+        "copiedPrefix": "已复制: ",
+        "valEmpty": "不能为空",
+        "valMin": "不能少于 {min} 字符（当前 {count} 字符）",
+        "valMax": "不能超过 {max} 字符（当前 {count} 字符）",
+        "dlgDelVoicePre": "确定要删除音色 ",
+        "dlgDelVoiceSuf": " 吗？此操作不可恢复。",
+        "langChineseYue": "粤语",
+        "langTurkish": "土耳其语",
+        "langDutch": "荷兰语",
+        "langUkrainian": "乌克兰语",
+        "langPolish": "波兰语",
+        "langRomanian": "罗马尼亚语",
+        "langGreek": "希腊语",
+        "langCzech": "捷克语",
+        "langFinnish": "芬兰语",
+        "langHindi": "印地语",
+        "langBulgarian": "保加利亚语",
+        "langDanish": "丹麦语",
+        "langHebrew": "希伯来语",
+        "langPersian": "波斯语",
+        "langSlovak": "斯洛伐克语",
+        "langSwedish": "瑞典语",
+        "langCroatian": "克罗地亚语",
+        "langHungarian": "匈牙利语",
+        "langNorwegian": "挪威语",
+        "langSlovenian": "斯洛文尼亚语",
+        "langCatalan": "加泰罗尼亚语",
+        "langNynorsk": "挪威尼诺斯克语",
+        "langTamil": "泰米尔语",
+        "langAfrikaans": "南非荷兰语",
+        "mmTabClone": "📁 上传复刻",
+        "mmTabDesign": "🎨 声音设计",
+        "mmTabList": "🗂️ 音色列表",
+        "mmLegendCloneAudio": "📁 复刻音频管理",
+        "mmLegendPromptAudio": "🎨 示例音频管理",
+        "mmLegendCloneParams": "🔊 复刻参数",
+        "mmLegendDesign": "🎨 声音设计",
+        "mmUploadCloneAudio": "上传复刻音频",
+        "mmCustomFileName": "自定义文件名（可选）",
+        "mmUploadPromptAudio": "上传示例音频",
+        "mmPromptTextPlaceholder": "输入音频对应的文字内容（必填）",
+        "mmMainAudio": "主音频（必选）",
+        "mmPromptAudioOpt": "示例音频（可选）",
+        "mmAuditionText": "试听文本",
+        "mmAuditionModel": "试听模型版本",
+        "mmLangBoost": "语言增强",
+        "mmAsrText": "ASR 验证文本",
+        "mmAsrThreshold": "ASR 相似度阈值",
+        "mmNoiseReduction": "降噪",
+        "mmVolNorm": "音量归一化",
+        "mmAigcWatermark": "AIGC 水印",
+        "mmUploadBtn": "上传",
+        "mmUploading": "上传中...",
+        "mmSelected": "✓ 已选",
+        "mmSelect": "选择",
+        "mmSave": "保存",
+        "mmEdit": "编辑",
+        "mmCloneBtn": "复刻音色",
+        "mmCloning": "复刻中...",
+        "mmDesignBtn": "设计音色",
+        "mmDesigning": "设计中...",
+        "mmPreviewActivate": "预览（激活）",
+        "mmColFilename": "文件名",
+        "mmColSize": "大小",
+        "mmColSourceText": "源文本",
+        "mmColType": "类型",
+        "mmColDesc": "描述",
+        "mmColName": "名称",
+        "mmHintCloneAudio": "格式 mp3/m4a/wav，时长 10s ~ 5min，大小 ≤ 20MB",
+        "mmHintPromptAudio": "可选，增强相似度。示例音频时长 < 8s，格式同主音频，上传时需填写对应的源文本",
+        "mmHintVoiceId": "长度 8-256，首字母必须为英文字母，允许数字、字母、- 和 _，末位字符不可为 - 或 _，不可与已有 ID 重复",
+        "mmHintAuditionText": "提供后模型将使用复刻后的音色朗读本段文本内容。试听将根据字符数正常收取语音合成费用，定价与 T2A 各接口一致",
+        "mmHintLangBoost": "增强对指定的小语种和方言的识别能力。一般设置为 auto 让模型自主判断",
+        "mmHintAsrText": "可选。音频复刻样本（file_id 或 clone_prompt.prompt_audio 中的音频）的预期文本内容。提供后，服务会对该音频做 ASR 识别，并将识别文本与该文本做相似度比对；若相似度低于 accuracy，请求会被拒绝",
+        "mmHintAsrThreshold": "可选。配合 ASR 验证文本使用的 ASR 相似度阈值，取值范围 [0, 1]，默认 0.7",
+        "mmHintAigc": "是否在合成试听音频的末尾添加音频节奏标识",
+        "mmEmptyCloneAudio": "暂无复刻音频",
+        "mmEmptyPromptAudio": "暂无示例音频",
+        "mmNoticeTitle": "重要：音色复刻与音色设计产出的均为临时（未激活）音色",
+        "mmNotice1": "9.9 元音色激活费用在首次用于语音合成时才收取（不含接口内试听）",
+        "mmNotice2": "若 168h（7 天）内未在任意语音合成接口中使用，该音色将被删除",
+        "mmNotice3": "本界面音色列表中的预览功能会调用一次语音合成，因此需要的音色可通过预览一次保留，不想要的音色请勿点击预览避免扣费",
+        "mmPricingDoc": "MiniMax 语音定价文档",
+        "mmCloneOkTitle": "✅ 复刻成功",
+        "mmDesignOkTitle": "✅ 设计成功",
+        "mmUnactivatedNote": "音色当前处于未激活状态，需要在语音合成接口中正式调用一次方可激活。",
+        "mmUnactivatedBanner": "这些音色尚未激活，点击“预览（激活）”可调用一次语音合成激活音色，激活后音色将出现在自定义音色列表中，并扣取相应费用。",
+        "mmUnactivatedHeading": "⏳ 未激活音色",
+        "mmCustomHeading": "🧑‍🎨 自定义音色",
+        "mmSystemHeading": "🎙️ 系统音色",
+        "mmNoDemo": "没有试听音频",
+        "mmUploadFail": "上传失败: ",
+        "mmFetchListFail": "获取{label}列表失败: ",
+        "mmDeleteConfirmMsg": "确定删除{label} {fileId} 吗？",
+        "mmCloneAudioUploaded": "复刻音频上传成功",
+        "mmPromptTextRequired": "请输入源文本（音频对应的文字内容）",
+        "mmPromptAudioUploaded": "示例音频上传成功",
+        "mmPromptTextEmpty": "源文本不能为空",
+        "mmSaveFail": "保存失败: ",
+        "mmPromptSaved": "源文本已保存",
+        "mmFetchAudioFail": "获取音频失败: ",
+        "mmSelectMainAudio": "请选择一个主音频（复刻音频）",
+        "mmPromptNoText": "所选示例音频缺少源文本，请先绑定",
+        "mmCloneSuccess": "音色克隆成功！Voice ID: ",
+        "mmCloneFail": "克隆失败: ",
+        "mmDesignSuccess": "音色设计成功！Voice ID: ",
+        "mmDesignFail": "设计失败: ",
+        "mmListFail": "获取音色列表失败: ",
+        "mmUnactivatedNotFound": "未找到该未激活音色",
+        "mmUnactivatedDeleted": "已删除未激活音色",
+        "mmKeptUnactivated": "音色已保留到未激活列表，请通过预览激活",
+        "blmmTabUpload": "📁 上传音频文件",
+        "blmmTabUrl": "🔗 使用音频 URL",
+        "blmmTabList": "📋 音色列表",
+        "blmmCreateLegend": "创建新音色（声音克隆）",
+        "blmmTip": "💡 提示：",
+        "blmmNotice": "首次使用复刻音色进行语音合成时将激活并扣除 9.9 元解锁费。",
+        "blmmPricingDoc": "模型调用价格",
+        "blmmSelectLocal": "选择本地音频文件（wav, mp3, m4a）",
+        "blmmSelectedPrefix": "✅ 已选择: ",
+        "blmmClear": "清除",
+        "blmmHintLocalAudio": "时长最少应不低于 10s，最长应不超过 5 分钟；格式需为：mp3、m4a、wav；大小需不超过 20MB",
+        "blmmCustomId": "自定义音色 ID（可选）",
+        "blmmPlaceholderAuto": "留空则自动生成",
+        "blmmAuditionPlaceholder": "请输入试听文本，最多 1000 字符...",
+        "blmmHintAudition": "试听将根据字符数正常收取语音合成费用，限制 1000 字符",
+        "blmmModelVersion": "模型版本",
+        "blmmHintLangBoost": "增强对指定语种的识别能力，一般设置为 auto",
+        "blmmNoiseReduction": "开启降噪",
+        "blmmNoiseHint": "有背景噪音时建议开启",
+        "blmmPromptAudio": "示例音频（可选，增强相似度）",
+        "blmmHintPrompt": "可选，时长 < 8s，文件 ≤ 20MB。提供示例音频可增强音色相似度",
+        "blmmPromptTextLabel": "示例音频文本",
+        "blmmPromptPlaceholder": "请输入示例音频对应的文本内容",
+        "blmmHintPromptText": "示例音频对应的文本内容，需与音频内容一致",
+        "blmmCloneBtn": "📁 上传并克隆",
+        "blmmCloning": "克隆中...",
+        "blmmUrlCloneBtn": "🔗 使用 URL 克隆",
+        "blmmPublicUrl": "公网音频 URL",
+        "blmmHintUrl": "音频文件的可访问 URL，支持 WAV/MP3/M4A 格式",
+        "blmmUrlPlaceholder": "例如：https://example.com/voice.wav",
+        "blmmConfigPrefix": "配置 #",
+        "blmmClonedHeading": "🎤 复刻音色",
+        "blmmUnactivatedBanner": "这些音色尚未激活，点击“预览（激活）”可调用一次语音合成激活音色，激活后音色将出现在复刻音色列表中，并扣取相应费用。",
+        "blmmCloneOkTitle": "✅ 克隆成功",
+        "blmmAudioFormat": "不支持的音频格式，请选择 WAV/MP3/M4A 文件",
+        "blmmAudioTooLarge": "音频文件过大，请选择 10MB 以内的文件",
+        "blmmReadFail": "读取文件失败",
+        "blmmReadPromptFail": "读取示例音频失败",
+        "blmmListFail": "获取音色列表失败: ",
+        "blmmDeleteMsg": "确定删除音色 {voiceId} 吗？此操作不可撤销。",
+        "blmmSelectOrUrl": "请选择音频文件或输入音频 URL",
+        "blmmEnterAudition": "请输入试听文本",
+        "blmmPromptTextRequired": "请填写示例音频对应的文本内容",
+        "blmmDeleteUnactivatedMsg": "确定删除未激活音色 {voiceId} 吗？此操作将同时从百炼服务端删除该音色，不可恢复。",
+        "blmmPromptTooLarge": "示例音频文件过大，请选择 20MB 以内的文件",
+        "blmmDefaultAuditionText": "你好，这是试听文本。",
+        "blmmColVoiceId": "Voice ID",
+        "blmmColType": "类型",
+        "blmmColName": "名称",
+        "blmmVolNorm": "开启音量归一化",
+        "blmmAigcWatermark": "添加 AIGC 水印",
+        "blmmHintAigc": "在合成音频末尾添加音频节奏标识",
+        "blmmCloneSuccess": "音色克隆成功！Voice ID: ",
+        "blmmCloneFail": "克隆失败: ",
+        "blmmHintAuditionAfterClone": "克隆成功后将使用此文本生成试听音频，限制 1000 字符",
+        "blmmCopyIdTip": "复制 ID",
+        "blmmPreviewTip": "预览音色",
+        "blmmLangZh": "汉语",
+        "blmmLangChineseYue": "粤语",
+        "blmmLangEn": "英语",
+        "blmmLangAr": "阿拉伯语",
+        "blmmLangRu": "俄语",
+        "blmmLangEs": "西班牙语",
+        "blmmLangFr": "法语",
+        "blmmLangPt": "葡萄牙语",
+        "blmmLangDe": "德语",
+        "blmmLangTurkish": "土耳其语",
+        "blmmLangDutch": "荷兰语",
+        "blmmLangUkrainian": "乌克兰语",
+        "blmmLangVi": "越南语",
+        "blmmLangId": "印尼语",
+        "blmmLangJa": "日语",
+        "blmmLangIt": "意大利语",
+        "blmmLangKo": "韩语",
+        "blmmLangTh": "泰语",
+        "blmmLangPolish": "波兰语",
+        "blmmLangRomanian": "罗马尼亚语",
+        "blmmLangGreek": "希腊语",
+        "blmmLangCzech": "捷克语",
+        "blmmLangFinnish": "芬兰语",
+        "blmmLangHindi": "印地语",
+        "blmmLangBulgarian": "保加利亚语",
+        "blmmLangDanish": "丹麦语",
+        "blmmLangHebrew": "希伯来语",
+        "blmmLangMs": "马来语",
+        "blmmLangPersian": "波斯语",
+        "blmmLangSlovak": "斯洛伐克语",
+        "blmmLangSwedish": "瑞典语",
+        "blmmLangCroatian": "克罗地亚语",
+        "blmmLangFil": "菲律宾语",
+        "blmmLangHungarian": "匈牙利语",
+        "blmmLangNorwegian": "挪威语",
+        "blmmLangSlovenian": "斯洛文尼亚语",
+        "blmmLangCatalan": "加泰罗尼亚语",
+        "blmmLangNynorsk": "挪威尼诺斯克语",
+        "blmmLangTamil": "泰米尔语",
+        "blmmLangAfrikaans": "南非荷兰语",
+        "blmmLangAuto": "自动",
+        "mmDesignDefaultPreview": "欢迎使用 MiniMax 声音设计功能。",
+        "mmUnbound": "未绑定",
+        "mmPleaseSelect": "-- 请选择 --",
+        "mmPleaseSelectNone": "-- 不使用 --",
+        "mmPlaceholderAuto": "建议自定义，留空自动生成",
+        "mmAuditionPlaceholder": "可选。≤ 1000 字",
+        "mmAsrPlaceholder": "预期音频内容，≤ 200 字",
+        "mmPlayDemo": "▶ 播放试听音频",
+        "mmVoiceDesc": "音色描述",
+        "mmVoiceDescPlaceholder": "例如：温柔的女声，略带磁性，适合朗读抒情散文...",
+        "mmPreviewTextLabel": "预览文本",
+        "mmPreviewTextPlaceholder": "输入用于试听的文本。≤ 500 字符",
+        "mmHintPreviewText": "最大 500 字符 (汉字按 2 字符计算)；试听音频的合成将收取 2 元/万字符的费用",
+        "mmCannotBeEmpty": "{label}不能为空",
+        "mmCannotBeLess": "{label}不能少于 {min} 字符（当前 {count} 字符）",
+        "mmCannotExceed": "{label}不能超过 {max} 字符（当前 {count} 字符）",
+        "mmVidErrLen": "长度必须为 8~256 字符",
+        "mmVidErrFirst": "首字符必须为英文字母",
+        "mmVidErrChars": "仅允许字母、数字、-、_",
+        "mmVidErrLast": "末位字符不可为 - 或 _",
+        "mmUnknownError": "未知错误",
+        "mmDeleteVoiceMsg": "确定删除音色 {voiceId} 吗？",
+        "mmDeleteUnactivatedMsg": "确定删除未激活音色 {voiceId} 吗？此操作将同时从 MiniMax 服务端删除该音色，不可恢复。",
+        "mmCloneAudioLabel": "复刻音频",
+        "mmPromptAudioLabel": "示例音频",
+        "mmSelectFile": "请选择一个文件",
+        "mmNoAudioData": "未获取到音频数据",
+        "langAuto": "auto（自动）",
+        "mmSeeDetails": "详见："
+      }
+    }
+  }
+}

@@ -326,7 +326,7 @@ class TTSService:
         # 准备 SubAgent 工具
         tool_set = None
         if hasattr(adapter, "get_tool_schema"):
-            # 合成前按供应商配置超时有界等待预热（如 ElevenLabs audio_effects 目录）：
+            # 合成前按供应商配置超时有界等待预热（如 Eleven audio_effects 目录）：
             # 等到则本合成把对应参数拼进 schema 与提示词，等不到本次不暴露但预热
             # 继续后台跑。基类默认无操作（同步/非预热适配器零成本），仅当适配器
             # 确实提供该异步钩子时才调用，对测试替身/MagicMock 友好。
