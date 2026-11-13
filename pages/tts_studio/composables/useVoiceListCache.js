@@ -56,7 +56,10 @@ export function setVoiceList(params, items) {
     // 一旦缓存定格，用户将一直看到旧状态。
     if (hasNonTerminal(items)) return;
     const key = voiceListCacheKey(params);
-    cache.set(key, { items, expireAt: Date.now() + CACHE_TTL_MS });
+    // 存副本而非原引用：组件拿到 items 后可能就地 mutate（如创建音色后
+    // upsertVoiceItem 对 voiceList.value 做 unshift / 下标赋值），若缓存持有
+    // 同一数组引用，脏改动会写入缓存并残留到 TTL（60s）才自愈。
+    cache.set(key, { items: [...items], expireAt: Date.now() + CACHE_TTL_MS });
 }
 
 // 清空缓存。不传 entryId 清空全部；传 entryId 仅清该 entry（entry 删除后残留）。
