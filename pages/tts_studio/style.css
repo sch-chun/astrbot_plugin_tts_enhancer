@@ -399,6 +399,18 @@ th { background: rgba(var(--bg-rgb), 0.6); font-weight: 600; }
     flex-direction: column;
     align-items: center;
     gap: 16px;
+    /* 竖排标签在英文/俄文等较长文案下会变高，超出固定高度时改为内部滚动，避免顶出底部被裁切 */
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+}
+.studio-sidebar::-webkit-scrollbar {
+    width: 4px;
+}
+.studio-sidebar::-webkit-scrollbar-thumb {
+    background: var(--gray);
+    opacity: 0.4;
+    border-radius: 2px;
 }
 .studio-brand {
     display: flex;
@@ -466,6 +478,15 @@ th { background: rgba(var(--bg-rgb), 0.6); font-weight: 600; }
     background: var(--sidebar-active);
     color: #fff;
     font-weight: 600;
+}
+/* 拉丁字母（英文 / 俄文）：竖排改为 90° 旋转（text-orientation: mixed 让拉丁字母侧立、CJK 仍正立），
+   并在空格处换行，使两个单词分开、整体更短，避免顶出底部。中文 / 日文保持原竖排正立。 */
+.loc-en-US .brand-text,
+.loc-ru-RU .brand-text,
+.loc-en-US .nav-label,
+.loc-ru-RU .nav-label {
+    text-orientation: mixed;
+    white-space: normal;
 }
 .studio-main {
     flex: 1 1 auto;

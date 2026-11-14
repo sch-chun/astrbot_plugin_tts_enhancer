@@ -1,0 +1,1059 @@
+{
+  "metadata": {
+    "display_name": "TTS Enhancer",
+    "short_desc": "複数プロバイダー対応のスマートTTSプラグイン。SubAgentが感情タグと指示制御を自動注入します。",
+    "desc": "複数プロバイダー対応のスマートTTSプラグイン。SubAgentによる感情タグと指示制御の自動注入、統合管理ページ、KV保存の合成記録に対応しています。"
+  },
+  "config": {
+    "enable_enhance": {
+      "description": "SubAgent 音声強化",
+      "hint": "有効化すると、LLMを呼び出し、プロバイダーの能力に応じて感情タグと指示制御を自動注入します"
+    },
+    "enhance_llm_provider": {
+      "description": "TTS 強化モデル",
+      "hint": "感情タグと指示を生成するモデル。空欄の場合は現在のセッションのチャットモデルを使用"
+    },
+    "context_window": {
+      "description": "SubAgent コンテキストウィンドウ",
+      "hint": "直近の数ターンの対話をSubAgentのコンテキスト参照として使用"
+    },
+    "dual_output": {
+      "description": "テキストと音声の両方を出力",
+      "hint": "有効化すると、TTSセグメントはテキストと音声メッセージの両方を保持します"
+    },
+    "tts_prompt": {
+      "description": "TTS トリガープロンプト",
+      "hint": "プロンプトを主モデルに注入"
+    },
+    "synthesis_record_max": {
+      "description": "合成記録の保持件数",
+      "hint": "0または負数は合成記録の保存を無効化（新規保存は行われませんが、既存記録は閲覧／削除可能）。正の整数は直近N件のみ保持し、超過分は最古のものから自動削除。「無制限」には非対応"
+    },
+    "page_background": {
+      "description": "管理ページの背景画像",
+      "hint": "TTS管理ページの背景画像を設定。空欄の場合は背景なし。単一画像のみ対応。画像は大きすぎないよう（数MB以内など）推奨。大きすぎるとページ読み込みが遅くなります"
+    },
+    "page_background_opacity": {
+      "description": "背景画像の不透明度",
+      "hint": "背景画像の不透明度（0＝完全透明、1＝完全不透明）"
+    },
+    "page_background_blur": {
+      "description": "背景画像のぼかし",
+      "hint": "背景画像のぼかし半径（ピクセル）"
+    },
+    "memory_retrieval_top_k": {
+      "description": "記憶召回件数",
+      "hint": "LivingMemoryと連携：LivingMemoryプラグインの導入が必要です。未導入の場合は記憶検索は無効になります。召回（recall）が返す長期記憶の件数。0＝記憶検索を無効化"
+    },
+    "memory_retrieval_query_strategy": {
+      "description": "検索キーワードの由来",
+      "hint": "user_message=合成対象のテキストをキーワードにする、prefix=固定プレフィックスを使用"
+    },
+    "memory_retrieval_prefix": {
+      "description": "固定検索プレフィックス",
+      "hint": "検索キーワードの由来がprefixの場合のみ有効"
+    },
+    "providers": {
+      "description": "TTS プロバイダー一覧（複数可、priority順でフォールバック）",
+      "templates": {
+        "bailian_qwen_audio_3_0_tts": {
+          "hint": "感情タグと指示制御に対応",
+          "name": "Bailian Qwen Audio 3.0 TTS",
+          "display_name": {
+            "description": "表示名",
+            "hint": "このプロバイダー設定の表示名（同一タイプの複数プロバイダーを区別するため）"
+          },
+          "priority": {
+            "description": "優先度",
+            "hint": "数値が小さいほど優先"
+          },
+          "persona_id": {
+            "description": "ペルソナ紐付け",
+            "hint": "指定したペルソナ配下のみでこのプロバイダーの音声を使用。空欄の場合は共通のフォールバック音声として使用"
+          },
+          "api_key": {
+            "description": "APIキー"
+          },
+          "workspace_id": {
+            "description": "ワークスペースID"
+          },
+          "model": {
+            "description": "モデルバージョン"
+          },
+          "voice": {
+            "description": "音声ID"
+          },
+          "timeout": {
+            "description": "タイムアウト時間",
+            "hint": "単位：秒。長いテキスト合成時に増やす必要があります。呼び出しタイムアウトとダウンロードタイムアウトで共用"
+          },
+          "format": {
+            "description": "音声フォーマット"
+          },
+          "sample_rate": {
+            "description": "サンプリングレート"
+          },
+          "seed": {
+            "description": "ランダムシード",
+            "hint": "[0, 65535]の範囲内の数値を設定するとシードが固定され、モデルバージョン／テキスト／音声／その他のパラメータが同じであれば毎回同じ音声が生成されます。この範囲外を設定するとシードはランダムに生成されます"
+          },
+          "enable_aigc_tag": {
+            "description": "AIGC 不可視ウォーターマーク",
+            "hint": "有効化時、不可視識別子を対応フォーマット（wav/mp3/opus）の音声に埋め込みます"
+          },
+          "aigc_propagator": {
+            "description": "コンテンツ伝播者",
+            "hint": "AIGC不可視識別子のContentPropagatorフィールドを設定（コンテンツの伝播者を識別）。AIGC不可視識別子が有効な場合のみ有効。空欄の場合は既定値：Alibaba Cloud UID"
+          },
+          "aigc_propagate_id": {
+            "description": "伝播ID",
+            "hint": "AIGC不可視識別子のPropagateIDフィールドを設定（1回の具体的な伝播アクションを一意に識別）。AIGC不可視識別子が有効な場合のみ有効。空欄の場合は既定値：今回の音声合成リクエストのRequest ID"
+          }
+        },
+        "bailian_qwen_audio_3_1_tts": {
+          "hint": "感情タグと指示制御に対応",
+          "name": "Bailian Qwen Audio 3.1 TTS",
+          "display_name": {
+            "description": "表示名",
+            "hint": "このプロバイダー設定の表示名（同一タイプの複数プロバイダーを区別するため）"
+          },
+          "priority": {
+            "description": "優先度",
+            "hint": "数値が小さいほど優先"
+          },
+          "persona_id": {
+            "description": "ペルソナ紐付け",
+            "hint": "指定したペルソナ配下のみでこのプロバイダーの音声を使用。空欄の場合は共通のフォールバック音声として使用"
+          },
+          "api_key": {
+            "description": "APIキー"
+          },
+          "workspace_id": {
+            "description": "ワークスペースID"
+          },
+          "model": {
+            "description": "モデルバージョン",
+            "hint": "3.1版はflash（トークン課金）とplus（文字課金。レスポンスにtokenフィールドが返りますが課金は文字単位）に対応"
+          },
+          "voice": {
+            "description": "音声ID"
+          },
+          "timeout": {
+            "description": "タイムアウト時間",
+            "hint": "単位：秒。長いテキスト合成時に増やす必要があります。呼び出しタイムアウトとダウンロードタイムアウトで共用"
+          },
+          "format": {
+            "description": "音声フォーマット"
+          },
+          "sample_rate": {
+            "description": "サンプリングレート"
+          },
+          "seed": {
+            "description": "ランダムシード",
+            "hint": "[0, 65535]の範囲内の数値を設定するとシードが固定され、モデルバージョン／テキスト／音声／その他のパラメータが同じであれば毎回同じ音声が生成されます。この範囲外を設定するとシードはランダムに生成されます"
+          },
+          "enable_aigc_tag": {
+            "description": "AIGC 不可視ウォーターマーク",
+            "hint": "有効化時、不可視識別子を対応フォーマット（wav/mp3/opus）の音声に埋め込みます"
+          },
+          "aigc_propagator": {
+            "description": "コンテンツ伝播者",
+            "hint": "AIGC不可視識別子のContentPropagatorフィールドを設定（コンテンツの伝播者を識別）。AIGC不可視識別子が有効な場合のみ有効。空欄の場合は既定値：Alibaba Cloud UID"
+          },
+          "aigc_propagate_id": {
+            "description": "伝播ID",
+            "hint": "AIGC不可視識別子のPropagateIDフィールドを設定（1回の具体的な伝播アクションを一意に識別）。AIGC不可視識別子が有効な場合のみ有効。空欄の場合は既定値：今回の音声合成リクエストのRequest ID"
+          }
+        },
+        "bailian_cosyvoice_v3_5": {
+          "hint": "感情タグ非対応、指示制御は対応",
+          "name": "Bailian CosyVoice 3.5",
+          "display_name": {
+            "description": "表示名",
+            "hint": "このプロバイダー設定の表示名（同一タイプの複数プロバイダーを区別するため）"
+          },
+          "priority": {
+            "description": "優先度",
+            "hint": "数値が小さいほど優先"
+          },
+          "persona_id": {
+            "description": "ペルソナ紐付け",
+            "hint": "指定したペルソナ配下のみでこのプロバイダーの音声を使用。空欄の場合は共通のフォールバック音声として使用"
+          },
+          "api_key": {
+            "description": "APIキー"
+          },
+          "workspace_id": {
+            "description": "ワークスペースID"
+          },
+          "model": {
+            "description": "モデルバージョン"
+          },
+          "voice": {
+            "description": "音声ID",
+            "hint": "CosyVoice v3.5はシステム音声に対応していません。音声クローンまたは音声デザインで生成した音声IDをご使用ください"
+          },
+          "timeout": {
+            "description": "タイムアウト時間",
+            "hint": "単位：秒。長いテキスト合成時に増やす必要があります。呼び出しタイムアウトとダウンロードタイムアウトで共用"
+          },
+          "format": {
+            "description": "音声フォーマット"
+          },
+          "sample_rate": {
+            "description": "サンプリングレート"
+          },
+          "seed": {
+            "description": "ランダムシード",
+            "hint": "[0, 65535]の範囲内の数値を設定するとシードが固定され、モデルバージョン／テキスト／音声／その他のパラメータが同じであれば毎回同じ音声が生成されます。この範囲外を設定するとシードはランダムに生成されます"
+          },
+          "enable_aigc_tag": {
+            "description": "AIGC 不可視ウォーターマーク",
+            "hint": "有効化時、不可視識別子を対応フォーマット（wav/mp3/opus）の音声に埋め込みます"
+          },
+          "aigc_propagator": {
+            "description": "コンテンツ伝播者",
+            "hint": "AIGC不可視識別子のContentPropagatorフィールドを設定（コンテンツの伝播者を識別）。AIGC不可視識別子が有効な場合のみ有効。空欄の場合は既定値：Alibaba Cloud UID"
+          },
+          "aigc_propagate_id": {
+            "description": "伝播ID",
+            "hint": "AIGC不可視識別子のPropagateIDフィールドを設定（1回の具体的な伝播アクションを一意に識別）。AIGC不可視識別子が有効な場合のみ有効。空欄の場合は既定値：今回の音声合成リクエストのRequest ID"
+          }
+        },
+        "minimax_speech_2_8": {
+          "hint": "間投詞タグ、LaTeX読み上げに対応",
+          "name": "Minimax Speech 2.8",
+          "display_name": {
+            "description": "表示名",
+            "hint": "このプロバイダー設定の表示名（同一タイプの複数プロバイダーを区別するため）"
+          },
+          "priority": {
+            "description": "優先度",
+            "hint": "数値が小さいほど優先"
+          },
+          "persona_id": {
+            "description": "ペルソナ紐付け",
+            "hint": "指定したペルソナ配下のみでこのプロバイダーの音声を使用。空欄の場合は共通のフォールバック音声として使用"
+          },
+          "api_key": {
+            "description": "APIキー"
+          },
+          "voice_id": {
+            "description": "音声ID"
+          },
+          "model": {
+            "description": "モデルバージョン"
+          },
+          "timeout": {
+            "description": "タイムアウト時間",
+            "hint": "単位：秒。長いテキストを合成する場合は大きくする必要があります"
+          },
+          "text_normalization": {
+            "description": "テキスト正規化",
+            "hint": "有効化すると、モデルがテキストを正規化します（例：数字を中国語の読み方に変換など）"
+          },
+          "sample_rate": {
+            "description": "サンプリングレート"
+          },
+          "format": {
+            "description": "音声フォーマット"
+          },
+          "bitrate": {
+            "description": "ビットレート",
+            "hint": "音声フォーマットがmp3の場合のみ有効"
+          },
+          "channel": {
+            "description": "チャンネル数",
+            "hint": "1＝モノラル、2＝ステレオ"
+          }
+        },
+        "bailian_minimax_speech_2_8": {
+          "hint": "Bailian経由のMiniMax 2.8",
+          "name": "Bailian MiniMax Speech 2.8",
+          "display_name": {
+            "description": "表示名",
+            "hint": "このプロバイダー設定の表示名（同一タイプの複数プロバイダーを区別するため）"
+          },
+          "priority": {
+            "description": "優先度",
+            "hint": "数値が小さいほど優先"
+          },
+          "persona_id": {
+            "description": "ペルソナ紐付け",
+            "hint": "指定したペルソナ配下のみでこのプロバイダーの音声を使用。空欄の場合は共通のフォールバック音声として使用"
+          },
+          "api_key": {
+            "description": "Bailian APIキー"
+          },
+          "voice_id": {
+            "description": "音声ID",
+            "hint": "システム音声、クローン音声に対応。クローン音声の初回利用には9.9元のアンロック料金が必要"
+          },
+          "model": {
+            "description": "モデルバージョン"
+          },
+          "timeout": {
+            "description": "タイムアウト時間",
+            "hint": "単位：秒。長いテキストを合成する場合は大きくする必要があります"
+          },
+          "text_normalization": {
+            "description": "テキスト正規化",
+            "hint": "有効化すると、モデルがテキストを正規化します（例：数字を中国語の読み方に変換など）"
+          },
+          "sample_rate": {
+            "description": "サンプリングレート"
+          },
+          "format": {
+            "description": "音声フォーマット"
+          },
+          "bitrate": {
+            "description": "ビットレート",
+            "hint": "音声フォーマットがmp3の場合のみ有効"
+          },
+          "channel": {
+            "description": "チャンネル数",
+            "hint": "1＝モノラル、2＝ステレオ"
+          }
+        },
+        "mimo_v2_5_tts": {
+          "hint": "プリセット、デザイン、クローンの3モデルに対応",
+          "name": "Xiaomi MiMo V2.5 TTS",
+          "display_name": {
+            "description": "表示名",
+            "hint": "このプロバイダー設定の表示名（同一タイプの複数プロバイダーを区別するため）"
+          },
+          "priority": {
+            "description": "優先度",
+            "hint": "数値が小さいほど優先"
+          },
+          "persona_id": {
+            "description": "ペルソナ紐付け",
+            "hint": "指定したペルソナ配下のみでこのプロバイダーの音声を使用。空欄の場合は共通のフォールバック音声として使用"
+          },
+          "api_key": {
+            "description": "APIキー"
+          },
+          "model": {
+            "description": "モデル",
+            "hint": "プリセット音声／テキストデザイン音声／音声クローンのいずれかを選択"
+          },
+          "timeout": {
+            "description": "タイムアウト時間",
+            "hint": "単位：秒。長いテキストを合成する場合は大きくする必要があります"
+          },
+          "format": {
+            "description": "音声フォーマット",
+            "hint": "出力音声フォーマット。pcmはpcm16（非ストリーミング）"
+          },
+          "voice": {
+            "description": "プリセット音声"
+          },
+          "voice_prompt": {
+            "description": "音声デザイン説明",
+            "hint": "記入方法は https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5 を参照"
+          },
+          "optimize_text_preview": {
+            "description": "アナウンス文本のスマート整え",
+            "hint": "有効化すると、モデルが音声の説明から適切なアナウンス文本を自動で整えたり生成したりします。音声の一致度は上がりますが、主モデルの元のテキストが変わる場合があります"
+          },
+          "voice_sample": {
+            "description": "クローン音声サンプル",
+            "hint": "音声クローンサンプル。mp3/wavのみ対応、Base64エンコードで10MB以下。複数選択可、実際には最初のものを使用"
+          }
+        },
+        "google_gemini_3_8_flash_tts": {
+          "hint": "公式の生成系TTS。自然言語スタイル",
+          "name": "Google Gemini 3.8 Flash TTS",
+          "display_name": {
+            "description": "表示名",
+            "hint": "このプロバイダー設定の表示名（同一タイプの複数プロバイダーを区別するため）"
+          },
+          "priority": {
+            "description": "優先度",
+            "hint": "数値が小さいほど優先"
+          },
+          "persona_id": {
+            "description": "ペルソナ紐付け",
+            "hint": "指定したペルソナ配下のみでこのプロバイダーの音声を使用。空欄の場合は共通のフォールバック音声として使用"
+          },
+          "api_key": {
+            "description": "Gemini APIキー"
+          },
+          "model": {
+            "description": "モデルバージョン",
+            "hint": "Gemini 3.8 シリーズのモデル"
+          },
+          "voice_id": {
+            "description": "音声ID",
+            "hint": "音声ID（例：Kore/Zephyr/Puck）。カスタム／デザイン／クローンが返すvoice_... IDも可。全音声ライブラリや音声デザイン／クローンは https://aistudio.google.com/generate-speech"
+          },
+          "timeout": {
+            "description": "タイムアウト時間",
+            "hint": "単位：秒。長いテキストを合成する場合は大きくする必要があります"
+          },
+          "proxy": {
+            "description": "プロキシアドレス",
+            "hint": "Google APIへのアクセスに必要なプロキシ（例：http://127.0.0.1:7890）。空欄の場合は直接接続。"
+          }
+        },
+        "fish_audio_s2": {
+          "hint": "感情マーカーをテキストに記述",
+          "name": "Fish Audio S2 Family",
+          "display_name": {
+            "description": "表示名",
+            "hint": "同一タイプの複数プロバイダーを区別するため"
+          },
+          "priority": {
+            "description": "優先度",
+            "hint": "数値が小さいほど優先"
+          },
+          "persona_id": {
+            "description": "ペルソナ紐付け",
+            "hint": "このペルソナ配下のみで使用。空欄の場合は共通のフォールバック音声"
+          },
+          "api_key": {
+            "description": "APIキー",
+            "hint": "Fish Audio APIキー"
+          },
+          "model": {
+            "description": "モデル",
+            "hint": "s2.1/s2 シリーズ。s2.1-pro-freeは無料枠（TTFA/DPAの保証なし）。本番はs2.1-proを推奨"
+          },
+          "reference_id": {
+            "description": "音声ID",
+            "hint": "Voice Library モデルID。空欄の場合は既定の音声。音声ライブラリは https://fish.audio/zh-CN/discovery、または https://fish.audio/zh-CN/app/my-voices で音声を作成"
+          },
+          "format": {
+            "description": "出力フォーマット"
+          },
+          "mp3_bitrate": {
+            "description": "MP3 ビットレート",
+            "hint": "単位はkbps、mp3でのみ有効"
+          },
+          "sample_rate": {
+            "description": "サンプリングレート",
+            "hint": "単位はHz、wav/pcmでのみ有効（8000/16000/24000/32000/44100対応）。mp3/opus選択時は無視"
+          },
+          "opus_bitrate": {
+            "description": "Opus ビットレート",
+            "hint": "単位はbps、-1000で自動。opusでのみ有効"
+          },
+          "latency": {
+            "description": "遅延のトレードオフ"
+          },
+          "normalize": {
+            "description": "テキスト正規化",
+            "hint": "数字／日付などを話し言葉に書き換えてから合成（読み方のみに影響し、アクセントは変わりません）。既定で有効"
+          },
+          "timeout": {
+            "description": "タイムアウト時間",
+            "hint": "単位は秒。長文合成では大きくする必要がある場合があります"
+          },
+          "proxy": {
+            "description": "プロキシアドレス",
+            "hint": "任意。国内からのアクセスで必要になる場合があります（例：http://127.0.0.1:7890）"
+          },
+          "use_pronunciation_dictionary": {
+            "description": "発音辞書を有効化"
+          },
+          "pronunciation_dictionary_id": {
+            "description": "辞書ID",
+            "hint": "正規表現 ^[A-Za-z0-9_-]{1,128}$"
+          },
+          "pronunciation_dictionary_version": {
+            "description": "辞書バージョン",
+            "hint": "明示的に指定が必要（latestはなし）。正規表現 ^[A-Za-z0-9_-]{1,128}$"
+          },
+          "temperature": {
+            "description": "サンプリング温度",
+            "hint": "範囲0～1。既定値を維持することを推奨"
+          },
+          "top_p": {
+            "description": "Top-p（核）サンプリング",
+            "hint": "範囲0～1。既定値を維持することを推奨"
+          },
+          "repetition_penalty": {
+            "description": "リピートペナルティ",
+            "hint": "1.0より大きい必要があります。既定値を維持することを推奨"
+          },
+          "chunk_length": {
+            "description": "テキスト分割サイズ",
+            "hint": "範囲100～300。既定値を維持することを推奨"
+          },
+          "min_chunk_length": {
+            "description": "新しいブロックの最小文字数",
+            "hint": "範囲0～100。既定値を維持することを推奨"
+          },
+          "max_new_tokens": {
+            "description": "1ブロックあたりの最大音声トークン数",
+            "hint": "1ブロックあたりの音声トークン上限。既定値を維持することを推奨"
+          },
+          "condition_on_previous_chunks": {
+            "description": "音声の一貫性",
+            "hint": "前の音声で音声を一致させます。既定値を維持することを推奨"
+          },
+          "early_stop_threshold": {
+            "description": "バッチ早期停止しきい値",
+            "hint": "範囲0～1。既定値を維持することを推奨"
+          },
+          "normalize_loudness": {
+            "description": "ラウドネス正規化",
+            "hint": "既定値を維持することを推奨"
+          },
+          "features": {
+            "description": "機能フラグ",
+            "hint": "カンマ区切り（例：quality-guard）。空欄は既定値。既定値を維持することを推奨"
+          }
+        },
+        "elevenlabs_v4": {
+          "hint": "v4/v4 Turbo：感情をテキストの[タグ]に記述",
+          "name": "Eleven v4",
+          "display_name": {
+            "description": "表示名",
+            "hint": "同一タイプの複数プロバイダーを区別するため"
+          },
+          "priority": {
+            "description": "優先度",
+            "hint": "数値が小さいほど優先"
+          },
+          "persona_id": {
+            "description": "ペルソナ紐付け",
+            "hint": "このペルソナ配下のみで使用。空欄の場合は共通のフォールバック音声"
+          },
+          "api_key": {
+            "description": "APIキー",
+            "hint": "Eleven APIキー（xi-api-key）"
+          },
+          "model": {
+            "description": "モデル",
+            "hint": "v4=品質優先、v4_turbo=低遅延リアルタイム"
+          },
+          "voice_id": {
+            "description": "音声ID",
+            "hint": "Voice Library／クローン音声ID。音声ライブラリ https://elevenlabs.io/app/voice-lab"
+          },
+          "language_code": {
+            "description": "既定言語コード",
+            "hint": "Elevenの言語コード（自由入力。モデルが非対応のコードは無視されます）。空欄の場合は音声／プラットフォームの既定言語。ツール引数language_codeで文ごとに上書き可能。例：zh、en、ja、ko、fr、yue、pt、es"
+          },
+          "base_url": {
+            "description": "APIエンドポイント",
+            "hint": "リージョン／到達性：api.us.*、api.eu.residency.* など"
+          },
+          "proxy": {
+            "description": "プロキシアドレス",
+            "hint": "任意。国内からのアクセスで必要になる場合があります（例：http://127.0.0.1:7890）"
+          },
+          "timeout": {
+            "description": "タイムアウト時間",
+            "hint": "単位は秒。長文合成では大きくする必要がある場合があります"
+          },
+          "use_voice_settings": {
+            "description": "音声設定",
+            "hint": "その音声に保存された音声設定を上書き（今回のリクエストのみ有効）。無効の場合は送信せず（音声の既定値を使用）"
+          },
+          "stability": {
+            "description": "安定性",
+            "hint": "高いほど安定／単調、低いほど表現力が増します。[0,1]を超えると自動でクランプ"
+          },
+          "similarity_boost": {
+            "description": "類似度",
+            "hint": "高いほど参照音声に近づきますが、自然さを犠牲にする可能性があります。[0,1]を超えると自動でクランプ"
+          },
+          "use_speaker_boost": {
+            "description": "スピーカーブースト",
+            "hint": "元の話者との類似度を向上させますが、遅延が増加します"
+          },
+          "output_codec": {
+            "description": "音声コーデック",
+            "hint": "MP3は汎用、WAVはロスレス、Opusは通信量が最も少ない"
+          },
+          "mp3_sample_rate": {
+            "description": "MP3 サンプリングレート",
+            "hint": "22050/24000ではビットレートはサンプリングレートに追随（32k/48k）して変更不可。44100のみ下で選択可"
+          },
+          "mp3_bitrate": {
+            "description": "MP3 ビットレート",
+            "hint": "MP3 ビットレート（kbps）。192kはCreator以上が必要"
+          },
+          "wav_sample_rate": {
+            "description": "WAV サンプリングレート",
+            "hint": "44.1k/48kはPro以上が必要"
+          },
+          "opus_bitrate": {
+            "description": "Opus ビットレート"
+          },
+          "apply_text_normalization": {
+            "description": "テキスト正規化",
+            "hint": "auto=自動、on=常に、off=スキップ"
+          },
+          "seed": {
+            "description": "ランダムシード",
+            "hint": "-1＝固定なし（送信しない）、0～4294967295＝固定シード"
+          },
+          "use_pronunciation_dictionary": {
+            "description": "発音辞書",
+            "hint": "有効化すると辞書に基づき固有名詞の発音を置換します。事前にElevenで辞書を作成する必要があります"
+          },
+          "pronunciation_dictionary_id": {
+            "description": "辞書ID"
+          },
+          "pronunciation_dictionary_version": {
+            "description": "辞書バージョン",
+            "hint": "空欄＝最新版。リクエストあたり最大3つのプレースホルダー"
+          },
+          "use_audio_effects": {
+            "description": "音声エフェクト",
+            "hint": "有効化すると、AIが音声にElevenの音声エフェクト（電話／部屋／ノイズなどの空間質感）を付与します。プラグインはカタログの準備ができるまで待ってからエフェクト引数を公開します。準備がタイムアウトした場合は今回は付与せず、バックグラウンドでウォームアップを継続し、次回の合成から利用可能になります"
+          },
+          "catalog_fetch_timeout": {
+            "description": "カタログ取得タイムアウト",
+            "hint": "音声エフェクトカタログ取得のネットワークタイムアウト（秒）。合成時にカタログ準備を待つ上限でもあります。タイムアウト時は今回はエフェクトを付与せず、ウォームアップはバックグラウンドで継続"
+          },
+          "catalog_ttl": {
+            "description": "カタログキャッシュ期間",
+            "hint": "音声エフェクトカタログのキャッシュ期間（秒）。短いほど変更（新規エフェクトなど）を早く検知、長いほど重複取得を減らせます"
+          },
+          "enable_logging": {
+            "description": "ログを有効化",
+            "hint": "ゼロ保持はEnterprise版のみ無効化可能。標準版は強制オン"
+          },
+          "use_pvc_as_ivc": {
+            "description": "PVCからIVCへ",
+            "hint": "プロ音声にIVC版を使用すると表現力向上／遅延低減の可能性があります。PVC音声でのみ有効"
+          }
+        }
+      }
+    }
+  },
+  "views": {
+    "tts_studio": {
+      "title": "TTS Enhancer",
+      "description": "プロバイダーをまたいで音声を管理し、合成記録を閲覧します。",
+      "brand": "TTS Enhancer",
+      "navManager": "音声管理",
+      "navRecords": "合成記録",
+      "docTitle": "TTS Enhancer · コンソール",
+      "globalVolume": "全体音量",
+      "managerTitle": "TTS 音声管理",
+      "recordsTitle": "TTS 合成記録",
+      "loading": "読み込み中...",
+      "emptyConfigured": "⚠️ {n}件のプロバイダーが設定されています（{names}）が、このバージョンでは視覚的パネルは用意されていません。ここで管理するには、フロントエンド対応のプロバイダー（Bailian／MiniMaxなど）を設定してください。",
+      "emptyNoProviders": "⚠️ TTSプロバイダーが設定されていません。プラグイン設定でプロバイダー項目を追加してください。",
+      "filterLabel": "ソース",
+      "sourceAll": "すべて",
+      "sourceChat": "チャット音声",
+      "sourcePreview": "音声プレビュー",
+      "sourceDesign": "デザイン試聴",
+      "sourceAgent": "Agent送信",
+      "countHint": "全 {n} 件",
+      "clearAll": "すべてクリア",
+      "emptyFiltered": "⚠️ 現在のフィルターに一致する合成記録はありません。",
+      "emptyNone": "🎙️ 合成記録はまだありません。合成された音声（チャット音声、音声プレビュー、デザイン試聴など）は自動的にここに表示されます。",
+      "unknownProvider": "不明なプロバイダー",
+      "noText": "（テキストなし）",
+      "durationPrefix": "再生時間 ",
+      "durationUnit": "s",
+      "sourcePrefix": "ソース：",
+      "stop": "⏹ 停止",
+      "play": "▶ 再生",
+      "delete": "削除",
+      "collapse": "折りたたむ ▴",
+      "details": "詳細 ▾",
+      "enhanceInstruction": "指示",
+      "enhanceVolume": "音量",
+      "enhanceRate": "速度",
+      "enhancePitch": "ピッチ",
+      "enhanceLanguage": "言語",
+      "configVoice": "音声",
+      "configFormat": "フォーマット",
+      "configSampleRate": "サンプリングレート",
+      "configModel": "モデル",
+      "enhanceParams": "AI 強化パラメータ",
+      "configParams": "設定パラメータ",
+      "noParams": "この合成のパラメータ詳細は記録されていません。",
+      "cancel": "キャンセル",
+      "confirm": "確認",
+      "confirmDeleteTitle": "⚠️ 削除の確認",
+      "confirmClearTitle": "⚠️ すべてクリア",
+      "confirmDeleteMsg": "この合成記録を削除しますか？この操作は取り消せません。\nソース：{source}",
+      "confirmClearMsg": "すべての合成記録をクリアしますか？この操作は取り消せません。",
+      "toastDeleted": "削除しました",
+      "toastCleared": "{n} 件をクリアしました",
+      "errLoadProviders": "プロバイダー設定の読み込みに失敗しました：",
+      "errReadRecords": "合成記録の読み込みに失敗しました：",
+      "errAudioMissing": "音声データがありません",
+      "errPlayback": "再生に失敗しました：",
+      "errFetchAudio": "合成音声の取得に失敗しました：",
+      "errInit": "初期化に失敗しました：",
+      "unknown": "不明",
+      "components": {
+        "authConfig": "認証設定",
+        "createVoice": "音色を作成",
+        "sysVoiceList": "システム音声リスト",
+        "basicVoiceRef": "基本音声リファレンス",
+        "sysVoicePrefix": "システム音声リストの参照：",
+        "sysVoiceSuffix": "（クリックでリンクをコピー）",
+        "sysVoiceSep": "、",
+        "helpDoc": "ヘルプドキュメント",
+        "tabClone": "📁 音声クローン",
+        "tabDesign": "🎨 音声デザイン",
+        "selectAudioFile": "音声ファイルを選択（wav (16bit), mp3, m4a）",
+        "audioHint": "推奨 10~20秒、最大 60秒、ファイル ≤ 10MB、サンプリングレート ≥ 16kHz。",
+        "voicePromptLabel": "音声の説明（自然言語）",
+        "voicePromptPlaceholder": "例：低く響く深みのある中年男性アナウンサー、磁性があり、落ち着いたペースで…",
+        "voicePromptHint": "期望する音声の特徴を自然言語で記述。中国語と英語に対応、最大 500 文字（中国語は 2 文字換算）。詳細は",
+        "voiceDesignGuide": "音声デザインガイド",
+        "voicePromptHintSuffix": "（クリックでリンクをコピーし、ブラウザのアドレスバーに貼り付けて開いてください）",
+        "previewTextLabel": "試聴テキスト",
+        "previewTextPlaceholder": "試聴するテキストを入力...",
+        "previewTextHint": "最小 15 文字、最大 200 文字（中国語は 2 文字換算）",
+        "prefixLabel": "音声プレフィックス",
+        "prefixPlaceholder": "例：design",
+        "prefixInvalid": "⚠️ 英数字のみ、長さ 1~10",
+        "prefixFormatDesign": "音声名の形式：{target_model}-vd-{prefix}-{一意のID}",
+        "prefixFormatClone": "音声名の形式：{target_model}-{prefix}-{一意のID}",
+        "langHintLabel": "言語ヒント",
+        "langHintDesc": "モデルの言語認識を助け、合成品質を向上。デザイン模式は中国語と英語のみ対応。",
+        "volNormLabel": "音量正規化を有効化",
+        "preprocessLabel": "音声前処理を有効化",
+        "preprocessHint": "背景ノイズがある場合に推奨",
+        "maxAudioLenLabel": "最大プロンプト音声長（秒）",
+        "maxAudioLenInvalid": "⚠️ 3.0 ~ 30.0 の範囲で入力してください",
+        "sampleRateLabel": "サンプリングレート",
+        "formatLabel": "出力フォーマット",
+        "modelVersionLabel": "モデルバージョン",
+        "btnClone": "📁 音声をクローン",
+        "btnDesign": "🎨 音声をデザイン",
+        "cloneWait": "クローン中...",
+        "designWait": "デザイン中...",
+        "voiceListTitle": "音声リスト",
+        "refresh": "更新",
+        "loadingList": "読み込み中...",
+        "colCreated": "作成日時",
+        "colStatus": "ステータス",
+        "colActions": "操作",
+        "designBadge": "デザイン",
+        "copyBtn": "コピー",
+        "previewBtn": "試聴",
+        "deleteBtn": "削除",
+        "noVoices": "音声はまだありません",
+        "previewModalTitle": "🎧 音声プレビュー",
+        "previewTextColon": "試聴テキスト:",
+        "stopBtn": "⏹ 停止",
+        "auditionBtn": "▶ 試聴",
+        "playBtn": "▶ 再生",
+        "keepBtn": "保持",
+        "closeBtn": "閉じる",
+        "confirmDeletePreviewText": "⚠️ この音声を削除しますか？この操作は取り消せません。",
+        "cancelBtn": "キャンセル",
+        "confirmDeleteBtn": "削除を確認",
+        "copyIdTip": "IDをコピー",
+        "previewVoiceTip": "音声をプレビュー",
+        "defaultPreviewText": "音声デザインへようこそ。この音声の響きを聞いてみましょう。",
+        "dlgTitle": "⚠️ 削除の確認",
+        "dlgConfirm": "削除を確認",
+        "dlgCancel": "キャンセル",
+        "errNoEntry": "最初に認証設定を選択してください",
+        "errNoFile": "音声ファイルを選択してください",
+        "phaseUpload": "音声をアップロード中...",
+        "phaseSubmitClone": "クローン要求を送信中...",
+        "phaseSubmitDesign": "デザイン要求を送信中...",
+        "phaseAuditing": "審査待ち...",
+        "phaseApproved": "承認済み、利用可能",
+        "phaseRejected": "拒否されました、利用不可",
+        "createdOk": "音声を作成しました！Voice ID:",
+        "auditRejected": "音声は拒否されました、利用不可：",
+        "auditTimeout": "審査がタイムアウトしました。後でリストを更新してステータスを確認してください：",
+        "unsupportedQuery": "このプロバイダーは進捗照会に対応していません。後でリストを更新してください",
+        "cloneFail": "クローン失敗：",
+        "createFail": "作成失敗：",
+        "createVoiceFail": "音声の作成に失敗：",
+        "noAudioData": "再生可能な音声データがありません",
+        "playFail": "再生失敗：",
+        "keptOk": "音声を保持しました：",
+        "deletedOk": "音声を削除しました",
+        "deleteOk": "削除しました",
+        "deleteFail": "削除失敗：",
+        "fetchListFail": "音声リストの取得に失敗：",
+        "audioOnlyExt": "対応しているのは wav、mp3、m4a の音声ファイルのみです",
+        "audioEmpty": "音声ファイルは空にできません",
+        "audioTooLarge": "音声ファイルは 10MB を超えてはいけません",
+        "audioReadFail": "音声ファイルの読み込みに失敗",
+        "audioEncodeFail": "音声ファイルのエンコードに失敗",
+        "prefixAlnum": "prefix は英数字で、長さ 1-10 でなければなりません",
+        "valLabelVoicePrompt": "音声の説明",
+        "valLabelPreviewText": "試聴テキスト",
+        "statusDeploying": "審査中／処理中",
+        "statusOk": "承認済み、利用可能",
+        "statusUndeployed": "拒否されました、利用不可",
+        "langZh": "中国語",
+        "langEn": "英語",
+        "langFr": "フランス語",
+        "langDe": "ドイツ語",
+        "langJa": "日本語",
+        "langKo": "韓国語",
+        "langRu": "ロシア語",
+        "langPt": "ポルトガル語",
+        "langTh": "タイ語",
+        "langId": "インドネシア語",
+        "langVi": "ベトナム語",
+        "langEs": "スペイン語",
+        "langIt": "イタリア語",
+        "langMs": "マレー語",
+        "langFil": "フィリピン語",
+        "langAr": "アラビア語",
+        "previewTitle": "音声をプレビュー",
+        "enhanceToggle": "SubAgent 強化を呼び出し（任意、LLM呼び出しを1回消費）",
+        "synthezing": "合成中...",
+        "btnSynthesize": "合成",
+        "synthedOk": "合成完了！音声長：",
+        "calcDuration": "計算中...",
+        "durationSec": "秒",
+        "errPreviewText": "試聴テキストを入力してください",
+        "errNoAudio": "プレビュー失敗：音声データが返されませんでした",
+        "errPreviewFail": "プレビュー失敗：",
+        "copyFail": "コピーに失敗しました。手動でコピーしてください",
+        "linkCopied": "リンクをコピーしました。ブラウザのアドレスバーに手動で貼り付けてください",
+        "copiedPrefix": "コピーしました： ",
+        "valEmpty": "は空にできません",
+        "valMin": "は {min} 文字以上でなければなりません（現在 {count} 文字）",
+        "valMax": "は {max} 文字を超えてはいけません（現在 {count} 文字）",
+        "dlgDelVoicePre": "音色 ",
+        "dlgDelVoiceSuf": " を削除してもよろしいですか？この操作は取り消せません。",
+        "langChineseYue": "広東語",
+        "langTurkish": "トルコ語",
+        "langDutch": "オランダ語",
+        "langUkrainian": "ウクライナ語",
+        "langPolish": "ポーランド語",
+        "langRomanian": "ルーマニア語",
+        "langGreek": "ギリシャ語",
+        "langCzech": "チェコ語",
+        "langFinnish": "フィンランド語",
+        "langHindi": "ヒンディー語",
+        "langBulgarian": "ブルガリア語",
+        "langDanish": "デンマーク語",
+        "langHebrew": "ヘブライ語",
+        "langPersian": "ペルシア語",
+        "langSlovak": "スロバキア語",
+        "langSwedish": "スウェーデン語",
+        "langCroatian": "クロアチア語",
+        "langHungarian": "ハンガリー語",
+        "langNorwegian": "ノルウェー語",
+        "langSlovenian": "スロベニア語",
+        "langCatalan": "カタルーニャ語",
+        "langNynorsk": "ニーノシュク",
+        "langTamil": "タミル語",
+        "langAfrikaans": "アフリカーンス語",
+        "mmTabClone": "📁 アップロード複製",
+        "mmTabDesign": "🎨 音声デザイン",
+        "mmTabList": "🗂️ 音声リスト",
+        "mmLegendCloneAudio": "📁 複製音声管理",
+        "mmLegendPromptAudio": "🎨 参照音声管理",
+        "mmLegendCloneParams": "🔊 複製パラメータ",
+        "mmLegendDesign": "🎨 音声デザイン",
+        "mmUploadCloneAudio": "複製音声をアップロード",
+        "mmCustomFileName": "カスタムファイル名（任意）",
+        "mmUploadPromptAudio": "参照音声をアップロード",
+        "mmPromptTextPlaceholder": "音声に対応するテキストを入力（必須）",
+        "mmMainAudio": "メイン音声（必須）",
+        "mmPromptAudioOpt": "参照音声（任意）",
+        "mmAuditionText": "試聴テキスト",
+        "mmAuditionModel": "試聴モデルバージョン",
+        "mmLangBoost": "言語ブースト",
+        "mmAsrText": "ASR 検証テキスト",
+        "mmAsrThreshold": "ASR 類似度しきい値",
+        "mmNoiseReduction": "ノイズ除去",
+        "mmVolNorm": "音量正規化",
+        "mmAigcWatermark": "AIGC ウォーターマーク",
+        "mmUploadBtn": "アップロード",
+        "mmUploading": "アップロード中...",
+        "mmSelected": "✓ 選択済み",
+        "mmSelect": "選択",
+        "mmSave": "保存",
+        "mmEdit": "編集",
+        "mmCloneBtn": "音声を複製",
+        "mmCloning": "複製中...",
+        "mmDesignBtn": "音声をデザイン",
+        "mmDesigning": "デザイン中...",
+        "mmPreviewActivate": "プレビュー（有効化）",
+        "mmColFilename": "ファイル名",
+        "mmColSize": "サイズ",
+        "mmColSourceText": "ソーステキスト",
+        "mmColType": "種類",
+        "mmColDesc": "説明",
+        "mmColName": "名前",
+        "mmHintCloneAudio": "形式 mp3/m4a/wav、長さ 10秒~5分、サイズ ≤ 20MB",
+        "mmHintPromptAudio": "任意。類似度向上に有効。参照音声は 8秒未満、メイン音声と同じ形式。アップロード時にソーステキストが必要",
+        "mmHintVoiceId": "長さ 8-256、先頭は英字、英数字・-・_ のみ可、末尾は - または _ 不可、既存 ID と重複不可",
+        "mmHintAuditionText": "指定すると複製音声で本テキストを読み上げます。試聴は T2A 各接口と同様に文字数課金されます",
+        "mmHintLangBoost": "指定のマイノリティ言語・方言の認識精度を向上。通常は auto で自動判定",
+        "mmHintAsrText": "任意。複製サンプル音声の期待テキスト。サービスが ASR で認識し比較、類似度が accuracy 未満なら拒否",
+        "mmHintAsrThreshold": "任意。ASR 検証テキストと併用する類似度しきい値、範囲 [0,1]、既定 0.7",
+        "mmHintAigc": "試聴音声の末尾に音声リズム識別子を追加するか",
+        "mmEmptyCloneAudio": "複製音声はまだありません",
+        "mmEmptyPromptAudio": "参照音声はまだありません",
+        "mmNoticeTitle": "重要：複製・デザインで作られた音声はいずれも一時（未有効化）音声です",
+        "mmNotice1": "9.9 元の音声有効化料金は、音声合成で初めて利用された時のみ発生します（接口内試聴は除く）",
+        "mmNotice2": "168時間（7日）以内にいずれの音声合成接口でも利用されない場合、音声は削除されます",
+        "mmNotice3": "本リストのプレビューは音声合成を1回呼び出します。必要な音声はプレビュー1回で保持でき、不要なものは課金を避けるためプレビューしないでください",
+        "mmPricingDoc": "MiniMax 音声料金ドキュメント",
+        "mmCloneOkTitle": "✅ 複製成功",
+        "mmDesignOkTitle": "✅ デザイン成功",
+        "mmUnactivatedNote": "音声は現在未有効化で、音声合成接口で正式に1回呼び出すと有効化されます。",
+        "mmUnactivatedBanner": "これらの音声はまだ有効化されていません。「プレビュー（有効化）」をクリックすると音声合成を1回呼び出して有効化され、有効化後にカスタム音声リストに表示され課金が発生します。",
+        "mmUnactivatedHeading": "⏳ 未有効化音声",
+        "mmCustomHeading": "🧑‍🎨 カスタム音声",
+        "mmSystemHeading": "🎙️ システム音声",
+        "mmNoDemo": "試聴音声がありません",
+        "mmUploadFail": "アップロード失敗: ",
+        "mmFetchListFail": "{label}リストの取得に失敗: ",
+        "mmDeleteConfirmMsg": "{label} {fileId} を削除してもよろしいですか？",
+        "mmCloneAudioUploaded": "複製音声をアップロードしました",
+        "mmPromptTextRequired": "ソーステキスト（音声の内容）を入力してください",
+        "mmPromptAudioUploaded": "参照音声をアップロードしました",
+        "mmPromptTextEmpty": "ソーステキストは空にできません",
+        "mmSaveFail": "保存失敗: ",
+        "mmPromptSaved": "ソーステキストを保存しました",
+        "mmFetchAudioFail": "音声の取得に失敗: ",
+        "mmSelectMainAudio": "メイン音声（複製音声）を選択してください",
+        "mmPromptNoText": "選択した参照音声にソーステキストがありません。先に紐付けてください",
+        "mmCloneSuccess": "音声の複製に成功！Voice ID: ",
+        "mmCloneFail": "複製失敗: ",
+        "mmDesignSuccess": "音声のデザインに成功！Voice ID: ",
+        "mmDesignFail": "デザイン失敗: ",
+        "mmListFail": "音声リストの取得に失敗: ",
+        "mmUnactivatedNotFound": "該当の未有効化音声が見つかりません",
+        "mmUnactivatedDeleted": "未有効化音声を削除しました",
+        "mmKeptUnactivated": "音声を未有効化リストに保持しました。プレビューで有効化してください",
+        "blmmTabUpload": "📁 音声ファイルをアップロード",
+        "blmmTabUrl": "🔗 音声 URL を使用",
+        "blmmTabList": "📋 音声リスト",
+        "blmmCreateLegend": "新規音声作成（音声複製）",
+        "blmmTip": "💡 ヒント：",
+        "blmmNotice": "複製音声を音声合成で初めて利用すると有効化され、9.9 元のアンロック料金が発生します。",
+        "blmmPricingDoc": "モデル料金",
+        "blmmSelectLocal": "ローカル音声ファイルを選択（wav, mp3, m4a）",
+        "blmmSelectedPrefix": "✅ 選択済み: ",
+        "blmmClear": "クリア",
+        "blmmHintLocalAudio": "長さは最低 10秒、最大 5分。形式：mp3、m4a、wav。サイズ ≤ 20MB",
+        "blmmCustomId": "カスタム音声 ID（任意）",
+        "blmmPlaceholderAuto": "空の場合は自動生成",
+        "blmmAuditionPlaceholder": "試聴テキストを入力、最大 1000 文字...",
+        "blmmHintAudition": "試聴は音声合成として文字数課金され、上限 1000 文字",
+        "blmmModelVersion": "モデルバージョン",
+        "blmmHintLangBoost": "指定言語の認識精度を向上。通常は auto",
+        "blmmNoiseReduction": "ノイズ除去を有効化",
+        "blmmNoiseHint": "背景ノイズがある場合に推奨",
+        "blmmPromptAudio": "参照音声（任意、類似度向上）",
+        "blmmHintPrompt": "任意。長さ 8秒未満、ファイル ≤ 20MB。参照音声を提供すると類似度が向上",
+        "blmmPromptTextLabel": "参照音声テキスト",
+        "blmmPromptPlaceholder": "参照音声に対応するテキストを入力",
+        "blmmHintPromptText": "参照音声のテキスト。音声内容と一致させてください",
+        "blmmCloneBtn": "📁 アップロードして複製",
+        "blmmCloning": "複製中...",
+        "blmmUrlCloneBtn": "🔗 URL で複製",
+        "blmmPublicUrl": "公開音声 URL",
+        "blmmHintUrl": "アクセス可能な音声ファイルの URL。WAV/MP3/M4A 対応",
+        "blmmUrlPlaceholder": "例：https://example.com/voice.wav",
+        "blmmConfigPrefix": "設定 #",
+        "blmmClonedHeading": "🎤 複製音声",
+        "blmmUnactivatedBanner": "これらの音声はまだ有効化されていません。「プレビュー（有効化）」をクリックすると音声合成を1回呼び出して有効化され、有効化後に複製音声リストに表示され課金が発生します。",
+        "blmmCloneOkTitle": "✅ 複製成功",
+        "blmmAudioFormat": "非対応の音声形式です。WAV/MP3/M4A ファイルを選択してください",
+        "blmmAudioTooLarge": "音声ファイルが大きすぎます。10MB 以内のファイルを選択してください",
+        "blmmReadFail": "ファイル読み込み失敗",
+        "blmmReadPromptFail": "参照音声の読み込み失敗",
+        "blmmListFail": "音声リストの取得に失敗: ",
+        "blmmDeleteMsg": "音声 {voiceId} を削除してもよろしいですか？この操作は取り消せません。",
+        "blmmSelectOrUrl": "音声ファイルを選択するか音声 URL を入力してください",
+        "blmmEnterAudition": "試聴テキストを入力してください",
+        "blmmPromptTextRequired": "参照音声に対応するテキストを入力してください",
+        "blmmDeleteUnactivatedMsg": "未有効化音声 {voiceId} を削除してもよろしいですか？百錬サーバーからも削除され、復元できません。",
+        "blmmPromptTooLarge": "参照音声ファイルが大きすぎます。20MB 以内のファイルを選択してください",
+        "blmmDefaultAuditionText": "こんにちは、これは試聴用テキストです。",
+        "blmmColVoiceId": "音声 ID",
+        "blmmColType": "タイプ",
+        "blmmColName": "名前",
+        "blmmVolNorm": "音量正規化を有効化",
+        "blmmAigcWatermark": "AIGC ウォーターマークを追加",
+        "blmmHintAigc": "合成音声の末尾に音声リズム識別子を追加",
+        "blmmCloneSuccess": "音声の複製に成功！Voice ID: ",
+        "blmmCloneFail": "複製失敗: ",
+        "blmmHintAuditionAfterClone": "複製成功後、このテキストで試聴音声を生成します（上限 1000 文字）",
+        "blmmCopyIdTip": "ID をコピー",
+        "blmmPreviewTip": "音声をプレビュー",
+        "blmmLangZh": "中国語",
+        "blmmLangChineseYue": "広東語",
+        "blmmLangEn": "英語",
+        "blmmLangAr": "アラビア語",
+        "blmmLangRu": "ロシア語",
+        "blmmLangEs": "スペイン語",
+        "blmmLangFr": "フランス語",
+        "blmmLangPt": "ポルトガル語",
+        "blmmLangDe": "ドイツ語",
+        "blmmLangTurkish": "トルコ語",
+        "blmmLangDutch": "オランダ語",
+        "blmmLangUkrainian": "ウクライナ語",
+        "blmmLangVi": "ベトナム語",
+        "blmmLangId": "インドネシア語",
+        "blmmLangJa": "日本語",
+        "blmmLangIt": "イタリア語",
+        "blmmLangKo": "韓国語",
+        "blmmLangTh": "タイ語",
+        "blmmLangPolish": "ポーランド語",
+        "blmmLangRomanian": "ルーマニア語",
+        "blmmLangGreek": "ギリシャ語",
+        "blmmLangCzech": "チェコ語",
+        "blmmLangFinnish": "フィンランド語",
+        "blmmLangHindi": "ヒンディー語",
+        "blmmLangBulgarian": "ブルガリア語",
+        "blmmLangDanish": "デンマーク語",
+        "blmmLangHebrew": "ヘブライ語",
+        "blmmLangMs": "マレー語",
+        "blmmLangPersian": "ペルシア語",
+        "blmmLangSlovak": "スロバキア語",
+        "blmmLangSwedish": "スウェーデン語",
+        "blmmLangCroatian": "クロアチア語",
+        "blmmLangFil": "フィリピン語",
+        "blmmLangHungarian": "ハンガリー語",
+        "blmmLangNorwegian": "ノルウェー語",
+        "blmmLangSlovenian": "スロベニア語",
+        "blmmLangCatalan": "カタルーニャ語",
+        "blmmLangNynorsk": "ニーノシュク",
+        "blmmLangTamil": "タミル語",
+        "blmmLangAfrikaans": "アフリカーンス語",
+        "blmmLangAuto": "自動",
+        "mmDesignDefaultPreview": "MiniMax 音声デザインへようこそ。",
+        "mmUnbound": "未紐束",
+        "mmPleaseSelect": "-- 選択してください --",
+        "mmPleaseSelectNone": "-- 使用しない --",
+        "mmPlaceholderAuto": "カスタム推奨、空なら自動生成",
+        "mmAuditionPlaceholder": "任意。≤ 1000 文字",
+        "mmAsrPlaceholder": "期待する音声内容、≤ 200 文字",
+        "mmPlayDemo": "▶ 試聴音声を再生",
+        "mmVoiceDesc": "音声説明",
+        "mmVoiceDescPlaceholder": "例：優しく磁気のある女性声、抒情散文の朗読に最適...",
+        "mmPreviewTextLabel": "プレビューテキスト",
+        "mmPreviewTextPlaceholder": "試聴用テキスト。≤ 500 文字",
+        "mmHintPreviewText": "最大 500 文字（中国語は 2 文字換算）；試聴合成は 1万字あたり 2 元課金",
+        "mmCannotBeEmpty": "{label}は空にできません",
+        "mmCannotBeLess": "{label}は最低 {min} 文字必要です（現在 {count} 文字）",
+        "mmCannotExceed": "{label}は最大 {max} 文字までです（現在 {count} 文字）",
+        "mmVidErrLen": "長さは 8~256 文字でなければなりません",
+        "mmVidErrFirst": "先頭は英字でなければなりません",
+        "mmVidErrChars": "英数字・-・_ のみ使用可",
+        "mmVidErrLast": "末尾は - または _ にできません",
+        "mmUnknownError": "不明なエラー",
+        "mmDeleteVoiceMsg": "音声 {voiceId} を削除してもよろしいですか？",
+        "mmDeleteUnactivatedMsg": "未有効化音声 {voiceId} を削除してもよろしいですか？MiniMax サーバーからも削除され、復元できません。",
+        "mmCloneAudioLabel": "複製音声",
+        "mmPromptAudioLabel": "参照音声",
+        "mmSelectFile": "ファイルを選択してください",
+        "mmNoAudioData": "音声データを取得できませんでした",
+        "langAuto": "自動",
+        "mmSeeDetails": "詳細："
+      }
+    }
+  }
+}

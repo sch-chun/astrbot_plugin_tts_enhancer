@@ -30,6 +30,9 @@ export function countChars(text) {
  * @param {number}  [options.min]            最小字符数（含）
  * @param {number}  [options.max]            最大字符数（含）
  * @param {boolean} [options.required=false] 是否必填（为空时报错）
+ * @param {Object}  [options.messages] 可选 i18n 报错模板：
+ *        { empty:(label)=>string, min:(label,min,count)=>string, max:(label,max,count)=>string }
+ *        不传则使用内置中文模板（保持向后兼容，其他调用方无需改动）。
  * @returns {{ valid: boolean, error: string, count: number }}
  */
 export function validateText(text, options = {}) {
@@ -38,7 +41,15 @@ export function validateText(text, options = {}) {
         min,
         max,
         required = false,
+        messages = null,
     } = options;
+
+    // i18n 模板：优先用调用方传入的 messages，否则回退到中文
+    const tpl = messages || {
+        empty: (l) => `${l}不能为空`,
+        min: (l, m, c) => `${l}不能少于 ${m} 字符（当前 ${c} 字符）`,
+        max: (l, m, c) => `${l}不能超过 ${m} 字符（当前 ${c} 字符）`,
+    };
 
     const raw = typeof text === 'string' ? text : (text == null ? '' : String(text));
     const value = raw.trim();
@@ -47,7 +58,7 @@ export function validateText(text, options = {}) {
     // 空值处理
     if (!value) {
         if (required) {
-            return { valid: false, error: `${label}不能为空`, count };
+            return { valid: false, error: tpl.empty(label), count };
         }
         // 非必填且为空 → 不参与长度校验，视为合法
         return { valid: true, error: '', count };
@@ -56,7 +67,7 @@ export function validateText(text, options = {}) {
     if (typeof min === 'number' && count < min) {
         return {
             valid: false,
-            error: `${label}不能少于 ${min} 字符（当前 ${count} 字符）`,
+            error: tpl.min(label, min, count),
             count,
         };
     }
@@ -64,7 +75,7 @@ export function validateText(text, options = {}) {
     if (typeof max === 'number' && count > max) {
         return {
             valid: false,
-            error: `${label}不能超过 ${max} 字符（当前 ${count} 字符）`,
+            error: tpl.max(label, max, count),
             count,
         };
     }

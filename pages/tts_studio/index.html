@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TTS 增强 · 控制台</title>
+    <title>TTS Enhancer · Console</title>
     <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -23,7 +23,7 @@
                     step="0.01"
                     v-model="volume"
                     class="global-volume-slider"
-                    title="全局音量"
+                    :title="i18n.globalVolume"
                 />
                 <span class="global-volume-value">{{ Math.round(volume * 100) }}%</span>
             </div>
@@ -34,7 +34,7 @@
             <aside class="studio-sidebar">
                 <div class="studio-brand">
                     <span class="brand-icon">🎙</span>
-                    <span class="brand-text">TTS 增强</span>
+                    <span class="brand-text">{{ i18n.brand }}</span>
                 </div>
                 <div class="sidebar-divider"></div>
                 <nav class="studio-nav">
@@ -44,7 +44,7 @@
                         @click="switchView('manager')"
                     >
                         <span class="nav-icon">🎛</span>
-                        <span class="nav-label">音色管理</span>
+                        <span class="nav-label">{{ i18n.navManager }}</span>
                     </button>
                     <button
                         class="nav-item"
@@ -52,7 +52,7 @@
                         @click="switchView('records')"
                     >
                         <span class="nav-icon">📜</span>
-                        <span class="nav-label">合成记录</span>
+                        <span class="nav-label">{{ i18n.navRecords }}</span>
                     </button>
                 </nav>
             </aside>
@@ -60,11 +60,11 @@
             <main class="studio-main">
                 <!-- ============ 音色管理视图 ============ -->
                 <div v-if="activeView === 'manager'" class="page-content">
-                    <h1>TTS 音色管理</h1>
+                    <h1>{{ i18n.managerTitle }}</h1>
                     <div class="content-panel">
                         <!-- 本视图数据就绪前显示局部加载占位，外壳与左栏已先行渲染 -->
                         <div v-if="managerLoading" class="loading-block">
-                            <span class="spinner"></span> 加载中...
+                            <span class="spinner"></span> {{ i18n.loading }}
                         </div>
                         <template v-else>
                             <div class="tabs" v-if="visibleGroups.length">
@@ -81,11 +81,10 @@
 
                             <div v-else class="empty-state" style="padding: 20px; color: var(--gray);">
                                 <template v-if="groups.length">
-                                    ⚠️ 已配置 {{ groups.length }} 个供应商（{{ groups.map(g => g.display_name || g.template_key).join('、') }}），但当前版本暂未提供其可视化面板。
-                                    如需在此面板内管理，请配置支持前端操作的服务商（如百炼 / MiniMax）。
+                                    {{ emptyConfiguredText }}
                                 </template>
                                 <template v-else>
-                                    ⚠️ 暂无 TTS 供应商配置，请在插件配置中添加 providers 条目。
+                                    {{ i18n.emptyNoProviders }}
                                 </template>
                             </div>
 
@@ -105,38 +104,38 @@
 
                 <!-- ============ 合成记录视图 ============ -->
                 <div v-else class="page-content">
-                    <h1>TTS 合成记录</h1>
+                    <h1>{{ i18n.recordsTitle }}</h1>
                     <div class="content-panel">
                         <!-- 本视图数据就绪前显示局部加载占位，外壳与左栏已先行渲染 -->
                         <div v-if="recordsLoading" class="loading-block">
-                            <span class="spinner"></span> 加载中...
+                            <span class="spinner"></span> {{ i18n.loading }}
                         </div>
                         <template v-else>
                             <div class="toolbar">
                                 <div class="toolbar-left">
-                                    <label class="filter-label">来源</label>
+                                    <label class="filter-label">{{ i18n.filterLabel }}</label>
                                     <select v-model="sourceFilter" class="filter-select">
-                                        <option value="all">全部</option>
-                                        <option value="chat">聊天语音</option>
-                                        <option value="preview">音色预览</option>
-                                        <option value="design_preview">设计试听</option>
-                                        <option value="agent">Agent 发送</option>
+                                        <option value="all">{{ i18n.sourceAll }}</option>
+                                        <option value="chat">{{ i18n.sourceChat }}</option>
+                                        <option value="preview">{{ i18n.sourcePreview }}</option>
+                                        <option value="design_preview">{{ i18n.sourceDesign }}</option>
+                                        <option value="agent">{{ i18n.sourceAgent }}</option>
                                     </select>
-                                    <span class="count-hint">共 {{ filteredRecords.length }} 条</span>
+                                    <span class="count-hint">{{ i18n.countHint.replace('{n}', filteredRecords.length) }}</span>
                                 </div>
                                 <button
                                     class="btn btn-sm btn-danger"
                                     :disabled="!records.length"
                                     @click="confirmClear"
-                                >清空全部</button>
+                                >{{ i18n.clearAll }}</button>
                             </div>
 
                             <div v-if="!filteredRecords.length" class="empty-state">
                                 <template v-if="records.length">
-                                    ⚠️ 当前筛选条件下没有合成记录。
+                                    {{ i18n.emptyFiltered }}
                                 </template>
                                 <template v-else>
-                                    🎙️ 暂无合成记录。合成过的语音（聊天语音、音色预览、设计试听等）会自动出现在这里。
+                                    {{ i18n.emptyNone }}
                                 </template>
                             </div>
 
@@ -152,14 +151,14 @@
                                                 {{ sourceLabel(rec.source) }}
                                             </span>
                                             <span v-if="rec.format" class="format-tag">{{ rec.format.toUpperCase() }}</span>
-                                            <span class="provider">{{ rec.provider || '未知供应商' }}</span>
+                                            <span class="provider">{{ rec.provider || i18n.unknownProvider }}</span>
                                             <span class="time">{{ formatTime(rec.created_at) }}</span>
                                         </div>
-                                        <div class="record-text" :title="rec.text">{{ rec.text || '（无文本）' }}</div>
+                                        <div class="record-text" :title="rec.text">{{ rec.text || i18n.noText }}</div>
                                         <div class="record-meta">
-                                            <span v-if="rec.duration != null">时长 {{ rec.duration.toFixed(1) }}s</span>
+                                            <span v-if="rec.duration != null">{{ i18n.durationPrefix }}{{ rec.duration.toFixed(1) }}{{ i18n.durationUnit }}</span>
                                             <span>{{ formatSize(rec.size) }}</span>
-                                            <span v-if="rec.source_detail" :title="rec.source_detail">来源：{{ rec.source_detail }}</span>
+                                            <span v-if="rec.source_detail" :title="rec.source_detail">{{ i18n.sourcePrefix }}{{ rec.source_detail }}</span>
                                         </div>
                                     </div>
                                     <div class="record-actions">
@@ -167,15 +166,15 @@
                                             class="btn btn-sm"
                                             :class="{'btn-danger': isPlaying(rec.id)}"
                                             @click="togglePlay(rec)"
-                                        >{{ isPlaying(rec.id) ? '⏹ 停止' : '▶ 播放' }}</button>
-                                        <button class="btn btn-sm btn-danger" @click="confirmDelete(rec)">删除</button>
+                                        >{{ isPlaying(rec.id) ? i18n.stop : i18n.play }}</button>
+                                        <button class="btn btn-sm btn-danger" @click="confirmDelete(rec)">{{ i18n.delete }}</button>
                                         <button class="btn btn-sm btn-ghost" @click="toggleExpand(rec)">
-                                            {{ expanded[rec.id] ? '收起 ▴' : '详情 ▾' }}
+                                            {{ expanded[rec.id] ? i18n.collapse : i18n.details }}
                                         </button>
                                     </div>
                                     <div v-if="expanded[rec.id]" class="record-detail">
                                         <div v-if="recordParams(rec).length" class="detail-group">
-                                            <div class="detail-title">AI 增强参数</div>
+                                            <div class="detail-title">{{ i18n.enhanceParams }}</div>
                                             <div class="detail-grid">
                                                 <span v-for="p in recordParams(rec)" :key="p.label" class="param-chip">
                                                     <span class="param-key">{{ p.label }}</span><span class="param-val">{{ p.value }}</span>
@@ -183,7 +182,7 @@
                                             </div>
                                         </div>
                                         <div v-if="recordConfig(rec).length" class="detail-group">
-                                            <div class="detail-title">配置参数</div>
+                                            <div class="detail-title">{{ i18n.configParams }}</div>
                                             <div class="detail-grid">
                                                 <span v-for="p in recordConfig(rec)" :key="p.label" class="param-chip">
                                                     <span class="param-key">{{ p.label }}</span><span class="param-val">{{ p.value }}</span>
@@ -191,7 +190,7 @@
                                             </div>
                                         </div>
                                         <div v-if="!recordParams(rec).length && !recordConfig(rec).length" class="detail-empty">
-                                            本次合成未记录参数详情。
+                                            {{ i18n.noParams }}
                                         </div>
                                     </div>
                                 </li>
@@ -210,8 +209,8 @@
                         <h3>{{ confirm.title }}</h3>
                         <p style="white-space: pre-line;">{{ confirm.message }}</p>
                         <div style="display:flex; gap:12px; justify-content:flex-end;">
-                            <button class="btn btn-sm btn-secondary" @click="cancelConfirm">取消</button>
-                            <button class="btn btn-sm btn-danger" @click="doConfirm">确认</button>
+                            <button class="btn btn-sm btn-secondary" @click="cancelConfirm">{{ i18n.cancel }}</button>
+                            <button class="btn btn-sm btn-danger" @click="doConfirm">{{ i18n.confirm }}</button>
                         </div>
                     </div>
                 </div>

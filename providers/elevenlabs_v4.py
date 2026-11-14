@@ -1,6 +1,6 @@
-"""ElevenLabs v4 TTS 适配器模块。
+"""Eleven v4 TTS 适配器模块。
 
-封装 ``ElevenLabsV4Adapter``，对接 ElevenLabs 的
+封装 ``ElevenLabsV4Adapter``，对接 Eleven 的
 ``POST /v1/text-to-speech/{voice_id}`` 接口（非流式 convert）。
 
 核心要点
@@ -27,7 +27,7 @@ from .base import TTSProviderAdapter
 from .utils.audio import save_audio_bytes
 from .utils.http import extract_error_message
 
-# ElevenLabs TTS 路径（非流式 convert）
+# Eleven TTS 路径（非流式 convert）
 API_PATH = "/v1/text-to-speech"
 
 # 支持的容器编码（裸 PCM/ulaw/alaw 无文件头，Record 无法播放，故不暴露）
@@ -58,8 +58,8 @@ OPUS_BITRATES = (32, 64, 96, 128, 192)
 
 
 class ElevenLabsV4Adapter(TTSProviderAdapter):
-    DISPLAY_NAME = "ElevenLabs v4"
-    """ElevenLabs v4 / v4 Turbo TTS 适配器。"""
+    DISPLAY_NAME = "Eleven v4"
+    """Eleven v4 / v4 Turbo TTS 适配器。"""
 
     def __init__(self, entry: dict) -> None:
         super().__init__(entry)
@@ -90,9 +90,9 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
             "language_code": {
                 "type": "string",
                 "description": (
-                    "ElevenLabs 支持的语言代码（自由文本，无枚举；模型不支持的代码会被"
+                    "Eleven 支持的语言代码（自由文本，无枚举；模型不支持的代码会被"
                     "静默忽略）。v4 音色支持跨语种合成，可按需在文本中切换语言；"
-                    "留空则用供应商配置的默认语言。常用示例：cmn、en、ja、ko、fr、yue、pt-BR、es-419。"
+                    "留空则用供应商配置的默认语言。常用示例：zh、en、ja、ko、fr、yue、pt、es。"
                 ),
             },
         }
@@ -138,7 +138,7 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
                     }
                 )
         return self.build_enhance_tool(
-            "为 ElevenLabs 语音合成提供增强参数。"
+            "为 Eleven 语音合成提供增强参数。"
             "情绪/风格请用方括号标签直接写进 text（如 [whispering]、[excited]）；"
             "仅在开启音频效果时填写 filter_preset_id / environment_id / "
             "background_noise_id / distance / send_level / pan。",
@@ -153,8 +153,8 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
         成功拉取 catalog 时，再拼接实时 ID 枚举注入本提示词。
         """
         prompt = (
-            "你是语音合成参数优化助手，负责为 ElevenLabs 准备合成参数。"
-            "ElevenLabs v4 通过文本内联方括号标签表达情绪与风格，请调用 `tts_enhance` 工具：\n"
+            "你是语音合成参数优化助手，负责为 Eleven 准备合成参数。"
+            "Eleven v4 通过文本内联方括号标签表达情绪与风格，请调用 `tts_enhance` 工具：\n"
             "- text 必填，为待合成文本；情绪/风格标签（如 [whispering]、[excited]、"
             "[warm and happy]）直接写进 text；\n"
             '- 专有名词可用 /IPA/ 标注发音；停顿可用 <break time="1.5s" />；\n'
@@ -308,7 +308,7 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
         """
         api_key = self.entry.get("api_key")
         if not api_key:
-            logger.warning("未配置 ElevenLabs API Key，跳过 audio_effects 目录拉取")
+            logger.warning("未配置 Eleven API Key，跳过 audio_effects 目录拉取")
             return
         try:
             async with httpx.AsyncClient(
@@ -479,7 +479,7 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
         return kwargs
 
     def _compose_output_format(self, config: dict) -> str:
-        """根据 codec + 采样率/码率组合 ElevenLabs output_format 字符串。
+        """根据 codec + 采样率/码率组合 Eleven output_format 字符串。
 
         Args:
             config: 供应商配置（含 output_codec 及其条件子项）。
@@ -542,26 +542,26 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
         config: dict[str, Any],
         voice_id: str | None = None,
     ) -> str:
-        """调用 ElevenLabs TTS 合成语音并保存为本地音频文件。
+        """调用 Eleven TTS 合成语音并保存为本地音频文件。
 
         Returns:
             合成后的音频文件路径，失败时返回空字符串。
         """
         api_key = config.get("api_key")
         if not api_key:
-            logger.error("ElevenLabs API Key 未配置")
+            logger.error("Eleven API Key 未配置")
             return ""
 
         voice = voice_id or config.get("voice_id")
         if not voice:
-            logger.error("ElevenLabs voice_id 未配置")
+            logger.error("Eleven voice_id 未配置")
             return ""
         try:
-            # ElevenLabs 音色 ID 以数字开头（如 21m00Tcm4TlvDq8ikWAM），
+            # Eleven 音色 ID 以数字开头（如 21m00Tcm4TlvDq8ikWAM），
             # 故覆盖基类默认正则（要求首字符为字母）。
             self.validate_voice_id(voice, pattern=r"^[A-Za-z0-9]{8,256}$")
         except ValueError as e:
-            logger.error(f"ElevenLabs voice_id 非法: {e}")
+            logger.error(f"Eleven voice_id 非法: {e}")
             return ""
 
         final_text = raw_params.get("text") or text
@@ -684,23 +684,23 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
                     )
                     return ""
                 except httpx.TimeoutException:
-                    logger.error(f"ElevenLabs TTS 超时 (timeout={timeout}s)")
+                    logger.error(f"Eleven TTS 超时 (timeout={timeout}s)")
                     return ""
                 except Exception as e2:  # noqa: BLE001
-                    logger.error(f"ElevenLabs TTS 调用失败: {e2}")
+                    logger.error(f"Eleven TTS 调用失败: {e2}")
                     return ""
             else:
-                logger.error(f"ElevenLabs TTS 调用失败 ({status}): {err}")
+                logger.error(f"Eleven TTS 调用失败 ({status}): {err}")
                 return ""
         except httpx.TimeoutException:
-            logger.error(f"ElevenLabs TTS 超时 (timeout={timeout}s)")
+            logger.error(f"Eleven TTS 超时 (timeout={timeout}s)")
             return ""
         except Exception as e:  # noqa: BLE001
-            logger.error(f"ElevenLabs TTS 调用失败: {e}")
+            logger.error(f"Eleven TTS 调用失败: {e}")
             return ""
 
         if not content:
-            logger.error("ElevenLabs 响应无音频数据")
+            logger.error("Eleven 响应无音频数据")
             return ""
 
         ext = OUTPUT_EXT.get(config.get("output_codec", "mp3"), "mp3")
