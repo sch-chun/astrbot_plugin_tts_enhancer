@@ -39,7 +39,12 @@
   "page_background": {
     "description": "管理页背景图",
     "type": "file",
-    "file_types": ["png", "jpg", "jpeg", "webp"],
+    "file_types": [
+      "png",
+      "jpg",
+      "jpeg",
+      "webp"
+    ],
     "default": [],
     "hint": "为 TTS 管理页设置背景图；留空则不显示背景。仅支持单张图片。建议图片不要过大（如控制在数 MB 内），过大将拖慢页面加载"
   },
@@ -75,7 +80,10 @@
     "description": "检索关键词来源",
     "type": "string",
     "default": "user_message",
-    "options": ["user_message", "prefix"],
+    "options": [
+      "user_message",
+      "prefix"
+    ],
     "hint": "user_message=用待合成文本作关键词；prefix=用固定前缀"
   },
   "memory_retrieval_prefix": {
@@ -103,9 +111,10 @@
             "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
           },
           "priority": {
-            "description": "优先级（数字越小越优先）",
+            "description": "优先级",
             "type": "int",
-            "default": 0
+            "default": 0,
+            "hint": "数字越小越优先"
           },
           "persona_id": {
             "description": "绑定人格",
@@ -128,7 +137,10 @@
           "model": {
             "description": "模型版本",
             "type": "string",
-            "options": ["flash", "plus"],
+            "options": [
+              "flash",
+              "plus"
+            ],
             "default": "flash"
           },
           "voice": {
@@ -146,13 +158,25 @@
             "description": "音频格式",
             "type": "string",
             "default": "wav",
-            "options": ["wav", "mp3", "pcm", "opus"]
+            "options": [
+              "wav",
+              "mp3",
+              "pcm",
+              "opus"
+            ]
           },
           "sample_rate": {
             "description": "采样率",
             "type": "int",
             "default": 24000,
-            "options": [8000, 16000, 22050, 24000, 44100, 48000]
+            "options": [
+              8000,
+              16000,
+              22050,
+              24000,
+              44100,
+              48000
+            ]
           },
           "seed": {
             "description": "随机种子",
@@ -192,9 +216,10 @@
             "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
           },
           "priority": {
-            "description": "优先级（数字越小越优先）",
+            "description": "优先级",
             "type": "int",
-            "default": 0
+            "default": 0,
+            "hint": "数字越小越优先"
           },
           "persona_id": {
             "description": "绑定人格",
@@ -217,7 +242,10 @@
           "model": {
             "description": "模型版本",
             "type": "string",
-            "options": ["flash", "plus"],
+            "options": [
+              "flash",
+              "plus"
+            ],
             "default": "flash",
             "hint": "3.1 版本支持 flash（按 token 计费）与 plus（按字符计费，响应虽返回 token 字段但计费用字符）"
           },
@@ -236,13 +264,25 @@
             "description": "音频格式",
             "type": "string",
             "default": "wav",
-            "options": ["wav", "mp3", "pcm", "opus"]
+            "options": [
+              "wav",
+              "mp3",
+              "pcm",
+              "opus"
+            ]
           },
           "sample_rate": {
             "description": "采样率",
             "type": "int",
             "default": 24000,
-            "options": [8000, 16000, 22050, 24000, 44100, 48000]
+            "options": [
+              8000,
+              16000,
+              22050,
+              24000,
+              44100,
+              48000
+            ]
           },
           "seed": {
             "description": "随机种子",
@@ -282,9 +322,10 @@
             "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
           },
           "priority": {
-            "description": "优先级（数字越小越优先）",
+            "description": "优先级",
             "type": "int",
-            "default": 0
+            "default": 0,
+            "hint": "数字越小越优先"
           },
           "persona_id": {
             "description": "绑定人格",
@@ -307,7 +348,10 @@
           "model": {
             "description": "模型版本",
             "type": "string",
-            "options": ["flash", "plus"],
+            "options": [
+              "flash",
+              "plus"
+            ],
             "default": "flash"
           },
           "voice": {
@@ -326,13 +370,25 @@
             "description": "音频格式",
             "type": "string",
             "default": "wav",
-            "options": ["wav", "mp3", "pcm", "opus"]
+            "options": [
+              "wav",
+              "mp3",
+              "pcm",
+              "opus"
+            ]
           },
           "sample_rate": {
             "description": "采样率",
             "type": "int",
             "default": 24000,
-            "options": [8000, 16000, 22050, 24000, 44100, 48000]
+            "options": [
+              8000,
+              16000,
+              22050,
+              24000,
+              44100,
+              48000
+            ]
           },
           "seed": {
             "description": "随机种子",
@@ -372,9 +428,10 @@
             "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
           },
           "priority": {
-            "description": "优先级（数字越小越优先）",
+            "description": "优先级",
             "type": "int",
-            "default": 0
+            "default": 0,
+            "hint": "数字越小越优先"
           },
           "persona_id": {
             "description": "绑定人格",
@@ -397,7 +454,10 @@
           "model": {
             "description": "模型版本",
             "type": "string",
-            "options": ["HD", "Turbo"],
+            "options": [
+              "HD",
+              "Turbo"
+            ],
             "default": "HD"
           },
           "timeout": {
@@ -416,26 +476,49 @@
             "description": "采样率",
             "type": "int",
             "default": 32000,
-            "options": [8000, 16000, 22050, 24000, 32000, 44100]
+            "options": [
+              8000,
+              16000,
+              22050,
+              24000,
+              32000,
+              44100
+            ]
           },
-          "format":{
+          "format": {
             "description": "音频格式",
             "type": "string",
             "default": "mp3",
-            "options": ["wav", "mp3", "pcm", "opus", "flac", "pcmu_raw", "pcmu_wav"]
+            "options": [
+              "wav",
+              "mp3",
+              "pcm",
+              "opus",
+              "flac",
+              "pcmu_raw",
+              "pcmu_wav"
+            ]
           },
           "bitrate": {
             "description": "比特率",
             "type": "int",
             "default": 128000,
-            "options": [32000, 64000, 128000, 256000],
+            "options": [
+              32000,
+              64000,
+              128000,
+              256000
+            ],
             "hint": "仅在音频格式为 mp3 时生效"
           },
           "channel": {
             "description": "声道数",
             "type": "int",
             "default": 1,
-            "options": [1, 2],
+            "options": [
+              1,
+              2
+            ],
             "hint": "1 为单声道，2 为立体声"
           }
         }
@@ -452,9 +535,10 @@
             "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
           },
           "priority": {
-            "description": "优先级（数字越小越优先）",
+            "description": "优先级",
             "type": "int",
-            "default": 0
+            "default": 0,
+            "hint": "数字越小越优先"
           },
           "persona_id": {
             "description": "绑定人格",
@@ -478,7 +562,10 @@
           "model": {
             "description": "模型版本",
             "type": "string",
-            "options": ["HD", "Turbo"],
+            "options": [
+              "HD",
+              "Turbo"
+            ],
             "default": "HD"
           },
           "timeout": {
@@ -497,26 +584,49 @@
             "description": "采样率",
             "type": "int",
             "default": 32000,
-            "options": [8000, 16000, 22050, 24000, 32000, 44100]
+            "options": [
+              8000,
+              16000,
+              22050,
+              24000,
+              32000,
+              44100
+            ]
           },
           "format": {
             "description": "音频格式",
             "type": "string",
             "default": "mp3",
-            "options": ["wav", "mp3", "pcm", "opus", "flac", "pcmu_raw", "pcmu_wav"]
+            "options": [
+              "wav",
+              "mp3",
+              "pcm",
+              "opus",
+              "flac",
+              "pcmu_raw",
+              "pcmu_wav"
+            ]
           },
           "bitrate": {
             "description": "比特率",
             "type": "int",
             "default": 128000,
-            "options": [32000, 64000, 128000, 256000],
+            "options": [
+              32000,
+              64000,
+              128000,
+              256000
+            ],
             "hint": "仅在音频格式为 mp3 时生效"
           },
           "channel": {
             "description": "声道数",
             "type": "int",
             "default": 1,
-            "options": [1, 2],
+            "options": [
+              1,
+              2
+            ],
             "hint": "1 为单声道，2 为立体声"
           }
         }
@@ -533,9 +643,10 @@
             "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
           },
           "priority": {
-            "description": "优先级（数字越小越优先）",
+            "description": "优先级",
             "type": "int",
-            "default": 0
+            "default": 0,
+            "hint": "数字越小越优先"
           },
           "persona_id": {
             "description": "绑定人格",
@@ -571,7 +682,11 @@
             "description": "音频格式",
             "type": "string",
             "default": "wav",
-            "options": ["wav", "mp3", "pcm"],
+            "options": [
+              "wav",
+              "mp3",
+              "pcm"
+            ],
             "hint": "输出音频格式。pcm 即 pcm16（非流式）"
           },
           "voice": {
@@ -581,7 +696,17 @@
             "condition": {
               "model": "mimo-v2.5-tts"
             },
-            "options": ["mimo_default", "冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean"]
+            "options": [
+              "mimo_default",
+              "冰糖",
+              "茉莉",
+              "苏打",
+              "白桦",
+              "Mia",
+              "Chloe",
+              "Milo",
+              "Dean"
+            ]
           },
           "voice_prompt": {
             "description": "音色设计描述",
@@ -604,7 +729,10 @@
           "voice_sample": {
             "description": "复刻音频样本",
             "type": "file",
-            "file_types": ["mp3", "wav"],
+            "file_types": [
+              "mp3",
+              "wav"
+            ],
             "condition": {
               "model": "mimo-v2.5-tts-voiceclone"
             },
@@ -624,9 +752,10 @@
             "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
           },
           "priority": {
-            "description": "优先级（数字越小越优先）",
+            "description": "优先级",
             "type": "int",
-            "default": 0
+            "default": 0,
+            "hint": "数字越小越优先"
           },
           "persona_id": {
             "description": "绑定人格",
@@ -706,7 +835,11 @@
             "description": "模型",
             "type": "string",
             "default": "s2.1-pro-free",
-            "options": ["s2.1-pro", "s2.1-pro-free", "s2-pro"],
+            "options": [
+              "s2.1-pro",
+              "s2.1-pro-free",
+              "s2-pro"
+            ],
             "hint": "s2.1/s2 系列；s2.1-pro-free 为免费档（无 TTFA/DPA 保障），生产建议 s2.1-pro"
           },
           "reference_id": {
@@ -719,36 +852,65 @@
             "description": "输出格式",
             "type": "string",
             "default": "mp3",
-            "options": ["mp3", "wav", "pcm", "opus"]
+            "options": [
+              "mp3",
+              "wav",
+              "pcm",
+              "opus"
+            ]
           },
           "mp3_bitrate": {
             "description": "MP3 码率",
             "type": "int",
             "default": 128,
-            "options": [64, 128, 192],
-            "condition": {"format": "mp3"},
+            "options": [
+              64,
+              128,
+              192
+            ],
+            "condition": {
+              "format": "mp3"
+            },
             "hint": "单位 kbps，仅 mp3 生效"
           },
           "sample_rate": {
             "description": "采样率",
             "type": "int",
             "default": 44100,
-            "options": [8000, 16000, 24000, 32000, 44100],
+            "options": [
+              8000,
+              16000,
+              24000,
+              32000,
+              44100
+            ],
             "hint": "单位 Hz，仅 wav/pcm 生效（支持 8000/16000/24000/32000/44100）；选 mp3/opus 时忽略"
           },
           "opus_bitrate": {
             "description": "Opus 码率",
             "type": "int",
             "default": -1000,
-            "options": [-1000, 24000, 32000, 48000, 64000],
-            "condition": {"format": "opus"},
+            "options": [
+              -1000,
+              24000,
+              32000,
+              48000,
+              64000
+            ],
+            "condition": {
+              "format": "opus"
+            },
             "hint": "单位 bps，-1000 为自动，仅 opus 生效"
           },
           "latency": {
             "description": "延迟权衡",
             "type": "string",
             "default": "normal",
-            "options": ["low", "normal", "balanced"]
+            "options": [
+              "low",
+              "normal",
+              "balanced"
+            ]
           },
           "normalize": {
             "description": "文本归一化",
@@ -777,14 +939,18 @@
             "description": "词典 ID",
             "type": "string",
             "default": "",
-            "condition": {"use_pronunciation_dictionary": true},
+            "condition": {
+              "use_pronunciation_dictionary": true
+            },
             "hint": "正则 ^[A-Za-z0-9_-]{1,128}$"
           },
           "pronunciation_dictionary_version": {
             "description": "词典版本",
             "type": "string",
             "default": "",
-            "condition": {"use_pronunciation_dictionary": true},
+            "condition": {
+              "use_pronunciation_dictionary": true
+            },
             "hint": "必须显式给出（无 latest）；正则 ^[A-Za-z0-9_-]{1,128}$"
           },
           "temperature": {
@@ -850,14 +1016,14 @@
         }
       },
       "elevenlabs_v4": {
-        "name": "ElevenLabs v4",
+        "name": "Eleven v4",
         "hint": "v4/v4 Turbo：情绪写进文本[标签]",
         "display_item": "display_name",
         "items": {
           "display_name": {
             "description": "显示名称",
             "type": "string",
-            "default": "ElevenLabs v4",
+            "default": "Eleven v4",
             "hint": "用于区分多个相同类型的供应商"
           },
           "priority": {
@@ -878,13 +1044,16 @@
             "type": "string",
             "default": "",
             "secret": true,
-            "hint": "ElevenLabs 密钥（xi-api-key）"
+            "hint": "Eleven 密钥（xi-api-key）"
           },
           "model": {
             "description": "模型",
             "type": "string",
             "default": "eleven_v4",
-            "options": ["eleven_v4", "eleven_v4_turbo"],
+            "options": [
+              "eleven_v4",
+              "eleven_v4_turbo"
+            ],
             "hint": "v4=质量优先；v4_turbo=低延迟实时"
           },
           "voice_id": {
@@ -897,7 +1066,7 @@
             "description": "默认语言代码",
             "type": "string",
             "default": "",
-            "hint": "ElevenLabs 支持的语言代码（自由文本，模型不支持的代码会被静默忽略）；留空用音色/平台默认语言。工具参数 language_code 可逐句覆盖。常用示例：cmn、en、ja、ko、fr、yue、pt-BR、es-419"
+            "hint": "Eleven 支持的语言代码（自由文本，模型不支持的代码会被静默忽略）；留空用音色/平台默认语言。工具参数 language_code 可逐句覆盖。常用示例：zh、en、ja、ko、fr、yue、pt、es"
           },
           "base_url": {
             "description": "API 地址",
@@ -929,9 +1098,15 @@
             "default": 0.5,
             "min": 0,
             "max": 1,
-            "slider": {"min": 0, "max": 1, "step": 0.05},
+            "slider": {
+              "min": 0,
+              "max": 1,
+              "step": 0.05
+            },
             "hint": "越高越稳定/单调；越低越有表现力；超出 [0,1] 会自动夹紧",
-            "condition": {"use_voice_settings": true}
+            "condition": {
+              "use_voice_settings": true
+            }
           },
           "similarity_boost": {
             "description": "相似度",
@@ -939,60 +1114,109 @@
             "default": 0.75,
             "min": 0,
             "max": 1,
-            "slider": {"min": 0, "max": 1, "step": 0.05},
+            "slider": {
+              "min": 0,
+              "max": 1,
+              "step": 0.05
+            },
             "hint": "越高越贴合参考音色，可能牺牲自然度；超出 [0,1] 会自动夹紧",
-            "condition": {"use_voice_settings": true}
+            "condition": {
+              "use_voice_settings": true
+            }
           },
           "use_speaker_boost": {
             "description": "说话人增强",
             "type": "bool",
             "default": true,
             "hint": "提升与原始说话者相似度，会增加延迟",
-            "condition": {"use_voice_settings": true}
+            "condition": {
+              "use_voice_settings": true
+            }
           },
           "output_codec": {
             "description": "音频编码",
             "type": "string",
             "default": "mp3",
-            "options": ["mp3", "wav", "opus"],
+            "options": [
+              "mp3",
+              "wav",
+              "opus"
+            ],
             "hint": "MP3 通用；WAV 无损；Opus 最省流量"
           },
           "mp3_sample_rate": {
             "description": "MP3 采样率",
             "type": "int",
             "default": 44100,
-            "options": [22050, 24000, 44100],
-            "condition": {"output_codec": "mp3"},
+            "options": [
+              22050,
+              24000,
+              44100
+            ],
+            "condition": {
+              "output_codec": "mp3"
+            },
             "hint": "22050/24000 时码率随采样率固定（32k/48k），不可另选；仅 44100 可在下方选码率"
           },
           "mp3_bitrate": {
             "description": "MP3 码率",
             "type": "int",
             "default": 128,
-            "options": [32, 64, 96, 128, 192],
-            "condition": {"output_codec": "mp3", "mp3_sample_rate": 44100},
+            "options": [
+              32,
+              64,
+              96,
+              128,
+              192
+            ],
+            "condition": {
+              "output_codec": "mp3",
+              "mp3_sample_rate": 44100
+            },
             "hint": "MP3 码率（kbps）；192k 需 Creator 及以上"
           },
           "wav_sample_rate": {
             "description": "WAV 采样率",
             "type": "int",
             "default": 44100,
-            "options": [8000, 16000, 22050, 24000, 32000, 44100, 48000],
-            "condition": {"output_codec": "wav"},
+            "options": [
+              8000,
+              16000,
+              22050,
+              24000,
+              32000,
+              44100,
+              48000
+            ],
+            "condition": {
+              "output_codec": "wav"
+            },
             "hint": "44.1k/48k 需 Pro 及以上"
           },
           "opus_bitrate": {
             "description": "Opus 码率",
             "type": "int",
             "default": 128,
-            "options": [32, 64, 96, 128, 192],
-            "condition": {"output_codec": "opus"}
+            "options": [
+              32,
+              64,
+              96,
+              128,
+              192
+            ],
+            "condition": {
+              "output_codec": "opus"
+            }
           },
           "apply_text_normalization": {
             "description": "文本归一化",
             "type": "string",
             "default": "auto",
-            "options": ["auto", "on", "off"],
+            "options": [
+              "auto",
+              "on",
+              "off"
+            ],
             "hint": "auto=自动；on=始终；off=跳过"
           },
           "seed": {
@@ -1007,26 +1231,30 @@
             "description": "发音词典",
             "type": "bool",
             "default": false,
-            "hint": "开启后按词典替换专有名词发音；需先在 ElevenLabs 建词典"
+            "hint": "开启后按词典替换专有名词发音；需先在 Eleven 建词典"
           },
           "pronunciation_dictionary_id": {
             "description": "词典 ID",
             "type": "string",
             "default": "",
-            "condition": {"use_pronunciation_dictionary": true}
+            "condition": {
+              "use_pronunciation_dictionary": true
+            }
           },
           "pronunciation_dictionary_version": {
             "description": "词典版本",
             "type": "string",
             "default": "",
-            "condition": {"use_pronunciation_dictionary": true},
+            "condition": {
+              "use_pronunciation_dictionary": true
+            },
             "hint": "留空=最新版；每请求最多 3 个定位符"
           },
           "use_audio_effects": {
             "description": "音频效果",
             "type": "bool",
             "default": false,
-            "hint": "开启后，AI 会为语音附加 ElevenLabs 音频效果（电话/房间/噪点等空间质感）。插件会等目录就绪再暴露效果参数；若超时未就绪，本次不附加，但后台继续预热，下次合成即可用"
+            "hint": "开启后，AI 会为语音附加 Eleven 音频效果（电话/房间/噪点等空间质感）。插件会等目录就绪再暴露效果参数；若超时未就绪，本次不附加，但后台继续预热，下次合成即可用"
           },
           "catalog_fetch_timeout": {
             "description": "目录拉取超时",
@@ -1035,7 +1263,9 @@
             "min": 1,
             "max": 120,
             "hint": "拉取音频效果目录的网络超时（秒），也是合成时等待目录就绪的上限。超时则本次不附加效果，但预热继续后台跑",
-            "condition": {"use_audio_effects": true}
+            "condition": {
+              "use_audio_effects": true
+            }
           },
           "catalog_ttl": {
             "description": "目录缓存时长",
@@ -1044,7 +1274,9 @@
             "min": 30,
             "max": 3600,
             "hint": "音频效果目录的缓存时长（秒）。越短越能及时感知目录变更（如新上线效果），越长越省去重复拉取",
-            "condition": {"use_audio_effects": true}
+            "condition": {
+              "use_audio_effects": true
+            }
           },
           "enable_logging": {
             "description": "启用日志",

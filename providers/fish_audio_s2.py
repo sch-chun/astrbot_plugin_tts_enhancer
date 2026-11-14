@@ -89,8 +89,8 @@ class FishAudioS2Adapter(TTSProviderAdapter):
                     "language": {
                         "type": "string",
                         "description": (
-                            "BCP-47 语言标签，如 zh-CN、en、es-MX、ja-JP；"
-                            "仅影响数字/日期等口语化读法，不改变口音或音质。"
+                            "BCP-47 语言标签（≤35 字符，仅字母/数字/“-”/“_”），"
+                            "仅控制数字/日期/单位的口语化读法，不改变口音或音质。"
                         ),
                     },
                 },
@@ -106,7 +106,7 @@ class FishAudioS2Adapter(TTSProviderAdapter):
             "直接写进 text，可跨句改变，每句最多约 3 个；\n"
             "- speed 可选，语速 0.5~2.0；\n"
             "- volume 可选，音量 dB（默认 0，范围 -20~20，超出由适配器裁剪）；\n"
-            "- language 可选，BCP-47 标签（如 zh-CN、en），仅影响数字/日期读法。\n"
+            "- language 可选，BCP-47 标签（≤35 字符，仅字母/数字/“-”/“_”），仅控制数字/日期/单位读法（不影响口音/音质）。\n"
             "根据对话内容与情绪，为合适的句子加 [标记] 来表达语气/情绪。直接调用工具，不要额外解释。\n\n"
             "参考能力说明：\n"
             f"{self.docs_content}"

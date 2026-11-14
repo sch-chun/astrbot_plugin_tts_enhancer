@@ -1,4 +1,8 @@
-[中文](../../README.md) · English
+<div align="center">
+  <img src="../../logo.png" alt="TTS Enhancer" width="200"/>
+</div>
+
+[中文](../../README.md) · [Русский](../../docs/ru/README.md) · English
 
 # AstrBot TTS Enhancer
 
@@ -8,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.1.0-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.2.0-green)](../../CHANGELOG.md)
 
 ---
 
@@ -86,18 +90,28 @@ Per provider:
 
 | Provider | Model | Emotion | System Voice | Clone | Design | Dialect | Languages | LaTeX |
 |---|---|---|---|---|---|---|---|---|
-| **Bailian Qwen Audio 3.0 TTS** | Flash / Plus | Rich tags + NL instruction | ✅ | ✅ | ✅ | 21 | 16 | ❌ |
-| **Bailian Qwen Audio 3.1 TTS** | Flash / Plus | Rich tags + NL instruction | ✅ | ✅ | ✅ | 21 | 16 | ❌ |
+| **Bailian Qwen Audio 3.0 TTS** | Flash / Plus | Rich tags + NL instruction | ✅ | ✅ | ✅ | 21 | 16 | ✅ |
+| **Bailian Qwen Audio 3.1 TTS** | Flash / Plus | Rich tags + NL instruction | ✅ | ✅ | ✅ | 21 | 16 | ✅ |
 | **Bailian CosyVoice v3.5** | Flash / Plus | NL instruction | ❌ | ✅ | ✅ | 17 | 11 | ✅ |
 | **MiniMax Speech 2.8** | HD / Turbo | Inline interjections | ✅ | ✅ | ✅ | Cantonese | 39 | ✅ |
 | **Bailian MiniMax Speech 2.8** | HD / Turbo | Inline interjections | ✅ | ✅ | ✅ | Cantonese | 39 | ✅ |
 | **Xiaomi MiMo V2.5 TTS** | Preset / Text-design / Audio-clone | Rich tags + NL instruction | ✅ | ✅ | ✅ | ✅ | Mostly zh | ❌ |
+| **Google Gemini 3.8 Flash TTS** | Flash / Flash-Lite | NL style + inline vocal tags (`<laugh>`, `<sigh>`) | ✅ | ✅ | ✅ | ❌ | Multilingual | ❌ |
+| **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | Bracket emotion tags (64+, switch freely across sentences) | ✅ | ✅ | ❌ | ❌ | 13 | ❌ |
+| **Eleven v4** | v4 / v4 Turbo | Bracket emotion tags + `/IPA/` pronunciation + `<break>` pause | ✅ | ✅ | ✅ | Cantonese | 90 | ❌ |
 
 > Multiple providers can be **configured simultaneously and fall back by `priority`**; each entry can also bind to a specific persona via `persona_id`, enabling "different personas use different voices".
 
 More providers (Edge TTS, GPT-SoVITS, etc.) are planned — community contributions welcome!
 
 ---
+
+## Synthesis Records (optional)
+
+The plugin persists every TTS synthesis result (chat voice / voice preview / design audition / Agent-sent, etc.) as a "synthesis record". From the unified management page (`pages/tts_studio`) you can replay them, inspect metadata (source / provider / time / text / format / duration / size / enhanced params), and delete individual records or clear them all.
+
+- **Storage layering (per AstrBot convention)**: metadata goes to the official KV (auto-isolated by plugin namespace, single key `synthesis_index`); audio binaries land in `plugin_data/synthesis_records/` and stay out of KV.
+- **Retention policy** is controlled by the `synthesis_record_max` config: `0` or negative disables persistence; a positive integer keeps only the latest N records, evicting the oldest (and its audio file) beyond the limit. Unlimited retention is **not** supported (to avoid filling the disk without bound).
 
 ## Long-term Memory Retrieval (LivingMemory, optional)
 
@@ -109,13 +123,6 @@ If the same AstrBot instance has the LivingMemory plugin installed and enabled, 
 - Fully graceful degradation: when LivingMemory is disabled, the Embedding Provider is missing, or a call fails, retrieval is silently skipped without affecting TTS synthesis.
 
 ---
-
-## Synthesis Records (optional)
-
-The plugin persists every TTS synthesis result (chat voice / voice preview / Agent-sent, etc.) as a "synthesis record". From the unified management page (`pages/tts_studio`) you can replay them, inspect metadata (source / provider / time / text / format / duration / size / enhanced params), and delete individual records or clear them all.
-
-- **Storage layering (per AstrBot convention)**: metadata goes to the official KV (auto-isolated by plugin namespace, single key `synthesis_index`); audio binaries land in `plugin_data/synthesis_records/` and stay out of KV.
-- **Retention policy** is controlled by the `synthesis_record_max` config: `0` or negative disables persistence; `-1` keeps everything; a positive integer keeps only the latest N records, evicting the oldest (and its audio file) beyond the limit.
 
 ## Quick Start
 
@@ -140,7 +147,7 @@ memory_retrieval_prefix: "User voice preference"  # Fixed prefix (only used unde
 page_background: []               # Management page background image (file type; blank = hidden)
 page_background_opacity: 0.5       # Background opacity (0~1; only applies when an image is set)
 page_background_blur: 0            # Background blur (0~30px; only applies when an image is set)
-synthesis_record_max: 50           # Max synthesis records to keep (0 = off; -1 = unlimited; N = keep latest N)
+synthesis_record_max: 50           # Max synthesis records to keep (0 or negative = off; positive integer = keep latest N; unlimited not supported)
 providers:                        # Provider list (multiple, with fallback)
   - __template_key: bailian_qwen_audio_3_0_tts
     display_name: "My Voice"
@@ -185,6 +192,9 @@ See the help text in the plugin config page for the full list of configuration i
 │   - MinimaxSpeech2_8Adapter                                 │
 │   - BailianMinimaxSpeech2_8Adapter                          │
 │   - MimoV2_5TTSAdapter                                      │
+│   - GoogleGemini3_8FlashTTSAdapter                          │
+│   - FishAudioS2Adapter                                      │
+│   - ElevenLabsV4Adapter                                     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -208,13 +218,20 @@ All new providers are auto-discovered and loaded by the factory — no core code
 
 ## Documentation
 
-- [中文架构文档](../../docs/zh/ARCHITECTURE.md) — system design, data flow, module breakdown, security.
-- [中文开发指南](../../docs/zh/DEVELOPMENT.md) — how to add a provider, frontend, and tests.
 - [CHANGELOG](../../CHANGELOG.md) — full version history.
-- Capability doc examples: `providers/docs/*.md`.
+- **Architecture doc** [../../docs/zh/ARCHITECTURE.md](../../docs/zh/ARCHITECTURE.md) — design goals, layering, request lifecycle, core modules, adapter system, persona routing, security.
+- **Development guide** [../../docs/zh/DEVELOPMENT.md](../../docs/zh/DEVELOPMENT.md) — environment setup, provider checklist, adapter development, frontend, testing, release flow.
+- **Known limitations & upstream responsibility** [../../docs/zh/KNOWN_LIMITATIONS.md](../../docs/zh/KNOWN_LIMITATIONS.md) — design trade-offs / upstream guarantees / handling of unreachable items & green-test guards.
+- **中文 README** [../../README.md](../../README.md) — Chinese version.
+- **Русский README** [../../docs/ru/README.md](../../docs/ru/README.md) — Russian version.
+- Capability doc examples:
+  - `providers/docs/bailian_qwen_audio_3_0_tts.md`
+  - `providers/docs/bailian_qwen_audio_3_1_tts.md`
+  - `providers/docs/bailian_cosyvoice_v3_5.md`
+  - `providers/docs/minimax_speech_2_8.md`
+  - `providers/docs/mimo_v2_5_tts.md`
+  - `providers/docs/mimo_v2_5_tts_preset.md`
 
 ## License
 
 GNU Affero General Public License v3.0 — see [LICENSE](../../LICENSE).
-</content>
-</invoke>

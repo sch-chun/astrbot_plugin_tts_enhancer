@@ -1,0 +1,1059 @@
+{
+  "metadata": {
+    "display_name": "TTS Enhancer",
+    "short_desc": "Multi-provider smart TTS plugin that auto-injects emotion tags and instruction control via a SubAgent.",
+    "desc": "Multi-provider smart TTS plugin. Supports SubAgent auto-injection of emotion tags and instruction control, with a unified management page and KV-backed synthesis records."
+  },
+  "config": {
+    "enable_enhance": {
+      "description": "SubAgent voice enhancement",
+      "hint": "When enabled, calls the LLM to auto-inject emotion tags and instruction control based on provider capability"
+    },
+    "enhance_llm_provider": {
+      "description": "TTS enhancement model",
+      "hint": "Model used to generate emotion tags and instructions; leave empty to use the current chat model"
+    },
+    "context_window": {
+      "description": "SubAgent context window",
+      "hint": "Use the most recent conversation turns as the SubAgent's context reference"
+    },
+    "dual_output": {
+      "description": "Output both text and voice",
+      "hint": "When enabled, TTS segments keep both text and voice messages"
+    },
+    "tts_prompt": {
+      "description": "TTS trigger prompt",
+      "hint": "Inject prompt into the main model"
+    },
+    "synthesis_record_max": {
+      "description": "Synthesis record retention count",
+      "hint": "0 or a negative number disables synthesis-record persistence (no new records saved, but existing records can still be viewed/deleted); a positive integer keeps only the most recent N records, auto-deleting the oldest beyond that; 'unlimited' is not supported"
+    },
+    "page_background": {
+      "description": "Management page background image",
+      "hint": "Set a background image for the TTS management page; leave empty to show none. Single image only. Keep it small (a few MB) — large images slow down page load."
+    },
+    "page_background_opacity": {
+      "description": "Background image opacity",
+      "hint": "Background image opacity (0 = fully transparent, 1 = fully opaque)"
+    },
+    "page_background_blur": {
+      "description": "Background image blur",
+      "hint": "Background image blur radius (pixels)"
+    },
+    "memory_retrieval_top_k": {
+      "description": "Memory recall count",
+      "hint": "Works with LivingMemory. Requires the LivingMemory plugin to be installed, otherwise memory retrieval is disabled. Number of long-term memories returned; 0 = disable memory retrieval."
+    },
+    "memory_retrieval_query_strategy": {
+      "description": "Retrieval keyword source",
+      "hint": "user_message=use the text to synthesize as keyword; prefix=use a fixed prefix"
+    },
+    "memory_retrieval_prefix": {
+      "description": "Fixed retrieval prefix",
+      "hint": "Only effective when the retrieval keyword source is set to prefix"
+    },
+    "providers": {
+      "description": "TTS provider list (multiple supported, falling back by priority)",
+      "templates": {
+        "bailian_qwen_audio_3_0_tts": {
+          "hint": "Emotion tags and instruction control supported",
+          "name": "Bailian Qwen Audio 3.0 TTS",
+          "display_name": {
+            "description": "Display name",
+            "hint": "Display name of this provider config (to distinguish multiple providers of the same type)"
+          },
+          "priority": {
+            "description": "Priority",
+            "hint": "Smaller number = higher priority"
+          },
+          "persona_id": {
+            "description": "Bound persona",
+            "hint": "Use this provider's voice only under the specified persona; leave empty to use it as a universal fallback voice"
+          },
+          "api_key": {
+            "description": "API Key"
+          },
+          "workspace_id": {
+            "description": "Workspace ID"
+          },
+          "model": {
+            "description": "Model version"
+          },
+          "voice": {
+            "description": "Voice ID"
+          },
+          "timeout": {
+            "description": "Timeout",
+            "hint": "In seconds. Increase for longer texts. Shared by call and download timeouts."
+          },
+          "format": {
+            "description": "Audio format"
+          },
+          "sample_rate": {
+            "description": "Sample rate"
+          },
+          "seed": {
+            "description": "Random seed",
+            "hint": "A number within [0, 65535] fixes the seed so identical audio is produced when model, text, voice and other params are the same; outside this range a random seed is generated"
+          },
+          "enable_aigc_tag": {
+            "description": "AIGC invisible watermark",
+            "hint": "When enabled, embeds the invisible watermark into supported formats (wav/mp3/opus)"
+          },
+          "aigc_propagator": {
+            "description": "Content propagator",
+            "hint": "Sets the ContentPropagator field of the AIGC invisible watermark, identifying the content propagator. Only effective when the watermark is enabled. Empty = default: Alibaba Cloud UID"
+          },
+          "aigc_propagate_id": {
+            "description": "Propagation ID",
+            "hint": "Sets the PropagateID field of the AIGC invisible watermark, uniquely identifying one propagation action. Only effective when the watermark is enabled. Empty = default: this synthesis request ID"
+          }
+        },
+        "bailian_qwen_audio_3_1_tts": {
+          "hint": "Emotion tags and instruction control supported",
+          "name": "Bailian Qwen Audio 3.1 TTS",
+          "display_name": {
+            "description": "Display name",
+            "hint": "Display name of this provider config (to distinguish multiple providers of the same type)"
+          },
+          "priority": {
+            "description": "Priority",
+            "hint": "Smaller number = higher priority"
+          },
+          "persona_id": {
+            "description": "Bound persona",
+            "hint": "Use this provider's voice only under the specified persona; leave empty to use it as a universal fallback voice"
+          },
+          "api_key": {
+            "description": "API Key"
+          },
+          "workspace_id": {
+            "description": "Workspace ID"
+          },
+          "model": {
+            "description": "Model version",
+            "hint": "v3.1 supports flash (billed per token) and plus (billed per character; the response returns a token field but billing is per character)"
+          },
+          "voice": {
+            "description": "Voice ID"
+          },
+          "timeout": {
+            "description": "Timeout",
+            "hint": "In seconds. Increase for longer texts. Shared by call and download timeouts."
+          },
+          "format": {
+            "description": "Audio format"
+          },
+          "sample_rate": {
+            "description": "Sample rate"
+          },
+          "seed": {
+            "description": "Random seed",
+            "hint": "A number within [0, 65535] fixes the seed so identical audio is produced when model, text, voice and other params are the same; outside this range a random seed is generated"
+          },
+          "enable_aigc_tag": {
+            "description": "AIGC invisible watermark",
+            "hint": "When enabled, embeds the invisible watermark into supported formats (wav/mp3/opus)"
+          },
+          "aigc_propagator": {
+            "description": "Content propagator",
+            "hint": "Sets the ContentPropagator field of the AIGC invisible watermark, identifying the content propagator. Only effective when the watermark is enabled. Empty = default: Alibaba Cloud UID"
+          },
+          "aigc_propagate_id": {
+            "description": "Propagation ID",
+            "hint": "Sets the PropagateID field of the AIGC invisible watermark, uniquely identifying one propagation action. Only effective when the watermark is enabled. Empty = default: this synthesis request ID"
+          }
+        },
+        "bailian_cosyvoice_v3_5": {
+          "hint": "No emotion tags; instruction control supported",
+          "name": "Bailian CosyVoice 3.5",
+          "display_name": {
+            "description": "Display name",
+            "hint": "Display name of this provider config (to distinguish multiple providers of the same type)"
+          },
+          "priority": {
+            "description": "Priority",
+            "hint": "Smaller number = higher priority"
+          },
+          "persona_id": {
+            "description": "Bound persona",
+            "hint": "Use this provider's voice only under the specified persona; leave empty to use it as a universal fallback voice"
+          },
+          "api_key": {
+            "description": "API Key"
+          },
+          "workspace_id": {
+            "description": "Workspace ID"
+          },
+          "model": {
+            "description": "Model version"
+          },
+          "voice": {
+            "description": "Voice ID",
+            "hint": "CosyVoice v3.5 does not support system voices; use a voice ID from voice cloning or voice design."
+          },
+          "timeout": {
+            "description": "Timeout",
+            "hint": "In seconds. Increase for longer texts. Shared by call and download timeouts."
+          },
+          "format": {
+            "description": "Audio format"
+          },
+          "sample_rate": {
+            "description": "Sample rate"
+          },
+          "seed": {
+            "description": "Random seed",
+            "hint": "A number within [0, 65535] fixes the seed so identical audio is produced when model, text, voice and other params are the same; outside this range a random seed is generated"
+          },
+          "enable_aigc_tag": {
+            "description": "AIGC invisible watermark",
+            "hint": "When enabled, embeds the invisible watermark into supported formats (wav/mp3/opus)"
+          },
+          "aigc_propagator": {
+            "description": "Content propagator",
+            "hint": "Sets the ContentPropagator field of the AIGC invisible watermark, identifying the content propagator. Only effective when the watermark is enabled. Empty = default: Alibaba Cloud UID"
+          },
+          "aigc_propagate_id": {
+            "description": "Propagation ID",
+            "hint": "Sets the PropagateID field of the AIGC invisible watermark, uniquely identifying one propagation action. Only effective when the watermark is enabled. Empty = default: this synthesis request ID"
+          }
+        },
+        "minimax_speech_2_8": {
+          "hint": "Supports interjection tags and LaTeX reading",
+          "name": "Minimax Speech 2.8",
+          "display_name": {
+            "description": "Display name",
+            "hint": "Display name of this provider config (to distinguish multiple providers of the same type)"
+          },
+          "priority": {
+            "description": "Priority",
+            "hint": "Smaller number = higher priority"
+          },
+          "persona_id": {
+            "description": "Bound persona",
+            "hint": "Use this provider's voice only under the specified persona; leave empty to use it as a universal fallback voice"
+          },
+          "api_key": {
+            "description": "API Key"
+          },
+          "voice_id": {
+            "description": "Voice ID"
+          },
+          "model": {
+            "description": "Model version"
+          },
+          "timeout": {
+            "description": "Timeout",
+            "hint": "In seconds. Increase for longer texts."
+          },
+          "text_normalization": {
+            "description": "Text normalization",
+            "hint": "When enabled, the model normalizes text, e.g. converts numbers to Chinese readings"
+          },
+          "sample_rate": {
+            "description": "Sample rate"
+          },
+          "format": {
+            "description": "Audio format"
+          },
+          "bitrate": {
+            "description": "Bitrate",
+            "hint": "Only effective when the audio format is mp3"
+          },
+          "channel": {
+            "description": "Channel count",
+            "hint": "1 = mono, 2 = stereo"
+          }
+        },
+        "bailian_minimax_speech_2_8": {
+          "hint": "Bailian calling MiniMax 2.8",
+          "name": "Bailian MiniMax Speech 2.8",
+          "display_name": {
+            "description": "Display name",
+            "hint": "Display name of this provider config (to distinguish multiple providers of the same type)"
+          },
+          "priority": {
+            "description": "Priority",
+            "hint": "Smaller number = higher priority"
+          },
+          "persona_id": {
+            "description": "Bound persona",
+            "hint": "Use this provider's voice only under the specified persona; leave empty to use it as a universal fallback voice"
+          },
+          "api_key": {
+            "description": "Bailian API Key"
+          },
+          "voice_id": {
+            "description": "Voice ID",
+            "hint": "Supports system and cloned voices. First use of a cloned voice requires a 9.9 CNY unlock fee"
+          },
+          "model": {
+            "description": "Model version"
+          },
+          "timeout": {
+            "description": "Timeout",
+            "hint": "In seconds. Increase for longer texts."
+          },
+          "text_normalization": {
+            "description": "Text normalization",
+            "hint": "When enabled, the model normalizes text, e.g. converts numbers to Chinese readings"
+          },
+          "sample_rate": {
+            "description": "Sample rate"
+          },
+          "format": {
+            "description": "Audio format"
+          },
+          "bitrate": {
+            "description": "Bitrate",
+            "hint": "Only effective when the audio format is mp3"
+          },
+          "channel": {
+            "description": "Channel count",
+            "hint": "1 = mono, 2 = stereo"
+          }
+        },
+        "mimo_v2_5_tts": {
+          "hint": "Supports preset, design, and clone models",
+          "name": "Xiaomi MiMo V2.5 TTS",
+          "display_name": {
+            "description": "Display name",
+            "hint": "Display name of this provider config (to distinguish multiple providers of the same type)"
+          },
+          "priority": {
+            "description": "Priority",
+            "hint": "Smaller number = higher priority"
+          },
+          "persona_id": {
+            "description": "Bound persona",
+            "hint": "Use this provider's voice only under the specified persona; leave empty to use it as a universal fallback voice"
+          },
+          "api_key": {
+            "description": "API Key"
+          },
+          "model": {
+            "description": "Model",
+            "hint": "Preset voice / text-designed voice / audio clone (choose one)"
+          },
+          "timeout": {
+            "description": "Timeout",
+            "hint": "In seconds. Increase for longer texts."
+          },
+          "format": {
+            "description": "Audio format",
+            "hint": "Output audio format. pcm means pcm16 (non-streaming)"
+          },
+          "voice": {
+            "description": "Preset voice"
+          },
+          "voice_prompt": {
+            "description": "Voice design description",
+            "hint": "See https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5 for filling instructions"
+          },
+          "optimize_text_preview": {
+            "description": "Smart polish of announcement text",
+            "hint": "When enabled, the model auto-polishes/generates suitable announcement text from the voice description; improves voice match but may alter the original text"
+          },
+          "voice_sample": {
+            "description": "Cloned audio sample",
+            "hint": "Cloned audio sample. mp3/wav only, Base64-encoded and under 10MB. Multiple allowed; the first is used."
+          }
+        },
+        "google_gemini_3_8_flash_tts": {
+          "hint": "Official generative TTS with natural-language style",
+          "name": "Google Gemini 3.8 Flash TTS",
+          "display_name": {
+            "description": "Display name",
+            "hint": "Display name of this provider config (to distinguish multiple providers of the same type)"
+          },
+          "priority": {
+            "description": "Priority",
+            "hint": "Smaller number = higher priority"
+          },
+          "persona_id": {
+            "description": "Bound persona",
+            "hint": "Use this provider's voice only under the specified persona; leave empty to use it as a universal fallback voice"
+          },
+          "api_key": {
+            "description": "Gemini API Key"
+          },
+          "model": {
+            "description": "Model version",
+            "hint": "Gemini 3.8 series models"
+          },
+          "voice_id": {
+            "description": "Voice ID",
+            "hint": "Voice ID (e.g. Kore/Zephyr/Puck); also accepts custom/design/clone voice_... IDs. Full library and voice design/clone: https://aistudio.google.com/generate-speech"
+          },
+          "timeout": {
+            "description": "Timeout",
+            "hint": "In seconds. Increase for longer texts."
+          },
+          "proxy": {
+            "description": "Proxy address",
+            "hint": "Proxy required to access the Google API (e.g. http://127.0.0.1:7890). Leave empty for direct connection."
+          }
+        },
+        "fish_audio_s2": {
+          "hint": "Emotion markers written into text",
+          "name": "Fish Audio S2 Family",
+          "display_name": {
+            "description": "Display name",
+            "hint": "Used to distinguish multiple providers of the same type"
+          },
+          "priority": {
+            "description": "Priority",
+            "hint": "Smaller number = higher priority"
+          },
+          "persona_id": {
+            "description": "Bound persona",
+            "hint": "Use only under this persona; leave empty for a universal fallback voice"
+          },
+          "api_key": {
+            "description": "API Key",
+            "hint": "Fish Audio API key"
+          },
+          "model": {
+            "description": "Model",
+            "hint": "s2.1/s2 series; s2.1-pro-free is a free tier (no TTFA/DPA guarantee); use s2.1-pro for production"
+          },
+          "reference_id": {
+            "description": "Voice ID",
+            "hint": "Voice Library model ID; leave empty for the default voice. Voice library: https://fish.audio/zh-CN/discovery, or create one at https://fish.audio/zh-CN/app/my-voices"
+          },
+          "format": {
+            "description": "Output format"
+          },
+          "mp3_bitrate": {
+            "description": "MP3 bitrate",
+            "hint": "In kbps, only effective for mp3"
+          },
+          "sample_rate": {
+            "description": "Sample rate",
+            "hint": "In Hz, only effective for wav/pcm (8000/16000/24000/32000/44100); ignored for mp3/opus"
+          },
+          "opus_bitrate": {
+            "description": "Opus bitrate",
+            "hint": "In bps, -1000 = auto, only effective for opus"
+          },
+          "latency": {
+            "description": "Latency tradeoff"
+          },
+          "normalize": {
+            "description": "Text normalization",
+            "hint": "Rewrite numbers/dates into spoken words before synthesis (affects reading only, not accent); on by default"
+          },
+          "timeout": {
+            "description": "Timeout",
+            "hint": "In seconds; large texts may need a larger value"
+          },
+          "proxy": {
+            "description": "Proxy address",
+            "hint": "Optional; may be needed for access from mainland China, e.g. http://127.0.0.1:7890"
+          },
+          "use_pronunciation_dictionary": {
+            "description": "Enable pronunciation dictionary"
+          },
+          "pronunciation_dictionary_id": {
+            "description": "Dictionary ID",
+            "hint": "Regex ^[A-Za-z0-9_-]{1,128}$"
+          },
+          "pronunciation_dictionary_version": {
+            "description": "Dictionary version",
+            "hint": "Must be given explicitly (no latest); regex ^[A-Za-z0-9_-]{1,128}$"
+          },
+          "temperature": {
+            "description": "Sampling temperature",
+            "hint": "Range 0~1; recommended to keep default"
+          },
+          "top_p": {
+            "description": "Top-p (nucleus) sampling",
+            "hint": "Range 0~1; recommended to keep default"
+          },
+          "repetition_penalty": {
+            "description": "Repetition penalty",
+            "hint": "Must be >1.0; recommended to keep default"
+          },
+          "chunk_length": {
+            "description": "Text chunk size",
+            "hint": "Range 100~300; recommended to keep default"
+          },
+          "min_chunk_length": {
+            "description": "New chunk minimum characters",
+            "hint": "Range 0~100; recommended to keep default"
+          },
+          "max_new_tokens": {
+            "description": "Max audio tokens per chunk",
+            "hint": "Per-chunk audio token cap; recommended to keep default"
+          },
+          "condition_on_previous_chunks": {
+            "description": "Voice consistency",
+            "hint": "Keep voice consistent with previous audio; recommended to keep default"
+          },
+          "early_stop_threshold": {
+            "description": "Batch early-stop threshold",
+            "hint": "Range 0~1; recommended to keep default"
+          },
+          "normalize_loudness": {
+            "description": "Loudness normalization",
+            "hint": "Recommended to keep default"
+          },
+          "features": {
+            "description": "Feature flags",
+            "hint": "Comma-separated, e.g. quality-guard; empty = default; recommended to keep default"
+          }
+        },
+        "elevenlabs_v4": {
+          "hint": "v4/v4 Turbo: write emotion into text [tags]",
+          "name": "Eleven v4",
+          "display_name": {
+            "description": "Display name",
+            "hint": "Used to distinguish multiple providers of the same type"
+          },
+          "priority": {
+            "description": "Priority",
+            "hint": "Smaller number = higher priority"
+          },
+          "persona_id": {
+            "description": "Bound persona",
+            "hint": "Use only under this persona; leave empty for a universal fallback voice"
+          },
+          "api_key": {
+            "description": "API Key",
+            "hint": "Eleven API key (xi-api-key)"
+          },
+          "model": {
+            "description": "Model",
+            "hint": "v4=quality first; v4_turbo=low-latency realtime"
+          },
+          "voice_id": {
+            "description": "Voice ID",
+            "hint": "Voice Library / cloned voice ID; library https://elevenlabs.io/app/voice-lab"
+          },
+          "language_code": {
+            "description": "Default language code",
+            "hint": "Eleven language code (free text; unsupported codes are silently ignored). Leave empty for the voice/platform default. The tool argument language_code can override per sentence. Common: zh, en, ja, ko, fr, yue, pt, es"
+          },
+          "base_url": {
+            "description": "API endpoint",
+            "hint": "Region/reachability: api.us.*, api.eu.residency.*, etc."
+          },
+          "proxy": {
+            "description": "Proxy address",
+            "hint": "Optional; may be needed for access from mainland China, e.g. http://127.0.0.1:7890"
+          },
+          "timeout": {
+            "description": "Timeout",
+            "hint": "In seconds; large texts may need a larger value"
+          },
+          "use_voice_settings": {
+            "description": "Voice settings",
+            "hint": "Override the voice's saved voice settings, effective for this request only; off = do not send (use voice default)"
+          },
+          "stability": {
+            "description": "Stability",
+            "hint": "Higher = more stable/monotone; lower = more expressive; out of [0,1] is auto-clamped"
+          },
+          "similarity_boost": {
+            "description": "Similarity",
+            "hint": "Higher = closer to the reference voice, possibly at the cost of naturalness; out of [0,1] is auto-clamped"
+          },
+          "use_speaker_boost": {
+            "description": "Speaker boost",
+            "hint": "Improves similarity to the original speaker; increases latency"
+          },
+          "output_codec": {
+            "description": "Audio codec",
+            "hint": "MP3 is universal; WAV is lossless; Opus is the most bandwidth-efficient"
+          },
+          "mp3_sample_rate": {
+            "description": "MP3 sample rate",
+            "hint": "At 22050/24000 the bitrate follows the sample rate (32k/48k) and cannot be changed; only 44100 lets you pick below"
+          },
+          "mp3_bitrate": {
+            "description": "MP3 bitrate",
+            "hint": "MP3 bitrate (kbps); 192k requires Creator tier or above"
+          },
+          "wav_sample_rate": {
+            "description": "WAV sample rate",
+            "hint": "44.1k/48k require Pro tier or above"
+          },
+          "opus_bitrate": {
+            "description": "Opus bitrate"
+          },
+          "apply_text_normalization": {
+            "description": "Text normalization",
+            "hint": "auto=automatic; on=always; off=skip"
+          },
+          "seed": {
+            "description": "Random seed",
+            "hint": "-1 = not fixed (not sent); 0~4294967295 = fixed seed"
+          },
+          "use_pronunciation_dictionary": {
+            "description": "Pronunciation dictionary",
+            "hint": "After enabling, replaces proper-noun pronunciation by dictionary; you must create the dictionary in Eleven first"
+          },
+          "pronunciation_dictionary_id": {
+            "description": "Dictionary ID"
+          },
+          "pronunciation_dictionary_version": {
+            "description": "Dictionary version",
+            "hint": "Empty = latest; at most 3 placeholders per request"
+          },
+          "use_audio_effects": {
+            "description": "Audio effects",
+            "hint": "When enabled, the AI attaches Eleven audio effects (phone/room/noise spatial texture). The plugin waits for the catalog to be ready before exposing effect params; if it times out, effects are skipped this time but preheating continues in the background for next synthesis."
+          },
+          "catalog_fetch_timeout": {
+            "description": "Catalog fetch timeout",
+            "hint": "Network timeout (seconds) for fetching the audio-effects catalog, and the upper bound for waiting at synthesis time. On timeout, effects are skipped this time but preheating continues in the background."
+          },
+          "catalog_ttl": {
+            "description": "Catalog cache duration",
+            "hint": "Cache duration (seconds) for the audio-effects catalog. Shorter = quicker to detect changes (e.g. new effects); longer = fewer repeated fetches"
+          },
+          "enable_logging": {
+            "description": "Enable logging",
+            "hint": "Zero-retention can only be disabled on Enterprise; the standard tier forces it on"
+          },
+          "use_pvc_as_ivc": {
+            "description": "PVC to IVC",
+            "hint": "Use the IVC version for professional voices; may improve expressiveness/lower latency; only effective for PVC voices"
+          }
+        }
+      }
+    }
+  },
+  "views": {
+    "tts_studio": {
+      "title": "TTS Enhancer",
+      "description": "Manage voices and browse synthesis records across providers.",
+      "brand": "TTS Enhancer",
+      "navManager": "Voice management",
+      "navRecords": "Synthesis records",
+      "docTitle": "TTS Enhancer · Console",
+      "globalVolume": "Global volume",
+      "managerTitle": "TTS Voice Management",
+      "recordsTitle": "TTS Synthesis Records",
+      "loading": "Loading...",
+      "emptyConfigured": "⚠️ {n} provider(s) configured ({names}), but no visual panel is available in this version. To manage them here, configure a provider with frontend support (e.g. Bailian / MiniMax).",
+      "emptyNoProviders": "⚠️ No TTS provider configured. Add a provider entry in the plugin settings.",
+      "filterLabel": "Source",
+      "sourceAll": "All",
+      "sourceChat": "Chat voice",
+      "sourcePreview": "Voice preview",
+      "sourceDesign": "Design audition",
+      "sourceAgent": "Agent send",
+      "countHint": "Total {n} records",
+      "clearAll": "Clear all",
+      "emptyFiltered": "⚠️ No synthesis records under the current filter.",
+      "emptyNone": "🎙️ No synthesis records yet. Synthesized voices (chat voice, voice preview, design audition, etc.) will appear here automatically.",
+      "unknownProvider": "Unknown provider",
+      "noText": "(No text)",
+      "durationPrefix": "Duration ",
+      "durationUnit": "s",
+      "sourcePrefix": "Source: ",
+      "stop": "⏹ Stop",
+      "play": "▶ Play",
+      "delete": "Delete",
+      "collapse": "Collapse ▴",
+      "details": "Details ▾",
+      "enhanceInstruction": "Instruction",
+      "enhanceVolume": "Volume",
+      "enhanceRate": "Rate",
+      "enhancePitch": "Pitch",
+      "enhanceLanguage": "Language",
+      "configVoice": "Voice",
+      "configFormat": "Format",
+      "configSampleRate": "Sample rate",
+      "configModel": "Model",
+      "enhanceParams": "AI Enhancement Params",
+      "configParams": "Config Params",
+      "noParams": "No parameter details were recorded for this synthesis.",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "confirmDeleteTitle": "⚠️ Confirm delete",
+      "confirmClearTitle": "⚠️ Clear all",
+      "confirmDeleteMsg": "Delete this synthesis record? This cannot be undone.\nSource: {source}",
+      "confirmClearMsg": "Clear all synthesis records? This cannot be undone.",
+      "toastDeleted": "Deleted",
+      "toastCleared": "Cleared {n} records",
+      "errLoadProviders": "Failed to load provider config: ",
+      "errReadRecords": "Failed to read synthesis records: ",
+      "errAudioMissing": "Audio data missing",
+      "errPlayback": "Playback failed: ",
+      "errFetchAudio": "Failed to fetch synthesis audio: ",
+      "errInit": "Initialization failed: ",
+      "unknown": "Unknown",
+      "components": {
+        "authConfig": "Authentication",
+        "createVoice": "Create voice",
+        "sysVoiceList": "System voice list",
+        "basicVoiceRef": "Basic voice reference library",
+        "sysVoicePrefix": "System voice list reference:",
+        "sysVoiceSuffix": "(click to copy link)",
+        "sysVoiceSep": ", ",
+        "helpDoc": "Help docs",
+        "tabClone": "📁 Voice clone",
+        "tabDesign": "🎨 Voice design",
+        "selectAudioFile": "Select audio file (wav (16bit), mp3, m4a)",
+        "audioHint": "Recommended 10~20s, up to 60s, file ≤ 10MB, sample rate ≥ 16kHz.",
+        "voicePromptLabel": "Voice description (natural language)",
+        "voicePromptPlaceholder": "e.g. deep male announcer, low and resonant voice, magnetic, steady pace...",
+        "voicePromptHint": "Describe the desired voice traits in natural language, supports Chinese and English, up to 500 characters (Chinese counts as 2). See",
+        "voiceDesignGuide": "Voice design guide",
+        "voicePromptHintSuffix": "(click to copy link, then paste into the browser address bar to open)",
+        "previewTextLabel": "Preview text",
+        "previewTextPlaceholder": "Enter text to audition...",
+        "previewTextHint": "Min 15 characters, max 200 characters (Chinese counts as 2)",
+        "prefixLabel": "Voice prefix",
+        "prefixPlaceholder": "e.g. design",
+        "prefixInvalid": "⚠️ Letters and digits only, length 1~10",
+        "prefixFormatDesign": "Voice name format: {target_model}-vd-{prefix}-{unique id}",
+        "prefixFormatClone": "Voice name format: {target_model}-{prefix}-{unique id}",
+        "langHintLabel": "Language hint",
+        "langHintDesc": "Helps the model detect the language and improve synthesis. Design mode supports Chinese and English only.",
+        "volNormLabel": "Enable volume normalization",
+        "preprocessLabel": "Enable audio preprocessing",
+        "preprocessHint": "Recommended when background noise is present",
+        "maxAudioLenLabel": "Max prompt audio length (s)",
+        "maxAudioLenInvalid": "⚠️ Enter a value between 3.0 and 30.0",
+        "sampleRateLabel": "Sample rate",
+        "formatLabel": "Output format",
+        "modelVersionLabel": "Model version",
+        "btnClone": "📁 Clone voice",
+        "btnDesign": "🎨 Design voice",
+        "cloneWait": "Cloning...",
+        "designWait": "Designing...",
+        "voiceListTitle": "Voice list",
+        "refresh": "Refresh",
+        "loadingList": "Loading...",
+        "colCreated": "Created",
+        "colStatus": "Status",
+        "colActions": "Actions",
+        "designBadge": "Design",
+        "copyBtn": "Copy",
+        "previewBtn": "Preview",
+        "deleteBtn": "Delete",
+        "noVoices": "No voices yet",
+        "previewModalTitle": "🎧 Voice preview",
+        "previewTextColon": "Preview text:",
+        "stopBtn": "⏹ Stop",
+        "auditionBtn": "▶ Audition",
+        "playBtn": "▶ Play",
+        "keepBtn": "Keep",
+        "closeBtn": "Close",
+        "confirmDeletePreviewText": "⚠️ Delete this voice? This cannot be undone.",
+        "cancelBtn": "Cancel",
+        "confirmDeleteBtn": "Confirm delete",
+        "copyIdTip": "Copy ID",
+        "previewVoiceTip": "Preview voice",
+        "defaultPreviewText": "Welcome to voice design. Let's hear how this voice sounds.",
+        "dlgTitle": "⚠️ Confirm delete",
+        "dlgConfirm": "Confirm delete",
+        "dlgCancel": "Cancel",
+        "errNoEntry": "Please select an authentication config first",
+        "errNoFile": "Please select an audio file",
+        "phaseUpload": "Uploading audio...",
+        "phaseSubmitClone": "Submitting clone request...",
+        "phaseSubmitDesign": "Submitting design request...",
+        "phaseAuditing": "Waiting for review...",
+        "phaseApproved": "Approved, ready to use",
+        "phaseRejected": "Rejected, cannot be used",
+        "createdOk": "Voice created! Voice ID:",
+        "auditRejected": "Voice rejected, cannot be used:",
+        "auditTimeout": "Review timed out, refresh the list to check status:",
+        "unsupportedQuery": "This provider does not support progress query, please refresh the list later",
+        "cloneFail": "Clone failed:",
+        "createFail": "Creation failed:",
+        "createVoiceFail": "Failed to create voice:",
+        "noAudioData": "No playable audio data",
+        "playFail": "Playback failed:",
+        "keptOk": "Voice kept:",
+        "deletedOk": "Voice deleted",
+        "deleteOk": "Deleted",
+        "deleteFail": "Deletion failed:",
+        "fetchListFail": "Failed to fetch voice list:",
+        "audioOnlyExt": "Only wav, mp3, m4a audio files are supported",
+        "audioEmpty": "Audio file cannot be empty",
+        "audioTooLarge": "Audio file must not exceed 10MB",
+        "audioReadFail": "Failed to read audio file",
+        "audioEncodeFail": "Failed to encode audio file",
+        "prefixAlnum": "prefix must be alphanumeric, length 1-10",
+        "valLabelVoicePrompt": "Voice description",
+        "valLabelPreviewText": "Preview text",
+        "statusDeploying": "Under review / processing",
+        "statusOk": "Approved, ready to use",
+        "statusUndeployed": "Rejected, cannot be used",
+        "langZh": "Chinese",
+        "langEn": "English",
+        "langFr": "French",
+        "langDe": "German",
+        "langJa": "Japanese",
+        "langKo": "Korean",
+        "langRu": "Russian",
+        "langPt": "Portuguese",
+        "langTh": "Thai",
+        "langId": "Indonesian",
+        "langVi": "Vietnamese",
+        "langEs": "Spanish",
+        "langIt": "Italian",
+        "langMs": "Malay",
+        "langFil": "Filipino",
+        "langAr": "Arabic",
+        "previewTitle": "Preview voice",
+        "enhanceToggle": "Invoke SubAgent enhancement (optional, consumes one LLM call)",
+        "synthezing": "Synthesizing...",
+        "btnSynthesize": "Synthesize",
+        "synthedOk": "Synthesized! Audio duration:",
+        "calcDuration": "Calculating...",
+        "durationSec": "s",
+        "errPreviewText": "Please enter preview text",
+        "errNoAudio": "Preview failed: no audio data returned",
+        "errPreviewFail": "Preview failed:",
+        "copyFail": "Copy failed, please copy manually",
+        "linkCopied": "Link copied, please paste into the browser address bar manually",
+        "copiedPrefix": "Copied: ",
+        "valEmpty": "cannot be empty",
+        "valMin": "cannot be less than {min} characters (currently {count} characters)",
+        "valMax": "cannot exceed {max} characters (currently {count} characters)",
+        "dlgDelVoicePre": "Are you sure you want to delete voice ",
+        "dlgDelVoiceSuf": "? This operation cannot be undone.",
+        "langChineseYue": "Cantonese",
+        "langTurkish": "Turkish",
+        "langDutch": "Dutch",
+        "langUkrainian": "Ukrainian",
+        "langPolish": "Polish",
+        "langRomanian": "Romanian",
+        "langGreek": "Greek",
+        "langCzech": "Czech",
+        "langFinnish": "Finnish",
+        "langHindi": "Hindi",
+        "langBulgarian": "Bulgarian",
+        "langDanish": "Danish",
+        "langHebrew": "Hebrew",
+        "langPersian": "Persian",
+        "langSlovak": "Slovak",
+        "langSwedish": "Swedish",
+        "langCroatian": "Croatian",
+        "langHungarian": "Hungarian",
+        "langNorwegian": "Norwegian",
+        "langSlovenian": "Slovenian",
+        "langCatalan": "Catalan",
+        "langNynorsk": "Norwegian Nynorsk",
+        "langTamil": "Tamil",
+        "langAfrikaans": "Afrikaans",
+        "mmTabClone": "📁 Upload Clone",
+        "mmTabDesign": "🎨 Voice Design",
+        "mmTabList": "🗂️ Voice List",
+        "mmLegendCloneAudio": "📁 Clone Audio Management",
+        "mmLegendPromptAudio": "🎨 Reference Audio Management",
+        "mmLegendCloneParams": "🔊 Clone Parameters",
+        "mmLegendDesign": "🎨 Voice Design",
+        "mmUploadCloneAudio": "Upload clone audio",
+        "mmCustomFileName": "Custom file name (optional)",
+        "mmUploadPromptAudio": "Upload reference audio",
+        "mmPromptTextPlaceholder": "Enter the text corresponding to the audio (required)",
+        "mmMainAudio": "Main audio (required)",
+        "mmPromptAudioOpt": "Reference audio (optional)",
+        "mmAuditionText": "Audition text",
+        "mmAuditionModel": "Audition model version",
+        "mmLangBoost": "Language boost",
+        "mmAsrText": "ASR verification text",
+        "mmAsrThreshold": "ASR similarity threshold",
+        "mmNoiseReduction": "Noise reduction",
+        "mmVolNorm": "Volume normalization",
+        "mmAigcWatermark": "AIGC watermark",
+        "mmUploadBtn": "Upload",
+        "mmUploading": "Uploading...",
+        "mmSelected": "✓ Selected",
+        "mmSelect": "Select",
+        "mmSave": "Save",
+        "mmEdit": "Edit",
+        "mmCloneBtn": "Clone voice",
+        "mmCloning": "Cloning...",
+        "mmDesignBtn": "Design voice",
+        "mmDesigning": "Designing...",
+        "mmPreviewActivate": "Preview (activate)",
+        "mmColFilename": "File name",
+        "mmColSize": "Size",
+        "mmColSourceText": "Source text",
+        "mmColType": "Type",
+        "mmColDesc": "Description",
+        "mmColName": "Name",
+        "mmHintCloneAudio": "Format mp3/m4a/wav, duration 10s~5min, size ≤ 20MB",
+        "mmHintPromptAudio": "Optional, improves similarity. Reference audio < 8s, same format as main audio; source text required on upload",
+        "mmHintVoiceId": "Length 8-256, must start with a letter, allows letters, digits, - and _; cannot end with - or _; must be unique",
+        "mmHintAuditionText": "The model will read this text with the cloned voice. Audition is charged per character like T2A interfaces",
+        "mmHintLangBoost": "Improves recognition of specified minority languages/dialects. Usually set to auto",
+        "mmHintAsrText": "Optional. Expected text of the clone sample audio. Service runs ASR and compares; request rejected if similarity below accuracy",
+        "mmHintAsrThreshold": "Optional. ASR similarity threshold used with ASR verification text, range [0,1], default 0.7",
+        "mmHintAigc": "Whether to append an audio rhythm marker at the end of the audition audio",
+        "mmEmptyCloneAudio": "No clone audio yet",
+        "mmEmptyPromptAudio": "No reference audio yet",
+        "mmNoticeTitle": "Important: voices from cloning and design are temporary (unactivated) voices",
+        "mmNotice1": "The 9.9 yuan activation fee is charged only on first use for speech synthesis (excluding in-interface audition)",
+        "mmNotice2": "If not used in any speech synthesis interface within 168h (7 days), the voice will be deleted",
+        "mmNotice3": "The preview in this list calls speech synthesis once; keep needed voices by previewing once, avoid previewing unwanted ones to prevent charges",
+        "mmPricingDoc": "MiniMax Voice Pricing Docs",
+        "mmCloneOkTitle": "✅ Clone successful",
+        "mmDesignOkTitle": "✅ Design successful",
+        "mmUnactivatedNote": "The voice is currently unactivated and must be formally called once in a speech synthesis interface to activate.",
+        "mmUnactivatedBanner": "These voices are not yet activated. Click “Preview (activate)” to call speech synthesis once to activate; after activation they appear in the custom voice list and fees apply.",
+        "mmUnactivatedHeading": "⏳ Unactivated voices",
+        "mmCustomHeading": "🧑‍🎨 Custom voices",
+        "mmSystemHeading": "🎙️ System voices",
+        "mmNoDemo": "No audition audio",
+        "mmUploadFail": "Upload failed: ",
+        "mmFetchListFail": "Failed to fetch {label} list: ",
+        "mmDeleteConfirmMsg": "Are you sure you want to delete {label} {fileId}?",
+        "mmCloneAudioUploaded": "Clone audio uploaded successfully",
+        "mmPromptTextRequired": "Please enter the source text (text content of the audio)",
+        "mmPromptAudioUploaded": "Reference audio uploaded successfully",
+        "mmPromptTextEmpty": "Source text cannot be empty",
+        "mmSaveFail": "Save failed: ",
+        "mmPromptSaved": "Source text saved",
+        "mmFetchAudioFail": "Failed to fetch audio: ",
+        "mmSelectMainAudio": "Please select a main audio (clone audio)",
+        "mmPromptNoText": "The selected reference audio lacks source text; please bind first",
+        "mmCloneSuccess": "Voice cloned successfully! Voice ID: ",
+        "mmCloneFail": "Clone failed: ",
+        "mmDesignSuccess": "Voice designed successfully! Voice ID: ",
+        "mmDesignFail": "Design failed: ",
+        "mmListFail": "Failed to fetch voice list: ",
+        "mmUnactivatedNotFound": "Unactivated voice not found",
+        "mmUnactivatedDeleted": "Unactivated voice deleted",
+        "mmKeptUnactivated": "Voice kept to unactivated list; preview to activate",
+        "blmmTabUpload": "📁 Upload audio file",
+        "blmmTabUrl": "🔗 Use audio URL",
+        "blmmTabList": "📋 Voice list",
+        "blmmCreateLegend": "Create new voice (voice clone)",
+        "blmmTip": "💡 Tip: ",
+        "blmmNotice": "First use of a cloned voice for speech synthesis activates it and deducts a 9.9 yuan unlock fee.",
+        "blmmPricingDoc": "Model pricing",
+        "blmmSelectLocal": "Select local audio file (wav, mp3, m4a)",
+        "blmmSelectedPrefix": "✅ Selected: ",
+        "blmmClear": "Clear",
+        "blmmHintLocalAudio": "Duration at least 10s, at most 5 minutes; format: mp3, m4a, wav; size ≤ 20MB",
+        "blmmCustomId": "Custom voice ID (optional)",
+        "blmmPlaceholderAuto": "Auto-generated if left empty",
+        "blmmAuditionPlaceholder": "Enter audition text, up to 1000 characters...",
+        "blmmHintAudition": "Audition is charged per character for speech synthesis, limit 1000 characters",
+        "blmmModelVersion": "Model version",
+        "blmmHintLangBoost": "Improves recognition of specified languages; usually set to auto",
+        "blmmNoiseReduction": "Enable noise reduction",
+        "blmmNoiseHint": "Recommended when there is background noise",
+        "blmmPromptAudio": "Reference audio (optional, improves similarity)",
+        "blmmHintPrompt": "Optional, duration < 8s, file ≤ 20MB. Providing reference audio improves similarity",
+        "blmmPromptTextLabel": "Reference audio text",
+        "blmmPromptPlaceholder": "Enter the text corresponding to the reference audio",
+        "blmmHintPromptText": "Text of the reference audio; must match the audio content",
+        "blmmCloneBtn": "📁 Upload and clone",
+        "blmmCloning": "Cloning...",
+        "blmmUrlCloneBtn": "🔗 Clone via URL",
+        "blmmPublicUrl": "Public audio URL",
+        "blmmHintUrl": "Accessible URL of the audio file, supports WAV/MP3/M4A",
+        "blmmUrlPlaceholder": "e.g.: https://example.com/voice.wav",
+        "blmmConfigPrefix": "Config #",
+        "blmmClonedHeading": "🎤 Cloned voices",
+        "blmmUnactivatedBanner": "These voices are not yet activated. Click “Preview (activate)” to call speech synthesis once to activate; after activation they appear in the cloned voice list and fees apply.",
+        "blmmCloneOkTitle": "✅ Clone successful",
+        "blmmAudioFormat": "Unsupported audio format, please select WAV/MP3/M4A file",
+        "blmmAudioTooLarge": "Audio file too large, please select a file within 10MB",
+        "blmmReadFail": "Failed to read file",
+        "blmmReadPromptFail": "Failed to read reference audio",
+        "blmmListFail": "Failed to fetch voice list: ",
+        "blmmDeleteMsg": "Are you sure you want to delete voice {voiceId}? This action cannot be undone.",
+        "blmmSelectOrUrl": "Please select an audio file or enter an audio URL",
+        "blmmEnterAudition": "Please enter audition text",
+        "blmmPromptTextRequired": "Please fill in the text corresponding to the reference audio",
+        "blmmDeleteUnactivatedMsg": "Are you sure you want to delete unactivated voice {voiceId}? This will also delete it from the Bailian server and cannot be recovered.",
+        "blmmPromptTooLarge": "Reference audio file too large, please select a file within 20MB",
+        "blmmDefaultAuditionText": "Hello, this is the audition text.",
+        "blmmColVoiceId": "Voice ID",
+        "blmmColType": "Type",
+        "blmmColName": "Name",
+        "blmmVolNorm": "Enable volume normalization",
+        "blmmAigcWatermark": "Add AIGC watermark",
+        "blmmHintAigc": "Append an audio rhythm marker at the end of the synthesized audio",
+        "blmmCloneSuccess": "Voice cloned successfully! Voice ID: ",
+        "blmmCloneFail": "Clone failed: ",
+        "blmmHintAuditionAfterClone": "After cloning, this text is used to generate the audition audio, limit 1000 characters",
+        "blmmCopyIdTip": "Copy ID",
+        "blmmPreviewTip": "Preview voice",
+        "blmmLangZh": "Chinese",
+        "blmmLangChineseYue": "Cantonese",
+        "blmmLangEn": "English",
+        "blmmLangAr": "Arabic",
+        "blmmLangRu": "Russian",
+        "blmmLangEs": "Spanish",
+        "blmmLangFr": "French",
+        "blmmLangPt": "Portuguese",
+        "blmmLangDe": "German",
+        "blmmLangTurkish": "Turkish",
+        "blmmLangDutch": "Dutch",
+        "blmmLangUkrainian": "Ukrainian",
+        "blmmLangVi": "Vietnamese",
+        "blmmLangId": "Indonesian",
+        "blmmLangJa": "Japanese",
+        "blmmLangIt": "Italian",
+        "blmmLangKo": "Korean",
+        "blmmLangTh": "Thai",
+        "blmmLangPolish": "Polish",
+        "blmmLangRomanian": "Romanian",
+        "blmmLangGreek": "Greek",
+        "blmmLangCzech": "Czech",
+        "blmmLangFinnish": "Finnish",
+        "blmmLangHindi": "Hindi",
+        "blmmLangBulgarian": "Bulgarian",
+        "blmmLangDanish": "Danish",
+        "blmmLangHebrew": "Hebrew",
+        "blmmLangMs": "Malay",
+        "blmmLangPersian": "Persian",
+        "blmmLangSlovak": "Slovak",
+        "blmmLangSwedish": "Swedish",
+        "blmmLangCroatian": "Croatian",
+        "blmmLangFil": "Filipino",
+        "blmmLangHungarian": "Hungarian",
+        "blmmLangNorwegian": "Norwegian",
+        "blmmLangSlovenian": "Slovenian",
+        "blmmLangCatalan": "Catalan",
+        "blmmLangNynorsk": "Norwegian Nynorsk",
+        "blmmLangTamil": "Tamil",
+        "blmmLangAfrikaans": "Afrikaans",
+        "blmmLangAuto": "Auto",
+        "mmDesignDefaultPreview": "Welcome to MiniMax voice design.",
+        "mmUnbound": "Unbound",
+        "mmPleaseSelect": "-- Please select --",
+        "mmPleaseSelectNone": "-- Do not use --",
+        "mmPlaceholderAuto": "Custom recommended; auto-generated if empty",
+        "mmAuditionPlaceholder": "Optional. ≤ 1000 chars",
+        "mmAsrPlaceholder": "Expected audio content, ≤ 200 chars",
+        "mmPlayDemo": "▶ Play audition audio",
+        "mmVoiceDesc": "Voice description",
+        "mmVoiceDescPlaceholder": "e.g. gentle female voice, slightly magnetic, great for lyrical prose...",
+        "mmPreviewTextLabel": "Preview text",
+        "mmPreviewTextPlaceholder": "Text used for audition. ≤ 500 characters",
+        "mmHintPreviewText": "Max 500 characters (Chinese counts as 2); audition synthesis charges 2 yuan per 10k characters",
+        "mmCannotBeEmpty": "{label} cannot be empty",
+        "mmCannotBeLess": "{label} must be at least {min} characters (currently {count})",
+        "mmCannotExceed": "{label} cannot exceed {max} characters (currently {count})",
+        "mmVidErrLen": "Length must be 8~256 characters",
+        "mmVidErrFirst": "First character must be a letter",
+        "mmVidErrChars": "Only letters, digits, - and _ allowed",
+        "mmVidErrLast": "Last character cannot be - or _",
+        "mmUnknownError": "Unknown error",
+        "mmDeleteVoiceMsg": "Are you sure you want to delete voice {voiceId}?",
+        "mmDeleteUnactivatedMsg": "Are you sure you want to delete unactivated voice {voiceId}? This will also delete it from the MiniMax server and cannot be recovered.",
+        "mmCloneAudioLabel": "Clone audio",
+        "mmPromptAudioLabel": "Reference audio",
+        "mmSelectFile": "Please select a file",
+        "mmNoAudioData": "No audio data received",
+        "langAuto": "Auto",
+        "mmSeeDetails": "See details:"
+      }
+    }
+  }
+}

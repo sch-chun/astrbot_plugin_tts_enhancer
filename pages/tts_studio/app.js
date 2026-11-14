@@ -1,4 +1,4 @@
-const { createApp, ref, shallowRef, computed, watch, onMounted, onUnmounted } = Vue;
+const { createApp, ref, shallowRef, computed, watch, onMounted, onUnmounted, reactive } = Vue;
 
 // 单一页面合并「音色管理」与「合成记录」两个视图。
 // 两个视图共享：bridge（AstrBotPluginPage）、全局音量条、通知条、删除确认弹层，
@@ -13,6 +13,81 @@ import { selectVoiceTabs, firstUsableTab } from './voiceTabs.js';
 import { clearVoiceListCache } from './composables/useVoiceListCache.js';
 
 const bridge = window.AstrBotPluginPage;
+
+// 页面文案随 WebUI 语言切换：所有用户可见字符串经 bridge.t("views.tts_studio.<key>", 中文兜底) 读取，
+// 初始 ready 后调用一次 applyI18n()，并注册 bridge.onContext(applyI18n) 以响应语言切换（无需刷新页面）。
+// i18n 文本来源：插件 .astrbot-plugin/i18n/{locale}.json 的 views.tts_studio 段（回退链 locale→zh-CN→en-US→兜底）。
+const i18n = reactive({
+    brand: 'TTS 增强',
+    navManager: '音色管理',
+    navRecords: '合成记录',
+    docTitle: 'TTS 增强 · 控制台',
+    globalVolume: '全局音量',
+    managerTitle: 'TTS 音色管理',
+    recordsTitle: 'TTS 合成记录',
+    loading: '加载中...',
+    emptyConfigured: '⚠️ 已配置 {n} 个供应商（{names}），但当前版本暂未提供其可视化面板。如需在此面板内管理，请配置支持前端操作的服务商（如百炼 / MiniMax）。',
+    emptyNoProviders: '⚠️ 暂无 TTS 供应商配置，请在插件配置中添加 providers 条目。',
+    filterLabel: '来源',
+    sourceAll: '全部',
+    sourceChat: '聊天语音',
+    sourcePreview: '音色预览',
+    sourceDesign: '设计试听',
+    sourceAgent: 'Agent 发送',
+    countHint: '共 {n} 条',
+    clearAll: '清空全部',
+    emptyFiltered: '⚠️ 当前筛选条件下没有合成记录。',
+    emptyNone: '🎙️ 暂无合成记录。合成过的语音（聊天语音、音色预览、设计试听等）会自动出现在这里。',
+    unknownProvider: '未知供应商',
+    noText: '（无文本）',
+    durationPrefix: '时长 ',
+    durationUnit: 's',
+    sourcePrefix: '来源：',
+    stop: '⏹ 停止',
+    play: '▶ 播放',
+    delete: '删除',
+    collapse: '收起 ▴',
+    details: '详情 ▾',
+    enhanceInstruction: '指令',
+    enhanceVolume: '音量',
+    enhanceRate: '语速',
+    enhancePitch: '音调',
+    enhanceLanguage: '语言',
+    configVoice: '音色',
+    configFormat: '格式',
+    configSampleRate: '采样率',
+    configModel: '模型',
+    enhanceParams: 'AI 增强参数',
+    configParams: '配置参数',
+    noParams: '本次合成未记录参数详情。',
+    cancel: '取消',
+    confirm: '确认',
+    confirmDeleteTitle: '⚠️ 确认删除',
+    confirmClearTitle: '⚠️ 清空全部',
+    confirmDeleteMsg: '确定要删除这条合成记录吗？此操作不可恢复。\n来源：{source}',
+    confirmClearMsg: '确定要清空全部合成记录吗？此操作不可恢复。',
+    toastDeleted: '已删除',
+    toastCleared: '已清空 {n} 条记录',
+    errLoadProviders: '无法加载供应商配置：',
+    errReadRecords: '读取合成记录失败: ',
+    errAudioMissing: '音频数据缺失',
+    errPlayback: '播放失败: ',
+    errFetchAudio: '获取合成音频失败: ',
+    errInit: '初始化失败: ',
+    unknown: '未知',
+});
+
+function applyI18n() {
+    for (const key of Object.keys(i18n)) {
+        i18n[key] = bridge.t('views.tts_studio.' + key, i18n[key]);
+    }
+    document.title = i18n.docTitle;
+    // 在 <html> 上挂当前 locale 类（loc-<locale>），供 CSS 区分 CJK 竖排与拉丁 90° 旋转。
+    const locale = (typeof bridge.getLocale === 'function') ? bridge.getLocale() : 'zh-CN';
+    const root = document.documentElement;
+    root.classList.remove('loc-zh-CN', 'loc-ja-JP', 'loc-en-US', 'loc-ru-RU');
+    if (locale) root.classList.add('loc-' + locale);
+}
 
 const app = createApp({
     setup() {
@@ -113,7 +188,7 @@ const app = createApp({
                 }
             } catch (e) {
                 console.error('获取供应商列表失败:', e);
-                showError('无法加载供应商配置：' + e.message);
+                showError(i18n.errLoadProviders + e.message);
             } finally {
                 managerLoading.value = false;
             }
@@ -164,11 +239,12 @@ const app = createApp({
         const records = ref([]);
         const sourceFilter = ref('all');
 
-        const SOURCE_LABELS = {
-            chat: '聊天语音',
-            preview: '音色预览',
-            design_preview: '设计试听',
-            agent: 'Agent 发送',
+        // 来源标签：记录 source 键 → i18n 键（文案随语言切换由 applyI18n 更新）。
+        const SOURCE_KEYS = {
+            chat: 'sourceChat',
+            preview: 'sourcePreview',
+            design_preview: 'sourceDesign',
+            agent: 'sourceAgent',
         };
 
         const filteredRecords = computed(() => {
@@ -177,7 +253,8 @@ const app = createApp({
         });
 
         function sourceLabel(source) {
-            return SOURCE_LABELS[source] || source || '未知';
+            const i18nKey = SOURCE_KEYS[source];
+            return (i18nKey ? i18n[i18nKey] : null) || i18n.unknown;
         }
 
         function formatTime(iso) {
@@ -202,40 +279,41 @@ const app = createApp({
         //  - AI 增强参数（rec.params）：来自 SubAgent 增强，如指令 / 音量 / 语速 / 音调 / 语言；
         //  - 配置参数（rec.config）：本次合成使用的供应商配置快照，如音色 / 格式 / 采样率 / 模型。
         // 仅展示存在且非空的字段，缺省/空值自动跳过；不含 api_key 等密钥。
-        const ENHANCE_LABELS = {
-            instruction: '指令',
-            volume: '音量',
-            rate: '语速',
-            pitch: '音调',
-            language_hints: '语言',
+        // 字段键 → i18n 键，标签经 applyI18n 随语言切换。
+        const ENHANCE_KEYS = {
+            instruction: 'enhanceInstruction',
+            volume: 'enhanceVolume',
+            rate: 'enhanceRate',
+            pitch: 'enhancePitch',
+            language_hints: 'enhanceLanguage',
         };
-        const CONFIG_LABELS = {
-            voice: '音色',
-            format: '格式',
-            sample_rate: '采样率',
-            model: '模型',
+        const CONFIG_KEYS = {
+            voice: 'configVoice',
+            format: 'configFormat',
+            sample_rate: 'configSampleRate',
+            model: 'configModel',
         };
 
-        function _paramsToList(source, labels) {
+        function _paramsToList(source, keys) {
             if (!source || typeof source !== 'object') return [];
             const items = [];
-            for (const [key, label] of Object.entries(labels)) {
+            for (const [key, i18nKey] of Object.entries(keys)) {
                 let value = source[key];
                 if (value === undefined || value === null || value === '') continue;
                 if (key === 'language_hints' && Array.isArray(value)) {
                     value = value.join('/');
                 }
-                items.push({ label, value: String(value) });
+                items.push({ label: i18n[i18nKey], value: String(value) });
             }
             return items;
         }
 
         function recordParams(rec) {
-            return _paramsToList(rec && rec.params, ENHANCE_LABELS);
+            return _paramsToList(rec && rec.params, ENHANCE_KEYS);
         }
 
         function recordConfig(rec) {
-            return _paramsToList(rec && rec.config, CONFIG_LABELS);
+            return _paramsToList(rec && rec.config, CONFIG_KEYS);
         }
 
         // 每条记录展开/收起详情的本地状态（按记录 id 记录）
@@ -254,7 +332,7 @@ const app = createApp({
                 records.value = Array.isArray(data) ? data : [];
             } catch (e) {
                 console.error('读取合成记录失败:', e);
-                showError('读取合成记录失败: ' + e.message);
+                showError(i18n.errReadRecords + e.message);
                 records.value = [];
             } finally {
                 recordsLoading.value = false;
@@ -271,44 +349,44 @@ const app = createApp({
                 // 同 fetchRecords：兼容 dashboard 解包与未解包两种结构。
                 const payload = result?.data ?? result;
                 if (!payload || !payload.audio_base64) {
-                    showError('音频数据缺失');
+                    showError(i18n.errAudioMissing);
                     return;
                 }
                 const mimeType = `audio/${payload.format || 'mp3'}`;
                 const audioUrl = base64ToBlobUrl(payload.audio_base64, mimeType);
                 playAudio(audioUrl, rec.id, {
                     cleanup: () => URL.revokeObjectURL(audioUrl),
-                    onError: (e) => showError('播放失败: ' + e.message),
+                    onError: (e) => showError(i18n.errPlayback + e.message),
                 });
             } catch (e) {
                 console.error('获取合成音频失败:', e);
-                showError('获取合成音频失败: ' + e.message);
+                showError(i18n.errFetchAudio + e.message);
             }
         }
 
         function confirmDelete(rec) {
             showConfirm(
-                '⚠️ 确认删除',
-                `确定要删除这条合成记录吗？此操作不可恢复。\n来源：${sourceLabel(rec.source)}`,
+                i18n.confirmDeleteTitle,
+                i18n.confirmDeleteMsg.replace('{source}', sourceLabel(rec.source)),
                 async () => {
                     await bridge.apiPost('synthesis-records/delete', { id: rec.id });
                     await fetchRecords();
-                    showToast('已删除');
+                    showToast(i18n.toastDeleted);
                 }
             );
         }
 
         function confirmClear() {
             showConfirm(
-                '⚠️ 清空全部',
-                '确定要清空全部合成记录吗？此操作不可恢复。',
+                i18n.confirmClearTitle,
+                i18n.confirmClearMsg,
                 async () => {
                     const result = await bridge.apiPost('synthesis-records/clear', {});
                     // 同 fetchRecords：兼容 dashboard 解包与未解包两种结构。
                     const deleted = (result?.data?.deleted) ?? result?.deleted ?? 0;
                     stopAudio();
                     await fetchRecords();
-                    showToast(`已清空 ${deleted} 条记录`);
+                    showToast(i18n.toastCleared.replace('{n}', deleted));
                 }
             );
         }
@@ -346,10 +424,21 @@ const app = createApp({
             if (view === 'records') fetchRecords();
         }
 
+        // 已配置但无可视化面板的空态文案（含插值 {n}/{names}），随语言切换。
+        const emptyConfiguredText = computed(() => {
+            const names = groups.value.map(g => g.display_name || g.template_key).join('、');
+            return i18n.emptyConfigured
+                .replace('{n}', groups.value.length)
+                .replace('{names}', names);
+        });
+
         // ---------- 挂载 ----------
         onMounted(() => {
+            // 注册语言切换监听：WebUI 切换语言时无需刷新页面即重渲所有文案。
+            bridge.onContext(applyI18n);
             Promise.resolve(bridge.ready())
                 .then(() => {
+                    applyI18n();
                     applyPageBackground();
                     // 两个视图各自管理加载态，外壳不阻塞，无需等待全部数据再挂载。
                     // 两者都结束后才置 booted，瞬时层（弹层 / 通知）随后挂载，避免加载期闪烁。
@@ -360,7 +449,7 @@ const app = createApp({
                 })
                 .catch((e) => {
                     console.error('初始化失败:', e);
-                    showError('初始化失败: ' + e.message);
+                    showError(i18n.errInit + e.message);
                     // 初始化失败时也要解除阻塞，避免一直显示加载占位。
                     managerLoading.value = false;
                     recordsLoading.value = false;
@@ -382,6 +471,8 @@ const app = createApp({
             activeView,
             switchView,
             bridge,
+            i18n,
+            emptyConfiguredText,
             volume,
             toast,
             confirm,
