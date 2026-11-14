@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ## [1.2.0] - 2026-11-14
 
-前端音色列表增加缓存：切换标签页 / 视图时复用上一次结果，避免重复请求 `/voice/list`；创建 / 删除 / 预览激活 / 手动刷新等变更操作强制回源。
-
 ### Added
 
 - **四语种 UI 本地化（zh / en / ja / ru）**：TTS Studio 全部前端组件接入 `useComponentI18n` 组合式函数与 `bridge.t()` 回退链，新增 `.astrbot-plugin/i18n/{zh-CN,en-US,ja-JP,ru-RU}.json` 四份语言包（各 365 个 `components` 键，键集合完全一致）。覆盖管理页、音色预览 / 删除模态框、百炼 Qwen 3.0 / 3.1 TTS，以及 **MiniMax 直连**（`components/minimax_speech_2_8.js`）与 **百炼 MiniMax**（`components/bailian_minimax_speech_2_8.js`）两个子页面；`language_boost` 下拉（约 40 项语言 / 方言）按 locale 动态生成全量翻译，`validateText` 改为 i18n 感知。
