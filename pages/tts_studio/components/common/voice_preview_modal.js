@@ -153,6 +153,8 @@ export default {
         const { currentPlayingId, playAudio, stopAudio } = useAudioManager();
 
         // 组件级 i18n 自检
+        // 注意：内联 defs 的键汇入共享命名空间 views.tts_studio.components.*，
+        // 与 MM_I18N_DEFS / BLMM_I18N_DEFS 等共用，同名键值必须一致，改完需重新生成 zh-CN.json。
         const t = useComponentI18n(props.bridge, {
             previewTitle: '预览音色',
             previewTextLabel: '预览文本',

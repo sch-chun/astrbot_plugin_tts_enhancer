@@ -31,6 +31,8 @@ export default {
     emits: ['update:visible', 'confirm', 'cancel'],
     setup(props, { emit }) {
         // 组件级 i18n 自检（标题与按钮文案）
+        // 注意：内联 defs 的键汇入共享命名空间 views.tts_studio.components.*，
+        // 其中 dlgTitle/dlgConfirm/dlgCancel 与 bailian_speech_synthesizer 共用，值必须一致。
         const t = useComponentI18n(props.bridge, {
             dlgTitle: '⚠️ 确认删除',
             dlgConfirm: '确认删除',

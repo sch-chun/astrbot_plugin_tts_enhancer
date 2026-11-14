@@ -12,6 +12,11 @@ import VoicePreviewModal from './common/voice_preview_modal.js';
 import DeleteConfirmModal from './common/delete_confirm_modal.js';
 
 
+// 共享命名空间声明：本对象所有键都会汇入前缀 views.tts_studio.components.*
+// 与 BLMM_I18N_DEFS 以及 common/ 下 bailian_speech_synthesizer、delete_confirm_modal、
+// voice_preview_modal 的内联 defs 共用同一扁平命名空间。同名键的值必须保持一致，
+// 否则修改一处会静默影响其它组件。改完务必重新生成 .astrbot-plugin/i18n/zh-CN.json
+//（命名空间一致性校验见 tests/i18n_components_drift.test.mjs）。
 const MM_I18N_DEFS = {
         "authConfig": "认证配置",
         "createVoice": "创建新音色",
@@ -379,7 +384,7 @@ export default {
     setup(props) {
 
         // ---------- i18n ----------
-        const t = useComponentI18n(props.bridge, MM_I18N_DEFS, 'views.tts_studio.components');
+        const t = useComponentI18n(props.bridge, MM_I18N_DEFS);
         const MM_MSG = {
             empty: (l) => t.mmCannotBeEmpty.replace('{label}', l),
             min: (l, m, c) => t.mmCannotBeLess.replace('{label}', l).replace('{min}', m).replace('{count}', c),

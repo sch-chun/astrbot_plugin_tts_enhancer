@@ -46,6 +46,9 @@ export default {
     setup(props) {
 
         // ----- 组件级 i18n 自检 -----
+        // 注意：此处内联 defs 的键全部汇入共享命名空间 views.tts_studio.components.*，
+        // 与 MM_I18N_DEFS / BLMM_I18N_DEFS / delete_confirm_modal / voice_preview_modal 共用。
+        // 同名键值必须一致，否则改一处会静默影响其它组件；改完需重新生成 zh-CN.json。
         const t = useComponentI18n(props.bridge, {
             authConfig: '认证配置',
             createVoice: '创建新音色',
