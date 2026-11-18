@@ -2,7 +2,7 @@
   <img src="../../logo.png" alt="TTS Enhancer" width="200"/>
 </div>
 
-[中文](../../README.md) · [English](../en/README.md) · Русский
+[中文](../../README.md) · [English](../en/README.md) · [日本語](../ja/README.md) · Русский
 
 # AstrBot TTS Enhancer
 
@@ -10,7 +10,7 @@
 > устраняя разрыв между «простым текстовым вводом» и богатыми возможностями современных TTS-провайдеров благодаря высокомодульной архитектуре для подключения любого сервиса синтеза речи.
 
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![Version](https://img.shields.io/badge/version-v1.2.0-green)](../../CHANGELOG.md)
 
@@ -219,11 +219,10 @@ providers:                        # Список провайдеров (нес�
 ## Документация
 
 - [CHANGELOG](../../CHANGELOG.md) — полная история версий.
-- **Архитектура** [../../docs/zh/ARCHITECTURE.md](../../docs/zh/ARCHITECTURE.md) — цели дизайна, слои, жизненный цикл запроса, ключевые модули, система адаптеров, маршрутизация персон, безопасность.
-- **Руководство разработчика** [../../docs/zh/DEVELOPMENT.md](../../docs/zh/DEVELOPMENT.md) — настройка окружения, чек-лист добавления провайдера, разработка адаптера, фронтенд, тестирование, процесс релиза.
-- **Известные ограничения и ответственность вышестоящих компонентов** [../../docs/zh/KNOWN_LIMITATIONS.md](../../docs/zh/KNOWN_LIMITATIONS.md) — компромиссы дизайна / гарантии вышестоящих / обработка недостижимого и стражи «зелёных» тестов.
-- **中文 README** [../../README.md](../../README.md) — китайская версия.
-- **English README** [../en/README.md](../en/README.md) — английская версия.
+- **Архитектура** [ARCHITECTURE.md](ARCHITECTURE.md) — цели дизайна, слои, жизненный цикл запроса, ключевые модули, система адаптеров, маршрутизация персон, безопасность.
+- **Руководство разработчика** [DEVELOPMENT.md](DEVELOPMENT.md) — настройка окружения, чек-лист добавления провайдера, разработка адаптера, фронтенд, тестирование, процесс релиза.
+- **Известные ограничения и ответственность вышестоящих компонентов** [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) — компромиссы дизайна / гарантии вышестоящих / обработка недостижимого и стражи «зелёных» тестов.
+- Другие версии README: [中文](../../README.md) · [English](../en/README.md) · [日本語](../ja/README.md).
 - Примеры документов возможностей:
   - `providers/docs/bailian_qwen_audio_3_0_tts.md`
   - `providers/docs/bailian_qwen_audio_3_1_tts.md`
