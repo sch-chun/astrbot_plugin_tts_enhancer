@@ -30,8 +30,7 @@ pytest                # run within the AstrBot source tree
 ### 1.3 Frontend (No Build Step)
 
 - The frontend uses native ES Modules + a local Vue UMD build, with **no bundling step** — JS changes take effect immediately.
-- Only `eslint.config.mjs` provides optional linting (development only); its dependencies are listed under `devDependencies` in `pages/tts_studio/package.json`.
-- Optional: `cd pages/tts_studio && npm install && npx eslint .`.
+- The frontend has no `package.json` or ESLint config, so no `npm install` / `npx eslint` toolchain step is needed.
 
 ---
 

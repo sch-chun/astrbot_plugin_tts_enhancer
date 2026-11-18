@@ -30,8 +30,7 @@ pytest                # запуск внутри дерева исходник�
 ### 1.3 Фронтенд (без сборки)
 
 - Фронтенд — нативные ES Module + локальный Vue UMD, **этап сборки отсутствует**, изменения в JS вступают в силу сразу.
-- Только `eslint.config.mjs` предоставляет опциональный lint (в разработке), зависимости — в `devDependencies` файла `pages/tts_studio/package.json`.
-- Опционально: `cd pages/tts_studio && npm install && npx eslint .`.
+- У фронтенда нет `package.json` или конфигурации ESLint, поэтому шаг инструментария `npm install` / `npx eslint` не требуется.
 
 ---
 

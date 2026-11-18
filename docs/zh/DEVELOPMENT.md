@@ -30,8 +30,7 @@ pytest                # 在 AstrBot 源码树内运行
 ### 1.3 前端（无需构建）
 
 - 前端是原生 ES Module + 本地 Vue UMD，**没有打包步骤**，改完 JS 直接生效。
-- 仅 `eslint.config.mjs` 提供可选 lint（开发期），依赖见 `pages/tts_studio/package.json` 的 `devDependencies`。
-- 可选：`cd pages/tts_studio && npm install && npx eslint .`。
+- 前端没有 `package.json` 或 ESLint 配置，无需 `npm install` / `npx eslint` 等工具链步骤。
 
 ---
 

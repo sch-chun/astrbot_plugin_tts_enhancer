@@ -276,7 +276,7 @@ Bailian 系アダプターが共有する基底（`providers/_bailian_speech_syn
   - `components/common/`：プロバイダー間で共有するコンポーネント（`bailian_speech_synthesizer.js` はクローン / デザインの 2 モード（クローン音声はブラウザで Data URL にエンコードして送信）、`voice_preview_modal.js` はプレビューモーダル、`delete_confirm_modal.js` は削除確認）。
   - `components/*.js`：各プロバイダーの薄いラッパー。common コンポーネントを参照し、`providerConfig` で差異（言語一覧、ヘルプリンク、システムボイス対応可否など）を設定。
   - `composables/`：`useAudioManager`（グローバル音声シングルトン / 音量）、`useTextValidator`（漢字 = 2 文字のカウントと検証）、`useClipboard`、`useToast`。
-- スタイルは `style.css` に集約；`eslint.config.mjs` がオプションの lint を提供（開発時のみ）。
+- スタイルは `style.css` に集約；フロントエンドにはビルド手順も ESLint 設定もないため、npm ツールチェーンは不要です。
 - **設定可能な背景画像**：管理ページは設定項目 `page_background`（file 型）で単一の背景画像をアップロード可能；バックエンドの `/<plugin>/page-background` ルートが画像を base64 Data URL として読み出して返す（バイナリがブリッジを通ることとクロスオリジン / 外部リンクを回避）。フロントエンドの `applyPageBackground()` は `data_url` が空でない場合のみ `#page-bg` の固定背景レイヤーを描画し、`page_background_opacity` / `page_background_blur` に従って不透明度とぼかしを適用。コンテンツカードとフォーム項目も半透明のすりガラス風に変更し、背景が透けて見えるようにしています。
 - **フローティングレイヤーアーキテクチャ（モーダル / Toast / 音量バー）**：グローバル音量バー、すべてのモーダルオーバーレイ、通知トーストは `<Teleport to="body">` で body 直下にマウント（fixed + `100vw/100vh`）。ページレベルのフェードインアニメーションは `animation-fill-mode: both` を使用し、終了後に祖先要素へ 2 種類の永続的な副作用を残します——合成トランスフォーム（computed transform が `none` ではなく単位行列となり、`position: fixed` の子孫の包含ブロックになる）と合成レイヤー（すなわち重ね合わせコンテキストで、サブツリー内の z-index を固定）。body への Teleport はこれら 2 つの副作用に対して堅牢なアーキテクチャであり、新しい浮層を追加する際はこれに従うべきです。
 - **アニメーション規約**：一度きりの出入り（モーダル、ページ / タブの進入）はすべて `<Transition>` を使用——アニメーションクラスが再生されれば削除され、残骸が出ません。継続的なトランジション（タブのハイライトバー）は transform のコンポジターアニメーション + `will-change` を使用し、毎フレームのレイアウトを回避。`@media (prefers-reduced-motion: reduce)` 下ではすべて無効化。

@@ -30,8 +30,7 @@ pytest                # AstrBot ソースツリー内で実行
 ### 1.3 フロントエンド（ビルド不要）
 
 - フロントエンドはネイティブ ES Module + ローカル Vue UMD で、**パッケージング手順はなし**。JS を変更すればそのまま反映。
-- `eslint.config.mjs` のみがオプションの lint（開発時）を提供。依存は `pages/tts_studio/package.json` の `devDependencies` を参照。
-- 任意：`cd pages/tts_studio && npm install && npx eslint .`
+- フロントエンドには `package.json` や ESLint 設定がないため、`npm install` / `npx eslint` などのツールチェーン手順は不要です。
 
 ---
 
