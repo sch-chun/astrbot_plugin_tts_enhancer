@@ -2,7 +2,7 @@
   <img src="../../logo.png" alt="TTS Enhancer" width="200"/>
 </div>
 
-[中文](../../README.md) · [Русский](../../docs/ru/README.md) · English
+[中文](../../README.md) · [Русский](../ru/README.md) · [日本語](../ja/README.md) · English
 
 # AstrBot TTS Enhancer
 
@@ -10,7 +10,7 @@
 > closing the gap between "plain-text input" and the rich capabilities of modern TTS providers, with a highly pluggable architecture for wiring in any speech service.
 
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![Version](https://img.shields.io/badge/version-v1.2.0-green)](../../CHANGELOG.md)
 
@@ -219,11 +219,10 @@ All new providers are auto-discovered and loaded by the factory — no core code
 ## Documentation
 
 - [CHANGELOG](../../CHANGELOG.md) — full version history.
-- **Architecture doc** [../../docs/zh/ARCHITECTURE.md](../../docs/zh/ARCHITECTURE.md) — design goals, layering, request lifecycle, core modules, adapter system, persona routing, security.
-- **Development guide** [../../docs/zh/DEVELOPMENT.md](../../docs/zh/DEVELOPMENT.md) — environment setup, provider checklist, adapter development, frontend, testing, release flow.
-- **Known limitations & upstream responsibility** [../../docs/zh/KNOWN_LIMITATIONS.md](../../docs/zh/KNOWN_LIMITATIONS.md) — design trade-offs / upstream guarantees / handling of unreachable items & green-test guards.
-- **中文 README** [../../README.md](../../README.md) — Chinese version.
-- **Русский README** [../../docs/ru/README.md](../../docs/ru/README.md) — Russian version.
+- **Architecture doc** [ARCHITECTURE.md](ARCHITECTURE.md) — design goals, layering, request lifecycle, core modules, adapter system, persona routing, security.
+- **Development guide** [DEVELOPMENT.md](DEVELOPMENT.md) — environment setup, provider checklist, adapter development, frontend, testing, release flow.
+- **Known limitations & upstream responsibility** [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) — design trade-offs / upstream guarantees / handling of unreachable items & green-test guards.
+- Other READMEs: [中文](../../README.md) · [Русский](../ru/README.md) · [日本語](../ja/README.md).
 - Capability doc examples:
   - `providers/docs/bailian_qwen_audio_3_0_tts.md`
   - `providers/docs/bailian_qwen_audio_3_1_tts.md`
