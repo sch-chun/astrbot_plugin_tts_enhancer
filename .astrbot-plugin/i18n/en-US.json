@@ -505,6 +505,58 @@
             "hint": "Comma-separated, e.g. quality-guard; empty = default; recommended to keep default"
           }
         },
+        "stepfun_stepaudio_3_tts": {
+          "name": "StepFun StepAudio 3 TTS",
+          "hint": "Human-like spoken delivery; emotion control via instruction",
+          "display_name": {
+            "description": "Display name",
+            "hint": "Used to distinguish multiple providers of the same type"
+          },
+          "priority": {
+            "description": "Priority",
+            "hint": "Smaller number = higher priority"
+          },
+          "persona_id": {
+            "description": "Bound persona",
+            "hint": "Use only under this persona; leave empty for a universal fallback voice"
+          },
+          "api_key": {
+            "description": "API Key",
+            "hint": "StepFun open platform API key"
+          },
+          "model": {
+            "description": "Model"
+          },
+          "voice": {
+            "description": "Voice ID",
+            "hint": "Required. Browse and preview official voices in the admin page's Voice Preview tab, or audition at https://audio.stepfun.com/playground?tab=clone and copy the ID. Common: cixingnansheng / elegantgentle-female / wenrounansheng"
+          },
+          "format": {
+            "description": "Output format",
+            "hint": "mp3 has the best compatibility; some clients may not support other formats"
+          },
+          "sample_rate": {
+            "description": "Sample rate"
+          },
+          "markdown_filter": {
+            "description": "Filter Markdown"
+          },
+          "pronunciation_tone": {
+            "description": "Pronunciation rules",
+            "hint": "Comma-separated, e.g. 阿胶/e1胶,扁舟/偏舟"
+          },
+          "max_input_chars": {
+            "description": "Input character limit",
+            "hint": "Official limit is 1000; increasing it has no effect; only used for early rejection"
+          },
+          "timeout": {
+            "description": "Timeout",
+            "hint": "In seconds"
+          },
+          "proxy": {
+            "description": "Proxy address"
+          }
+        },
         "elevenlabs_v4": {
           "hint": "v4/v4 Turbo: write emotion into text [tags]",
           "name": "Eleven v4",
@@ -728,6 +780,12 @@
         "cloneWait": "Cloning...",
         "designWait": "Designing...",
         "voiceListTitle": "Voice list",
+        "sfCloneTip": "Need to design or clone a new voice?",
+        "sfCloneLink": "Open StepFun official voice studio (click to copy link)",
+        "sfColScene": "Recommended scenes",
+        "sfClonedTitle": "My cloned voices",
+        "sfColFileId": "File ID",
+        "sfColCreated": "Created at",
         "refresh": "Refresh",
         "loadingList": "Loading...",
         "colCreated": "Created",

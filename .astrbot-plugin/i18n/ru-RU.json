@@ -505,6 +505,58 @@
             "hint": "Через запятую, напр. quality-guard; пусто — по умолчанию, рекомендуется оставить по умолчанию"
           }
         },
+        "stepfun_stepaudio_3_tts": {
+          "name": "StepFun StepAudio 3 TTS",
+          "hint": "Естественная разговорная речь; управление эмоциями через instruction",
+          "display_name": {
+            "description": "Отображаемое имя",
+            "hint": "Для различения нескольких провайдеров одного типа"
+          },
+          "priority": {
+            "description": "Приоритет",
+            "hint": "Чем меньше число, тем выше приоритет"
+          },
+          "persona_id": {
+            "description": "Привязка персонажа",
+            "hint": "Использовать только для этого персонажа; если пусто — общий резервный голос"
+          },
+          "api_key": {
+            "description": "API-ключ",
+            "hint": "API-ключ открытой платформы StepFun"
+          },
+          "model": {
+            "description": "Модель"
+          },
+          "voice": {
+            "description": "ID голоса",
+            "hint": "Обязательно. Официальные голоса можно просмотреть и прослушать во вкладке «Предпросмотр голосов» на странице администрирования, либо прослушать на https://audio.stepfun.com/playground?tab=clone и скопировать ID. Частые: cixingnansheng / elegantgentle-female / wenrounansheng"
+          },
+          "format": {
+            "description": "Формат вывода",
+            "hint": "mp3 обеспечивает лучшую совместимость; другие форматы могут поддерживаться не всеми клиентами"
+          },
+          "sample_rate": {
+            "description": "Частота дискретизации"
+          },
+          "markdown_filter": {
+            "description": "Фильтровать Markdown"
+          },
+          "pronunciation_tone": {
+            "description": "Правила замены произношения",
+            "hint": "Через запятую, напр. 阿胶/e1胶,扁舟/偏舟"
+          },
+          "max_input_chars": {
+            "description": "Лимит символов ввода",
+            "hint": "Официальный лимит — 1000; увеличение не действует; используется только для ранней проверки"
+          },
+          "timeout": {
+            "description": "Таймаут",
+            "hint": "В секундах"
+          },
+          "proxy": {
+            "description": "Адрес прокси"
+          }
+        },
         "elevenlabs_v4": {
           "hint": "v4/v4 Turbo: эмоции записываются в текст [тег]",
           "name": "Eleven v4",
@@ -728,6 +780,12 @@
         "cloneWait": "Клонирование...",
         "designWait": "Создание...",
         "voiceListTitle": "Список голосов",
+        "sfCloneTip": "Хотите создать или клонировать новый голос?",
+        "sfCloneLink": "Открыть официальную студию голосов StepFun (нажмите, чтобы скопировать ссылку)",
+        "sfColScene": "Рекомендуемые сцены",
+        "sfClonedTitle": "Мои клонированные голоса",
+        "sfColFileId": "ID файла",
+        "sfColCreated": "Создан",
         "refresh": "Обновить",
         "loadingList": "Загрузка...",
         "colCreated": "Создан",

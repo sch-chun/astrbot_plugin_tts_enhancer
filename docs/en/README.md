@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.2.0-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.3.0-green)](../../CHANGELOG.md)
 
 ---
 
@@ -99,6 +99,9 @@ Per provider:
 | **Google Gemini 3.8 Flash TTS** | Flash / Flash-Lite | NL style + inline vocal tags (`<laugh>`, `<sigh>`) | ✅ | ✅ | ✅ | ❌ | Multilingual | ❌ |
 | **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | Bracket emotion tags (64+, switch freely across sentences) | ✅ | ✅ | ❌ | ❌ | 13 | ❌ |
 | **Eleven v4** | v4 / v4 Turbo | Bracket emotion tags + `/IPA/` pronunciation + `<break>` pause | ✅ | ✅ | ✅ | Cantonese | 90 | ❌ |
+| **StepFun StepAudio 3 TTS** | stepaudio-3-tts | `instruction` + inline `()` directives | ✅ | ✅ | ❌ | ❌ | Mostly zh | ❌ |
+
+> StepFun's cloned voices are **read-only preview** (clone in the official playground and they appear automatically); voice design is done at the official studio — the plugin performs no write operations.
 
 > Multiple providers can be **configured simultaneously and fall back by `priority`**; each entry can also bind to a specific persona via `persona_id`, enabling "different personas use different voices".
 

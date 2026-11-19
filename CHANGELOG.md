@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [1.3.0] - 2026-11-19
+
+### Added
+
+- **StepFun StepAudio 3 TTS 供应商**（`stepfun_stepaudio_3_tts`）：新增阶跃星辰 StepAudio 3 非流式语音合成适配器（模型 `stepaudio-3-tts`），配套配置模板、四语文案与能力说明书 `providers/docs/stepfun_stepaudio_3_tts.md`。工具 schema 暴露 `text` / `instruction` / `speed` / `volume` / `text_normalization`；情绪由 `instruction` 全局指令与文本内联 `()` 指令控制（括号内内容默认不发音，适配器不静默删除）。配置项仅保留必要项，语气 / 语速 / 归一化不走配置默认值。
+- **StepFun 官方音色预览页（只读）**：新增管理页组件，进场拉取一次官方音色并走 60s 缓存。系统音色表展示 `voice-name` / Voice ID / `voice-description` / `recommended_scene` 全字段（推荐场景拆为标签，空值显示占位符），支持复制 ID 与复用公共弹层试听；已复刻音色单独成表置于系统音色之上、无数据则整块隐藏；设计 / 克隆音色给出官方 playground 外链指引，插件内不做写操作。
+- **AstrBot 人格解析兼容层**：新增 `src/astrbot_compat.py`，运行时探测 `PersonaManager.resolve_selected_persona` 签名，同时兼容上游旧版（第三参数 `conversation_persona_id` + 4 元组返回）与新版（已移除该参数 + 3 元组返回）；旧版才访问会话管理器取值，新版不触碰。上游正式版发布后仅需删除旧分支并声明最低版本。
+
+### Fixed
+
+- **上游签名漂移导致的运行时 `TypeError`**：`tts_service.py` 的人格解析改走兼容层，避免在新版 AstrBot（已移除 `conversation_persona_id`）上手动传参抛错；契约测试改为校验共有参数 keyword-only、第三参数按版本有无。
+- **单供应商 `id=0` 导致页面不加载 / 操作入口失效**：供应商 `id` 取自 providers 数组索引，单条配置时为 `0`（JS falsy）。StepFun 音色预览页，以及 MiniMax 直连 / 百炼 MiniMax 两个子页面的音色与文件列表加载、上传、克隆、设计、进场与标签切换等入口原先用真值判断 `entry_id` 会直接 return，页面永远为空；统一改为 null/undefined 判断（`hasEntry()`）。新增 `tests/entryIdZeroGuard.test.mjs` 源码断言防止真值判断回归。
+
 ## [1.2.0] - 2026-11-14
 
 ### Added

@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.2.0-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.3.0-green)](CHANGELOG.md)
 
 ---
 
@@ -99,6 +99,9 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 | **Google Gemini 3.8 Flash TTS** | Flash / Flash-Lite | 自然语言 style + 文本内联发声标记（`<laugh>`、`<sigh>`） | ✅ | ✅ | ✅ | ❌ | 多语种 | ❌ |
 | **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | 方括号情绪标记（64+ 种，跨句自由切换） | ✅ | ✅ | ❌ | ❌ | 13 种 | ❌ |
 | **Eleven v4** | v4 / v4 Turbo | 方括号情绪标记 + `/IPA/` 发音 + `<break>` 停顿 | ✅ | ✅ | ✅ | 粤语 | 90 种 | ❌ |
+| **StepFun StepAudio 3 TTS** | stepaudio-3-tts | `instruction` + `()` 内联指令 | ✅ | ✅ | ❌ | ❌ | 中文为主 | ❌ |
+
+> StepFun 的复刻音色为**只读预览**（在官方 playground 克隆后自动列出）；设计音色需前往官方工作台操作，插件内不做写操作。
 
 > 多个供应商可以**同时配置并按 priority 回退**；每个供应商条目还可通过 `persona_id` **绑定到指定人格**，实现「不同人格使用不同音色」。
 

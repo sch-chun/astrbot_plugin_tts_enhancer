@@ -505,6 +505,58 @@
             "hint": "カンマ区切り（例：quality-guard）。空欄は既定値。既定値を維持することを推奨"
           }
         },
+        "stepfun_stepaudio_3_tts": {
+          "name": "StepFun StepAudio 3 TTS",
+          "hint": "自然な話し言葉の表現。instruction で感情を制御",
+          "display_name": {
+            "description": "表示名",
+            "hint": "同一タイプの複数プロバイダーを区別するため"
+          },
+          "priority": {
+            "description": "優先度",
+            "hint": "数値が小さいほど優先"
+          },
+          "persona_id": {
+            "description": "ペルソナ紐付け",
+            "hint": "このペルソナ配下のみで使用。空欄の場合は共通のフォールバック音声"
+          },
+          "api_key": {
+            "description": "APIキー",
+            "hint": "StepFun オープンプラットフォームの APIキー"
+          },
+          "model": {
+            "description": "モデル"
+          },
+          "voice": {
+            "description": "音声ID",
+            "hint": "必須。管理ページの「音声プレビュー」タブで公式音声を閲覧・試聴できるほか、https://audio.stepfun.com/playground?tab=clone で試聴して ID を入力してもよい。例: cixingnansheng / elegantgentle-female / wenrounansheng"
+          },
+          "format": {
+            "description": "出力フォーマット",
+            "hint": "mp3 が最も互換性が高い。他の形式は一部クライアントで再生できない場合があります"
+          },
+          "sample_rate": {
+            "description": "サンプリングレート"
+          },
+          "markdown_filter": {
+            "description": "Markdown をフィルタ"
+          },
+          "pronunciation_tone": {
+            "description": "発音置換ルール",
+            "hint": "カンマ区切り（例: 阿胶/e1胶,扁舟/偏舟）"
+          },
+          "max_input_chars": {
+            "description": "入力文字数上限",
+            "hint": "公式上限は 1000。大きくしても無効。事前の早期拒否にのみ使用"
+          },
+          "timeout": {
+            "description": "タイムアウト",
+            "hint": "単位: 秒"
+          },
+          "proxy": {
+            "description": "プロキシアドレス"
+          }
+        },
         "elevenlabs_v4": {
           "hint": "v4/v4 Turbo：感情をテキストの[タグ]に記述",
           "name": "Eleven v4",
@@ -728,6 +780,12 @@
         "cloneWait": "クローン中...",
         "designWait": "デザイン中...",
         "voiceListTitle": "音声リスト",
+        "sfCloneTip": "新しい音色をデザイン・クローンしますか？",
+        "sfCloneLink": "StepFun 公式ボイススタジオへ（クリックでリンクをコピー）",
+        "sfColScene": "おすすめシーン",
+        "sfClonedTitle": "マイクローン音色",
+        "sfColFileId": "ファイル ID",
+        "sfColCreated": "作成日時",
         "refresh": "更新",
         "loadingList": "読み込み中...",
         "colCreated": "作成日時",
