@@ -1015,6 +1015,106 @@
           }
         }
       },
+      "stepfun_stepaudio_3_tts": {
+        "name": "StepFun StepAudio 3 TTS",
+        "hint": "真人级口语表现，instruction 情绪控制",
+        "display_item": "display_name",
+        "items": {
+          "display_name": {
+            "description": "显示名称",
+            "type": "string",
+            "default": "StepFun StepAudio 3 TTS",
+            "hint": "用于区分多个相同类型的供应商"
+          },
+          "priority": {
+            "description": "优先级",
+            "type": "int",
+            "default": 0,
+            "hint": "数字越小越优先"
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "type": "string",
+            "_special": "select_persona",
+            "default": "",
+            "hint": "仅在该人格下使用；留空表示通用兜底音色"
+          },
+          "api_key": {
+            "description": "API Key",
+            "type": "string",
+            "default": "",
+            "secret": true,
+            "hint": "阶跃星辰开放平台密钥"
+          },
+          "model": {
+            "description": "模型",
+            "type": "string",
+            "default": "stepaudio-3-tts",
+            "options": [
+              "stepaudio-3-tts"
+            ]
+          },
+          "voice": {
+            "description": "音色 ID",
+            "type": "string",
+            "default": "cixingnansheng",
+            "hint": "必填。官方音色可在管理页「音色预览」标签页浏览和试听；设计/克隆新音色可前往 https://audio.stepfun.com/playground?tab=clone 操作后填 ID。"
+          },
+          "format": {
+            "description": "输出格式",
+            "type": "string",
+            "default": "mp3",
+            "options": [
+              "mp3",
+              "wav",
+              "flac",
+              "opus",
+              "pcm"
+            ],
+            "hint": "mp3 兼容性最好；其他格式部分客户端可能不支持"
+          },
+          "sample_rate": {
+            "description": "采样率",
+            "type": "int",
+            "default": 24000,
+            "options": [
+              8000,
+              16000,
+              22050,
+              24000,
+              48000
+            ]
+          },
+          "markdown_filter": {
+            "description": "过滤 Markdown",
+            "type": "bool",
+            "default": true
+          },
+          "pronunciation_tone": {
+            "description": "发音替换规则",
+            "type": "string",
+            "default": "",
+            "hint": "逗号分隔，如 阿胶/e1胶,扁舟/偏舟"
+          },
+          "max_input_chars": {
+            "description": "输入字符上限",
+            "type": "int",
+            "default": 1000,
+            "hint": "官方上限 1000，调大无效；仅用于提前拦截"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "type": "int",
+            "default": 120,
+            "hint": "单位秒"
+          },
+          "proxy": {
+            "description": "代理地址",
+            "type": "string",
+            "default": ""
+          }
+        }
+      },
       "elevenlabs_v4": {
         "name": "Eleven v4",
         "hint": "v4/v4 Turbo：情绪写进文本[标签]",

@@ -41,16 +41,23 @@ def test_llm_response_exposes_fields_read_by_subagent():
     assert resp.tools_call_args == []
 
 
-def test_resolve_selected_persona_is_keyword_only():
-    """插件以关键字传参调用；上游若去掉 keyword-only 或改名，这里立刻红。"""
+def test_resolve_selected_persona_common_contract():
+    """两版共有的 keyword-only 参数必须存在；差异由兼容层吸收。
+
+    ``umo`` / ``platform_name`` 是新旧签名共有的，必须钉住。第三参数
+    ``conversation_persona_id`` 正在被上游移除（正式版未发布），兼容层按签名
+    探测决定传不传，因此这里只校验"若存在则仍是 keyword-only"，不再强制存在。
+    """
     from astrbot.core.persona_mgr import PersonaManager
 
     params = inspect.signature(PersonaManager.resolve_selected_persona).parameters
-    for name in ("umo", "conversation_persona_id", "platform_name"):
+    for name in ("umo", "platform_name"):
         assert name in params, f"resolve_selected_persona 缺少参数 {name}"
         assert params[name].kind is inspect.Parameter.KEYWORD_ONLY, (
             f"resolve_selected_persona 的 {name} 不再是 keyword-only"
         )
+    if "conversation_persona_id" in params:
+        assert params["conversation_persona_id"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
 def test_context_get_using_provider_param_is_umo():

@@ -505,6 +505,58 @@
             "hint": "逗号分隔，如 quality-guard；留空默认，建议保持默认"
           }
         },
+        "stepfun_stepaudio_3_tts": {
+          "name": "StepFun StepAudio 3 TTS",
+          "hint": "真人级口语表现，instruction 情绪控制",
+          "display_name": {
+            "description": "显示名称",
+            "hint": "用于区分多个相同类型的供应商"
+          },
+          "priority": {
+            "description": "优先级",
+            "hint": "数字越小越优先"
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "hint": "仅在该人格下使用；留空表示通用兜底音色"
+          },
+          "api_key": {
+            "description": "API Key",
+            "hint": "阶跃星辰开放平台密钥"
+          },
+          "model": {
+            "description": "模型"
+          },
+          "voice": {
+            "description": "音色 ID",
+            "hint": "必填。官方音色可在管理页「音色预览」标签页浏览和试听；也可在 https://audio.stepfun.com/playground?tab=clone 试听后填 ID。常用：cixingnansheng / elegantgentle-female / wenrounansheng"
+          },
+          "format": {
+            "description": "输出格式",
+            "hint": "mp3 兼容性最好；其他格式部分客户端可能不支持"
+          },
+          "sample_rate": {
+            "description": "采样率"
+          },
+          "markdown_filter": {
+            "description": "过滤 Markdown"
+          },
+          "pronunciation_tone": {
+            "description": "发音替换规则",
+            "hint": "逗号分隔，如 阿胶/e1胶,扁舟/偏舟"
+          },
+          "max_input_chars": {
+            "description": "输入字符上限",
+            "hint": "官方上限 1000，调大无效；仅用于提前拦截"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "hint": "单位秒"
+          },
+          "proxy": {
+            "description": "代理地址"
+          }
+        },
         "elevenlabs_v4": {
           "hint": "v4/v4 Turbo：情绪写进文本[标签]",
           "name": "Eleven v4",
@@ -728,6 +780,12 @@
         "cloneWait": "复刻中...",
         "designWait": "创建中...",
         "voiceListTitle": "音色列表",
+        "sfCloneTip": "需要设计或克隆新音色？",
+        "sfCloneLink": "前往 StepFun 官方音色工作台（点击复制链接）",
+        "sfColScene": "推荐场景",
+        "sfClonedTitle": "我的复刻音色",
+        "sfColFileId": "文件 ID",
+        "sfColCreated": "创建时间",
         "refresh": "刷新",
         "loadingList": "加载中...",
         "colCreated": "创建时间",

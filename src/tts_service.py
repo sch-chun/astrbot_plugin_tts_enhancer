@@ -11,6 +11,7 @@ from astrbot.api.star import Context
 
 from ..providers import ProviderFactory
 from ..providers.utils.audio import get_audio_duration
+from .astrbot_compat import resolve_current_persona
 from .config import TTSEnhancerConfig
 from .livingmemory_bridge import LivingMemoryBridge
 from .sub_agent import TTSSubAgent
@@ -116,34 +117,18 @@ class TTSService:
         Returns:
             (prompt, persona_id) 元组；未生效人格时两者均为空字符串。
         """
-        umo = event.unified_msg_origin
-
-        # 拿到当前 conversation 绑定的 persona_id
-        # conv_mgr 可能未就绪（与 get_context_messages 保持一致，先判空）
-        conv_mgr = self.context.conversation_manager
-        conversation_persona_id = None
-        if conv_mgr:
-            conv_id = await conv_mgr.get_curr_conversation_id(umo)
-            conversation = (
-                await conv_mgr.get_conversation(umo, conv_id) if conv_id else None
-            )
-            conversation_persona_id = conversation.persona_id if conversation else None
-
-        # 解析最终生效的人格（persona_manager 同样可能未就绪）
+        # 人格解析交给兼容层：按上游签名决定旧版是否传 conversation_persona_id，
+        # 并把 3/4 元组统一为 (persona_id, persona)。
         persona_mgr = self.context.persona_manager
         if not persona_mgr:
             logger.warning("persona_manager 未就绪，跳过人格解析")
             return "", ""
 
-        (
-            persona_id,
-            persona,
-            _force,
-            _webchat,
-        ) = await persona_mgr.resolve_selected_persona(
-            umo=umo,
-            conversation_persona_id=conversation_persona_id,
+        persona_id, persona = await resolve_current_persona(
+            persona_mgr=persona_mgr,
+            umo=event.unified_msg_origin,
             platform_name=event.get_platform_name(),
+            conv_mgr=self.context.conversation_manager,
         )
 
         if persona:

@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.2.0-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.3.0-green)](../../CHANGELOG.md)
 
 ---
 
@@ -99,6 +99,9 @@ SubAgent **динамически читает этот документ** в м
 | **Google Gemini 3.8 Flash TTS** | Flash / Flash-Lite | Стиль на ест. языке + встроенные голосовые теги (`<laugh>`, `<sigh>`) | ✅ | ✅ | ✅ | ❌ | Мультиязычный | ❌ |
 | **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | Скобочные теги эмоций (64+, свободное переключение между предложениями) | ✅ | ✅ | ❌ | ❌ | 13 | ❌ |
 | **Eleven v4** | v4 / v4 Turbo | Скобочные теги эмоций + `/IPA/` произношение + пауза `<break>` | ✅ | ✅ | ✅ | Кантонский | 90 | ❌ |
+| **StepFun StepAudio 3 TTS** | stepaudio-3-tts | `instruction` + встроенные `()` директивы | ✅ | ✅ | ❌ | ❌ | В основном zh | ❌ |
+
+> Клонированные голоса StepFun доступны **только для просмотра** (клонируйте в официальной песочнице — они появятся автоматически). Дизайн голосов выполняется в официальной студии; плагин не выполняет операций записи.
 
 > Несколько провайдеров можно **настроить одновременно с откатом по `priority`**; каждая запись также может быть привязана к конкретной персоне через `persona_id`, реализуя сценарий «разные персоны — разные голоса».
 

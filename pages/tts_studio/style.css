@@ -619,6 +619,62 @@ th { background: rgba(var(--bg-rgb), 0.6); font-weight: 600; }
 }
 [data-theme="dark"] .param-chip { background: rgba(255, 255, 255, 0.1); }
 
+/* ===== StepFun StepAudio 3 官方音色表（只读预览） =====
+   列：名称 / Voice ID / 描述 / 推荐场景 / 操作。复用全局 table/th/td 与 .format-tag，
+   这里只补列宽、场景小标签与空值占位。所有行直接铺开、跟随页面滚动，不嵌套纵向滚动条；
+   overflow-x 仅作极窄屏兜底。专属 class 避免影响其它供应商表格。 */
+.sf-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.sf-voice-table {
+    table-layout: fixed;
+    min-width: 720px;
+    margin-top: 0;
+}
+.sf-voice-table th,
+.sf-voice-table td {
+    padding: 8px 12px;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+/* 表头实色背景，与页面底色一致（不嵌套滚动后无需 sticky） */
+.sf-voice-table thead th {
+    background: var(--bg);
+}
+.sf-voice-table .sf-col-name    { width: 116px; }
+.sf-voice-table .sf-col-id      { width: 180px; }
+.sf-voice-table .sf-col-desc    { width: auto; }
+.sf-voice-table .sf-col-scene   { width: 240px; }
+.sf-voice-table .sf-col-actions { width: 130px; white-space: nowrap; }
+.sf-voice-table tbody tr { transition: background-color 0.15s ease; }
+.sf-voice-table tbody tr:hover { background: rgba(var(--bg-rgb), 0.6); }
+.sf-voice-name { font-weight: 600; color: var(--text); }
+.sf-voice-table .sf-col-id .format-tag { font-size: 0.72rem; }
+.sf-empty { color: var(--gray); opacity: 0.7; }
+.sf-scenes { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+/* 场景标签：中性描边，区别于彩色来源徽章（.badge-*）与等宽的 .format-tag */
+.scene-tag {
+    display: inline-block;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    padding: 1px 7px;
+    border-radius: 6px;
+    background: rgba(var(--bg-rgb), 0.6);
+    border: 1px solid var(--border);
+    color: var(--text);
+    white-space: nowrap;
+}
+[data-theme="dark"] .scene-tag { background: rgba(255, 255, 255, 0.06); }
+.sf-col-actions .btn + .btn { margin-left: 4px; }
+/* 已复刻音色表：复用 .sf-voice-table / .sf-table-wrap，仅重设四列宽度 */
+.sf-voice-table.sf-clone-table { min-width: 640px; }
+.sf-voice-table .sf-clone-col-id      { width: 200px; }
+.sf-voice-table .sf-clone-col-file    { width: 180px; }
+.sf-voice-table .sf-clone-col-created { width: 200px; }
+
 /* 记录卡片「展开详情」：点击后在卡片内换行显示，分 AI 增强参数 / 配置参数两组 */
 .record-detail {
     flex: 1 1 100%;
@@ -789,4 +845,5 @@ th { background: rgba(var(--bg-rgb), 0.6); font-weight: 600; }
         transition: none;
     }
     .nav-item { transition: none; }
+    .sf-voice-table tbody tr { transition: none; }
 }

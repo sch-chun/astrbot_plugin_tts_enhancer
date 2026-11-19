@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.2.0-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.3.0-green)](../../CHANGELOG.md)
 
 ---
 
@@ -99,6 +99,9 @@ SubAgent は合成時に**このドキュメントを動的に読み取り**、�
 | **Google Gemini 3.8 Flash TTS** | Flash / Flash-Lite | 自然言語スタイル + テキスト内の発声マーカー（`<laugh>`、`<sigh>`） | ✅ | ✅ | ✅ | ❌ | 多言語 | ❌ |
 | **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | 角括弧の感情タグ（64 種以上、文をまたいで自由に切り替え） | ✅ | ✅ | ❌ | ❌ | 13 種 | ❌ |
 | **Eleven v4** | v4 / v4 Turbo | 角括弧の感情タグ + `/IPA/` 発音 + `<break>` による一時停止 | ✅ | ✅ | ✅ | 広東語 | 90 種 | ❌ |
+| **StepFun StepAudio 3 TTS** | stepaudio-3-tts | `instruction` + テキスト内の `()` 指示 | ✅ | ✅ | ❌ | ❌ | 中国語中心 | ❌ |
+
+> StepFun のクローン音色は**読み取り専用プレビュー**です（公式プレイグラウンドでクローンすると自動的に一覧表示）。音色デザインは公式スタジオで行い、プラグイン内では書き込み操作を行いません。
 
 > 複数のプロバイダーを**同時に設定し、`priority` に従ってフォールバック**できます。各エントリは `persona_id` で**特定のペルソナにバインド**でき、「ペルソナごとに異なる音色を使う」ことが可能です。
 

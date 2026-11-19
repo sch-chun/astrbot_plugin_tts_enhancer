@@ -11,6 +11,7 @@ from conftest import (
     DummyConversationManager,
     DummyEvent,
     DummyPersonaManager,
+    DummyPersonaManagerNew,
     RecordingAdapter,
 )
 
@@ -419,6 +420,41 @@ class TestRegressionGuards:
         service.sub_agent = FakeSubAgent(results=[{"text": ""}])
         await service.synthesize("原始文本", DummyEvent(), [])
         assert adapter.call_api_calls[0]["text"] == "原始文本"
+
+    async def test_get_current_persona_works_with_new_signature(self, monkeypatch):
+        """新版 AstrBot（3 元组、无第三参数）下人格解析仍正常。"""
+        mgr = DummyPersonaManagerNew(
+            persona={"prompt": "新版人格"}, persona_id="p-new"
+        )
+        service = _make_service(
+            monkeypatch, [], {}, conversation_manager=None, persona_manager=mgr
+        )
+        prompt, persona_id = await service.get_current_persona(DummyEvent())
+        assert prompt == "新版人格"
+        assert persona_id == "p-new"
+        assert mgr.last_kwargs == {
+            "umo": "platform:g:1001",
+            "platform_name": "aiocqhttp",
+        }
+
+    async def test_get_current_persona_still_works_with_legacy_signature(
+        self, monkeypatch
+    ):
+        """旧版 AstrBot（4 元组、带第三参数）下人格解析保持原行为。"""
+        mgr = DummyPersonaManager(persona={"prompt": "旧版人格"}, persona_id="p-old")
+        service = _make_service(
+            monkeypatch,
+            [],
+            {},
+            conversation_manager=DummyConversationManager(
+                conversation=DummyConversation(persona_id="conv-bound")
+            ),
+            persona_manager=mgr,
+        )
+        prompt, persona_id = await service.get_current_persona(DummyEvent())
+        assert prompt == "旧版人格"
+        assert persona_id == "p-old"
+        assert mgr.last_kwargs["conversation_persona_id"] == "conv-bound"
 
     async def test_get_current_persona_should_tolerate_missing_conv_mgr(
         self, monkeypatch

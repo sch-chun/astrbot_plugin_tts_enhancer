@@ -94,7 +94,10 @@ class DummyConversationManager:
 
 
 class DummyPersonaManager:
-    """PersonaManager 替身。"""
+    """PersonaManager 替身，模拟**旧版**签名（含 conversation_persona_id，4 元组）。
+
+    新版签名替身见 DummyPersonaManagerNew；两者共存以覆盖兼容层两条分支。
+    """
 
     def __init__(
         self,
@@ -105,6 +108,7 @@ class DummyPersonaManager:
         self.persona = persona
         self.persona_id = persona_id
         self.raise_on_call = raise_on_call
+        self.last_kwargs: dict | None = None
 
     async def resolve_selected_persona(
         self,
@@ -114,11 +118,44 @@ class DummyPersonaManager:
         platform_name: str = "",
         provider_settings: dict | None = None,
     ):
-        # 真实签名是 keyword-only（core/persona_mgr.py），第三条是
-        # 「会话规则强制指定的人格 id」，类型为 str | None，不是 bool。
+        # 旧版真实签名是 keyword-only（core/persona_mgr.py），conversation_persona_id
+        # 是「会话规则强制指定的人格 id」，类型为 str | None，不是 bool。
+        # 刻意不接 **kwargs：若兼容层误传未知参数，这里立刻 TypeError 暴露。
+        self.last_kwargs = {
+            "umo": umo,
+            "conversation_persona_id": conversation_persona_id,
+            "platform_name": platform_name,
+        }
         if self.raise_on_call:
             raise RuntimeError("persona manager unavailable")
         return (self.persona_id, self.persona, None, False)
+
+
+class DummyPersonaManagerNew:
+    """PersonaManager 替身，模拟**新版**签名（无 conversation_persona_id，3 元组）。"""
+
+    def __init__(
+        self,
+        persona: dict | None = None,
+        persona_id: str = "persona-new",
+        raise_on_call: bool = False,
+    ):
+        self.persona = persona
+        self.persona_id = persona_id
+        self.raise_on_call = raise_on_call
+        self.last_kwargs: dict | None = None
+
+    async def resolve_selected_persona(
+        self,
+        *,
+        umo: str = "",
+        platform_name: str = "",
+    ):
+        # 刻意不接 **kwargs：兼容层若把旧版参数误传到这里，立刻 TypeError。
+        self.last_kwargs = {"umo": umo, "platform_name": platform_name}
+        if self.raise_on_call:
+            raise RuntimeError("persona manager unavailable")
+        return (self.persona_id, self.persona, False)
 
 
 class DummyContext:
