@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 ### Fixed
 
 - **上游签名漂移导致的运行时 `TypeError`**：`tts_service.py` 的人格解析改走兼容层，避免在新版 AstrBot（已移除 `conversation_persona_id`）上手动传参抛错；契约测试改为校验共有参数 keyword-only、第三参数按版本有无。
-- **单供应商音色列表不加载**：修复 StepFun 预览页以真值判断 `entry_id`（单条配置时 `id=0` 为 falsy）导致音色列表永不请求的问题，改为 null/undefined 判断。
+- **单供应商 `id=0` 导致页面不加载 / 操作入口失效**：供应商 `id` 取自 providers 数组索引，单条配置时为 `0`（JS falsy）。StepFun 音色预览页，以及 MiniMax 直连 / 百炼 MiniMax 两个子页面的音色与文件列表加载、上传、克隆、设计、进场与标签切换等入口原先用真值判断 `entry_id` 会直接 return，页面永远为空；统一改为 null/undefined 判断（`hasEntry()`）。新增 `tests/entryIdZeroGuard.test.mjs` 源码断言防止真值判断回归。
 
 ## [1.2.0] - 2026-11-14
 

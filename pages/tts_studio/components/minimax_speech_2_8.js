@@ -408,6 +408,11 @@ export default {
             }
         }, { immediate: true });
 
+        // entry_id 是 providers 数组索引，第一个供应商 id=0（falsy）。
+        // 判断是否已选只能用 null/undefined，不能用真值——否则单供应商时永远不加载。
+        const hasEntry = () =>
+            selectedEntryId.value !== null && selectedEntryId.value !== undefined;
+
         const currentEntry = computed(() => {
             return props.entries.find(e => e.id === selectedEntryId.value) || props.entries[0];
         });
@@ -465,7 +470,7 @@ export default {
                 return;
             }
             const file = input.files[0];
-            if (!selectedEntryId.value) {
+            if (!hasEntry()) {
                 showError(t.errNoEntry);
                 return;
             }
@@ -511,7 +516,7 @@ export default {
 
         // 拉取供应商某类目的文件列表；onLoaded 可做额外处理（如加载 KV 源文本）
         async function fetchProviderFiles({ purpose, filesRef, loadingRef, label, onLoaded }) {
-            if (!selectedEntryId.value) return;
+            if (!hasEntry()) return;
             loadingRef.value = true;
             try {
                 const result = await props.bridge.apiPost('file/list', {
@@ -715,7 +720,7 @@ export default {
         });
 
         async function performClone() {
-            if (!selectedEntryId.value) {
+            if (!hasEntry()) {
                 showError(t.errNoEntry);
                 return;
             }
@@ -802,7 +807,7 @@ export default {
         const designResult = ref(null);
 
         async function performDesign() {
-            if (!selectedEntryId.value) {
+            if (!hasEntry()) {
                 showError(t.errNoEntry);
                 return;
             }
@@ -877,7 +882,7 @@ export default {
         // force=true 时绕过缓存、强制回源（用于创建 / 删除 / 预览激活 / 手动刷新等操作后的刷新）；
         // 回源成功后自动覆盖缓存（非终态内部跳过）。切换标签页 / 视图导致的重新挂载默认走缓存，避免重复加载。
         async function fetchVoiceList(force = false) {
-            if (!selectedEntryId.value) return;
+            if (!hasEntry()) return;
             const params = { entry_id: selectedEntryId.value, voice_type: 'all' };
             if (!force) {
                 const cached = getVoiceList(params);
@@ -945,8 +950,8 @@ export default {
         const { copyText, copyLink } = useClipboard(showSuccess, showError);
 
         // ---------- 生命周期 ----------
-        watch(selectedEntryId, (newId) => {
-            if (newId) {
+        watch(selectedEntryId, () => {
+            if (hasEntry()) {
                 fetchCloneFiles();
                 fetchPromptFiles();
                 if (currentTab.value === 'list') {
@@ -957,7 +962,7 @@ export default {
         });
 
         watch(currentTab, (newTab) => {
-            if (newTab === 'list' && selectedEntryId.value) {
+            if (newTab === 'list' && hasEntry()) {
                 loadUnactivatedVoices();
                 fetchVoiceList();
             }
@@ -966,7 +971,7 @@ export default {
         onMounted(() => {
 
             // 初始加载
-            if (selectedEntryId.value) {
+            if (hasEntry()) {
                 fetchCloneFiles();
                 fetchPromptFiles();
                 if (currentTab.value === 'list') {
