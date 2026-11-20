@@ -777,6 +777,22 @@ class TestCallApiFormatGuards:
         assert payload_input["enable_aigc_tag"] is True
         assert payload_input["aigc_propagator"] == "me"
 
+    @pytest.mark.parametrize("raw", ["false", "0", "no", "FALSE", " false "])
+    async def test_aigc_string_false_drops(self, qwen_adapter, monkeypatch, raw):
+        """旧配置里残留字符串 'false' 不能被 bool() 误判为 True。"""
+        config = self._config(format="wav", enable_aigc_tag=raw, aigc_propagator="me")
+        payload_input = await self._payload(qwen_adapter, config, monkeypatch)
+        assert "enable_aigc_tag" not in payload_input
+        assert "aigc_propagator" not in payload_input
+
+    @pytest.mark.parametrize("raw", ["true", "1", "yes", "TRUE"])
+    async def test_aigc_string_true_keeps(self, qwen_adapter, monkeypatch, raw):
+        """字符串 'true' 等真值写法仍应正确开启 AIGC。"""
+        config = self._config(format="wav", enable_aigc_tag=raw, aigc_propagator="me")
+        payload_input = await self._payload(qwen_adapter, config, monkeypatch)
+        assert payload_input["enable_aigc_tag"] is True
+        assert payload_input["aigc_propagator"] == "me"
+
     async def test_cosyvoice_ignores_legacy_aigc(self, cosy_adapter, monkeypatch):
         config = self._config(enable_aigc_tag=True, aigc_propagator="me")
         payload_input = await self._payload(cosy_adapter, config, monkeypatch)

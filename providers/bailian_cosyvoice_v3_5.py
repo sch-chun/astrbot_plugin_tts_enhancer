@@ -13,4 +13,3 @@ class BailianCosyVoiceV3_5Adapter(BailianSpeechSynthesizerAdapter):
     # 官方文档：AIGC 隐性标识仅 cosyvoice-v3-flash / v3-plus / v2 支持，v3.5 不在范围内。
     # 配置项已移除；此处兜底忽略旧配置中残留的 enable_aigc_tag。
     SUPPORTS_AIGC_TAG = False
-    

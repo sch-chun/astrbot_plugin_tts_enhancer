@@ -316,7 +316,7 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter, VoiceManageable):
         enable_aigc = (
             self.SUPPORTS_AIGC_TAG
             and format_type in ("wav", "mp3", "opus")
-            and bool(config.get("enable_aigc_tag", False))
+            and self._as_bool(config.get("enable_aigc_tag", False)) is True
         )
         aigc_propagator = config.get("aigc_propagator", "")
         aigc_propagate_id = config.get("aigc_propagate_id", "")
