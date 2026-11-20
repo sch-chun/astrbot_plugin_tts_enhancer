@@ -11,7 +11,7 @@ import base64
 
 import httpx
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from astrbot_plugin_tts_enhancer.providers import (
     _bailian_speech_synthesizer as bailian_module,
@@ -22,6 +22,12 @@ from astrbot_plugin_tts_enhancer.providers._bailian_speech_synthesizer import (
 )
 from astrbot_plugin_tts_enhancer.providers.bailian_qwen_audio_3_0_tts import (
     BailianQwenAudio3_0TTSAdapter,
+)
+from astrbot_plugin_tts_enhancer.providers.bailian_qwen_audio_3_1_tts import (
+    BailianQwenAudio3_1TTSAdapter,
+)
+from astrbot_plugin_tts_enhancer.providers.bailian_cosyvoice_v3_5 import (
+    BailianCosyVoiceV3_5Adapter,
 )
 
 TEMPLATE_KEY = "bailian_speech_synthesizer"
@@ -47,6 +53,9 @@ class TestValidateParams:
             {"pitch": 0.5},
             {"pitch": 2.0},
             {"language_hints": ["zh"]},
+            {"enable_markdown_filter": True},
+            {"enable_markdown_filter": False},
+            {"enable_markdown_filter": "true"},  # LLM 字符串写法兼容
         ],
     )
     def test_valid(self, adapter, params):
@@ -65,6 +74,8 @@ class TestValidateParams:
             {"pitch": 2.1},
             {"language_hints": "zh"},  # 非列表
             {"language_hints": ["klingon"]},
+            {"enable_markdown_filter": 1},  # 数值 bool 陷阱
+            {"enable_markdown_filter": "maybe"},
         ],
     )
     def test_invalid(self, adapter, params):
@@ -116,14 +127,45 @@ class TestSanitizeParams:
         out = adapter.sanitize_params({"rate": True})
         assert "rate" not in out
 
+    def test_markdown_filter_kept_as_bool(self, adapter):
+        out = adapter.sanitize_params({"enable_markdown_filter": True})
+        assert out["enable_markdown_filter"] is True
+        out = adapter.sanitize_params({"enable_markdown_filter": "false"})
+        assert out["enable_markdown_filter"] is False
+
+    def test_markdown_filter_invalid_dropped(self, adapter):
+        out = adapter.sanitize_params({"enable_markdown_filter": 1})
+        assert "enable_markdown_filter" not in out
+
+
+class TestGetToolSchema:
+    """tts_enhance 工具 schema 应暴露 Markdown 过滤开关。"""
+
+    def test_markdown_filter_exposed(self, adapter):
+        schema = adapter.get_tool_schema().parameters
+        props = schema["properties"]
+        assert props["enable_markdown_filter"]["type"] == "boolean"
+        assert "Markdown" in props["enable_markdown_filter"]["description"]
+        assert schema["required"] == ["text"]
+
+    def test_markdown_filter_exposed_in_all_bailian_adapters(self):
+        for cls in (
+            BailianQwenAudio3_0TTSAdapter,
+            BailianQwenAudio3_1TTSAdapter,
+            BailianCosyVoiceV3_5Adapter,
+        ):
+            schema = cls({"__template_key": cls.__name__}).get_tool_schema().parameters
+            assert "enable_markdown_filter" in schema["properties"]
+
 
 class FakeResponse:
     """百炼音色管理响应替身。"""
 
-    def __init__(self, payload: dict, status_code=200, text=""):
+    def __init__(self, payload: dict, status_code=200, text="", content=b""):
         self._payload = payload
         self.status_code = status_code
         self.text = text
+        self.content = content
 
     def json(self):
         return self._payload
@@ -482,3 +524,277 @@ class TestVoiceDesignDeploymentPolling:
         assert result["voice_id"] == "qwen-audio-3.0-tts-flash-test-123456"
         assert result["status"] == "OK", "应原样返回 create 响应的 output.status"
         assert result["preview_audio"] == "https://example.com/preview.mp3"
+
+
+class TestCallApiMarkdownFilter:
+    """合成请求 payload 中 enable_markdown_filter 的透传。"""
+
+    @pytest.fixture
+    def qwen_adapter(self):
+        return BailianQwenAudio3_0TTSAdapter(
+            {"__template_key": "bailian_qwen_audio_3_0_tts"}
+        )
+
+    @pytest.fixture
+    def config(self):
+        return {
+            "api_key": "sk-test",
+            "workspace_id": "workspace-test",
+            "voice": "longanhuan_v3.6",
+            "model": "flash",
+            "format": "wav",
+            "sample_rate": 24000,
+            "_data_dir": "/tmp/tts-enhancer-test",
+        }
+
+    @staticmethod
+    def _install_client(monkeypatch):
+        fake_client = MagicMock()
+        fake_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_client.__aexit__ = AsyncMock(return_value=False)
+        fake_client.post = AsyncMock(
+            return_value=FakeResponse(
+                {"output": {"audio": {"url": "https://example.test/audio.wav"}}}
+            )
+        )
+        fake_client.get = AsyncMock(
+            return_value=FakeResponse({}, content=b"fake-audio")
+        )
+        monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: fake_client)
+        monkeypatch.setattr(
+            bailian_module, "save_audio_bytes", lambda *a, **k: "/tmp/out.wav"
+        )
+        return fake_client
+
+    async def test_true_reaches_payload(self, qwen_adapter, config, monkeypatch):
+        fake_client = self._install_client(monkeypatch)
+        result = await qwen_adapter.call_api(
+            text="原始文本",
+            raw_params={
+                "text": "# 标题\n\n| a | b |\n|---|---|\n| 1 | 2 |",
+                "enable_markdown_filter": True,
+            },
+            config=config,
+        )
+
+        assert result == "/tmp/out.wav"
+        payload = fake_client.post.call_args.kwargs["json"]
+        assert payload["input"]["text"].startswith("# 标题")
+        assert payload["input"]["enable_markdown_filter"] is True
+
+    async def test_false_reaches_payload(self, qwen_adapter, config, monkeypatch):
+        fake_client = self._install_client(monkeypatch)
+        await qwen_adapter.call_api(
+            text="普通文本",
+            raw_params={"text": "普通文本", "enable_markdown_filter": False},
+            config=config,
+        )
+
+        payload = fake_client.post.call_args.kwargs["json"]
+        assert payload["input"]["enable_markdown_filter"] is False
+
+    async def test_absent_omits_key(self, qwen_adapter, config, monkeypatch):
+        fake_client = self._install_client(monkeypatch)
+        await qwen_adapter.call_api(
+            text="普通文本", raw_params={"text": "普通文本"}, config=config
+        )
+
+        payload = fake_client.post.call_args.kwargs["json"]
+        assert "enable_markdown_filter" not in payload["input"]
+
+
+class TestBailianConfSchema:
+    """三个百炼模板的采样率与 AIGC 配置。"""
+
+    @staticmethod
+    def _items(template: str) -> dict:
+        import json
+
+        with open("_conf_schema.json", encoding="utf-8") as f:
+            schema = json.load(f)
+        return schema["providers"]["templates"][template]["items"]
+
+    @pytest.mark.parametrize(
+        "template",
+        [
+            "bailian_qwen_audio_3_0_tts",
+            "bailian_qwen_audio_3_1_tts",
+            "bailian_cosyvoice_v3_5",
+        ],
+    )
+    def test_sample_rate_options_and_opus_hint(self, template):
+        items = self._items(template)
+        assert 12000 in items["sample_rate"]["options"]
+        assert "opus_sample_rate" not in items
+        assert "OPUS" in items["sample_rate"]["hint"]
+
+    def test_cosyvoice_has_no_aigc_items(self):
+        items = self._items("bailian_cosyvoice_v3_5")
+        assert not [key for key in items if "aigc" in key]
+
+    @pytest.mark.parametrize(
+        "template", ["bailian_qwen_audio_3_0_tts", "bailian_qwen_audio_3_1_tts"]
+    )
+    def test_aigc_hint_states_pcm_unsupported(self, template):
+        items = self._items(template)
+        assert "pcm" in items["enable_aigc_tag"]["hint"]
+
+    @pytest.mark.parametrize(
+        "template", ["bailian_qwen_audio_3_0_tts", "bailian_qwen_audio_3_1_tts"]
+    )
+    def test_aigc_fields_conditioned_on_toggle(self, template):
+        items = self._items(template)
+        for key in ("aigc_propagator", "aigc_propagate_id"):
+            assert items[key]["condition"] == {"enable_aigc_tag": True}
+
+
+class TestBailianConfigI18n:
+    """百炼配置文案的四语 i18n 覆盖，防止非中文用户回退到中文原文。"""
+
+    LANGS = ["zh-CN", "en-US", "ja-JP", "ru-RU"]
+    TEMPLATES = [
+        "bailian_qwen_audio_3_0_tts",
+        "bailian_qwen_audio_3_1_tts",
+        "bailian_cosyvoice_v3_5",
+    ]
+
+    @classmethod
+    def _schema_items(cls, template: str) -> dict:
+        import json
+
+        with open("_conf_schema.json", encoding="utf-8") as f:
+            schema = json.load(f)
+        return schema["providers"]["templates"][template]["items"]
+
+    @classmethod
+    def _i18n_template(cls, lang: str, template: str) -> dict:
+        import json
+
+        with open(
+            f".astrbot-plugin/i18n/{lang}.json", encoding="utf-8"
+        ) as f:
+            data = json.load(f)
+        return data["config"]["providers"]["templates"][template]
+
+    @pytest.mark.parametrize("lang", LANGS)
+    @pytest.mark.parametrize("template", TEMPLATES)
+    def test_schema_hint_fields_all_translated(self, lang, template):
+        """schema 里带 hint 的字段，i18n 必须也有 hint（否则回退中文）。"""
+        schema_items = self._schema_items(template)
+        i18n_items = self._i18n_template(lang, template)
+        for field, meta in schema_items.items():
+            if "hint" not in meta:
+                continue
+            assert field in i18n_items, f"{lang}/{template} 缺少 i18n 字段 {field}"
+            assert "hint" in i18n_items[field], (
+                f"{lang}/{template}/{field} 缺少 i18n hint，将回退中文"
+            )
+
+    @pytest.mark.parametrize("lang", LANGS)
+    def test_cosyvoice_has_no_aigc_i18n(self, lang):
+        i18n_items = self._i18n_template(lang, "bailian_cosyvoice_v3_5")
+        assert not [key for key in i18n_items if "aigc" in key]
+
+    @pytest.mark.parametrize("lang", LANGS)
+    def test_aigc_i18n_hint_mentions_pcm(self, lang):
+        for template in self.TEMPLATES[:2]:
+            i18n_items = self._i18n_template(lang, template)
+            for field in ("enable_aigc_tag", "aigc_propagator", "aigc_propagate_id"):
+                assert "pcm" in i18n_items[field]["hint"].lower(), (
+                    f"{lang}/{template}/{field} 的 i18n hint 未提及 pcm"
+                )
+
+
+class TestCallApiFormatGuards:
+    """Opus 采样率与 AIGC 支持范围的 payload 兜底。"""
+
+    @pytest.fixture
+    def qwen_adapter(self):
+        return BailianQwenAudio3_0TTSAdapter(
+            {"__template_key": "bailian_qwen_audio_3_0_tts"}
+        )
+
+    @pytest.fixture
+    def cosy_adapter(self):
+        return BailianCosyVoiceV3_5Adapter(
+            {"__template_key": "bailian_cosyvoice_v3_5"}
+        )
+
+    @staticmethod
+    def _config(**overrides) -> dict:
+        config = {
+            "api_key": "sk-test",
+            "workspace_id": "workspace-test",
+            "voice": "longanhuan_v3.6",
+            "model": "flash",
+            "format": "wav",
+            "sample_rate": 24000,
+            "_data_dir": "/tmp/tts-enhancer-test",
+        }
+        config.update(overrides)
+        return config
+
+    @staticmethod
+    async def _payload(adapter, config, monkeypatch) -> dict:
+        fake_client = TestCallApiMarkdownFilter._install_client(monkeypatch)
+        await adapter.call_api(
+            text="测试文本",
+            raw_params={"text": "测试文本"},
+            config=config,
+        )
+        return fake_client.post.call_args.kwargs["json"]["input"]
+
+    async def test_opus_uses_sample_rate(self, qwen_adapter, monkeypatch):
+        config = self._config(format="opus", sample_rate=48000)
+        payload_input = await self._payload(qwen_adapter, config, monkeypatch)
+        assert payload_input["sample_rate"] == 48000
+
+    async def test_opus_illegal_rate_falls_back(self, qwen_adapter, monkeypatch):
+        config = self._config(format="opus", sample_rate=22050)
+        payload_input = await self._payload(qwen_adapter, config, monkeypatch)
+        assert payload_input["sample_rate"] == 24000
+
+    async def test_wav_keeps_full_rate_range(self, qwen_adapter, monkeypatch):
+        config = self._config(format="wav", sample_rate=44100)
+        payload_input = await self._payload(qwen_adapter, config, monkeypatch)
+        assert payload_input["sample_rate"] == 44100
+
+    async def test_pcm_drops_aigc(self, qwen_adapter, monkeypatch):
+        config = self._config(
+            format="pcm",
+            enable_aigc_tag=True,
+            aigc_propagator="me",
+            aigc_propagate_id="req-1",
+        )
+        payload_input = await self._payload(qwen_adapter, config, monkeypatch)
+        assert "enable_aigc_tag" not in payload_input
+        assert "aigc_propagator" not in payload_input
+        assert "aigc_propagate_id" not in payload_input
+
+    async def test_wav_keeps_aigc(self, qwen_adapter, monkeypatch):
+        config = self._config(format="wav", enable_aigc_tag=True, aigc_propagator="me")
+        payload_input = await self._payload(qwen_adapter, config, monkeypatch)
+        assert payload_input["enable_aigc_tag"] is True
+        assert payload_input["aigc_propagator"] == "me"
+
+    @pytest.mark.parametrize("raw", ["false", "0", "no", "FALSE", " false "])
+    async def test_aigc_string_false_drops(self, qwen_adapter, monkeypatch, raw):
+        """旧配置里残留字符串 'false' 不能被 bool() 误判为 True。"""
+        config = self._config(format="wav", enable_aigc_tag=raw, aigc_propagator="me")
+        payload_input = await self._payload(qwen_adapter, config, monkeypatch)
+        assert "enable_aigc_tag" not in payload_input
+        assert "aigc_propagator" not in payload_input
+
+    @pytest.mark.parametrize("raw", ["true", "1", "yes", "TRUE"])
+    async def test_aigc_string_true_keeps(self, qwen_adapter, monkeypatch, raw):
+        """字符串 'true' 等真值写法仍应正确开启 AIGC。"""
+        config = self._config(format="wav", enable_aigc_tag=raw, aigc_propagator="me")
+        payload_input = await self._payload(qwen_adapter, config, monkeypatch)
+        assert payload_input["enable_aigc_tag"] is True
+        assert payload_input["aigc_propagator"] == "me"
+
+    async def test_cosyvoice_ignores_legacy_aigc(self, cosy_adapter, monkeypatch):
+        config = self._config(enable_aigc_tag=True, aigc_propagator="me")
+        payload_input = await self._payload(cosy_adapter, config, monkeypatch)
+        assert "enable_aigc_tag" not in payload_input
+        assert "aigc_propagator" not in payload_input

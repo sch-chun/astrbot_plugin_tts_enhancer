@@ -91,7 +91,8 @@
             "description": "音声フォーマット"
           },
           "sample_rate": {
-            "description": "サンプリングレート"
+            "description": "サンプリングレート",
+            "hint": "WAV/MP3/PCM は全バンドに対応。OPUS は 8000/12000/16000/24000/48000 のみ対応し、それ以外はバックエンドが 24000 にフォールバックします"
           },
           "seed": {
             "description": "ランダムシード",
@@ -99,15 +100,15 @@
           },
           "enable_aigc_tag": {
             "description": "AIGC 不可視ウォーターマーク",
-            "hint": "有効化時、不可視識別子を対応フォーマット（wav/mp3/opus）の音声に埋め込みます"
+            "hint": "有効化時、不可視識別子を対応フォーマット（wav/mp3/opus）の音声に埋め込みます。pcm は非対応（pcm 選択時は設定が無効）"
           },
           "aigc_propagator": {
             "description": "コンテンツ伝播者",
-            "hint": "AIGC不可視識別子のContentPropagatorフィールドを設定（コンテンツの伝播者を識別）。AIGC不可視識別子が有効な場合のみ有効。空欄の場合は既定値：Alibaba Cloud UID"
+            "hint": "AIGC不可視識別子のContentPropagatorフィールドを設定（コンテンツの伝播者を識別）。AIGC不可視識別子が有効な場合のみ有効。空欄の場合は既定値：Alibaba Cloud UID。pcm は非対応"
           },
           "aigc_propagate_id": {
             "description": "伝播ID",
-            "hint": "AIGC不可視識別子のPropagateIDフィールドを設定（1回の具体的な伝播アクションを一意に識別）。AIGC不可視識別子が有効な場合のみ有効。空欄の場合は既定値：今回の音声合成リクエストのRequest ID"
+            "hint": "AIGC不可視識別子のPropagateIDフィールドを設定（1回の具体的な伝播アクションを一意に識別）。AIGC不可視識別子が有効な場合のみ有効。空欄の場合は既定値：今回の音声合成リクエストのRequest ID。pcm は非対応"
           }
         },
         "bailian_qwen_audio_3_1_tts": {
@@ -146,7 +147,8 @@
             "description": "音声フォーマット"
           },
           "sample_rate": {
-            "description": "サンプリングレート"
+            "description": "サンプリングレート",
+            "hint": "WAV/MP3/PCM は全バンドに対応。OPUS は 8000/12000/16000/24000/48000 のみ対応し、それ以外はバックエンドが 24000 にフォールバックします"
           },
           "seed": {
             "description": "ランダムシード",
@@ -154,15 +156,15 @@
           },
           "enable_aigc_tag": {
             "description": "AIGC 不可視ウォーターマーク",
-            "hint": "有効化時、不可視識別子を対応フォーマット（wav/mp3/opus）の音声に埋め込みます"
+            "hint": "有効化時、不可視識別子を対応フォーマット（wav/mp3/opus）の音声に埋め込みます。pcm は非対応（pcm 選択時は設定が無効）"
           },
           "aigc_propagator": {
             "description": "コンテンツ伝播者",
-            "hint": "AIGC不可視識別子のContentPropagatorフィールドを設定（コンテンツの伝播者を識別）。AIGC不可視識別子が有効な場合のみ有効。空欄の場合は既定値：Alibaba Cloud UID"
+            "hint": "AIGC不可視識別子のContentPropagatorフィールドを設定（コンテンツの伝播者を識別）。AIGC不可視識別子が有効な場合のみ有効。空欄の場合は既定値：Alibaba Cloud UID。pcm は非対応"
           },
           "aigc_propagate_id": {
             "description": "伝播ID",
-            "hint": "AIGC不可視識別子のPropagateIDフィールドを設定（1回の具体的な伝播アクションを一意に識別）。AIGC不可視識別子が有効な場合のみ有効。空欄の場合は既定値：今回の音声合成リクエストのRequest ID"
+            "hint": "AIGC不可視識別子のPropagateIDフィールドを設定（1回の具体的な伝播アクションを一意に識別）。AIGC不可視識別子が有効な場合のみ有効。空欄の場合は既定値：今回の音声合成リクエストのRequest ID。pcm は非対応"
           }
         },
         "bailian_cosyvoice_v3_5": {
@@ -201,23 +203,12 @@
             "description": "音声フォーマット"
           },
           "sample_rate": {
-            "description": "サンプリングレート"
+            "description": "サンプリングレート",
+            "hint": "WAV/MP3/PCM は全バンドに対応。OPUS は 8000/12000/16000/24000/48000 のみ対応し、それ以外はバックエンドが 24000 にフォールバックします"
           },
           "seed": {
             "description": "ランダムシード",
             "hint": "[0, 65535]の範囲内の数値を設定するとシードが固定され、モデルバージョン／テキスト／音声／その他のパラメータが同じであれば毎回同じ音声が生成されます。この範囲外を設定するとシードはランダムに生成されます"
-          },
-          "enable_aigc_tag": {
-            "description": "AIGC 不可視ウォーターマーク",
-            "hint": "有効化時、不可視識別子を対応フォーマット（wav/mp3/opus）の音声に埋め込みます"
-          },
-          "aigc_propagator": {
-            "description": "コンテンツ伝播者",
-            "hint": "AIGC不可視識別子のContentPropagatorフィールドを設定（コンテンツの伝播者を識別）。AIGC不可視識別子が有効な場合のみ有効。空欄の場合は既定値：Alibaba Cloud UID"
-          },
-          "aigc_propagate_id": {
-            "description": "伝播ID",
-            "hint": "AIGC不可視識別子のPropagateIDフィールドを設定（1回の具体的な伝播アクションを一意に識別）。AIGC不可視識別子が有効な場合のみ有効。空欄の場合は既定値：今回の音声合成リクエストのRequest ID"
           }
         },
         "minimax_speech_2_8": {

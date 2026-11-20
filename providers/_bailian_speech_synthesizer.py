@@ -90,6 +90,13 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter, VoiceManageable):
     ]
     MODEL_NAME = ""
 
+    # 模型是否支持 AIGC 隐性标识。CosyVoice v3.5 不在官方支持范围内，子类关闭。
+    SUPPORTS_AIGC_TAG = True
+
+    # 百炼采样率白名单：Opus 仅支持其中五档，其余档位对 Opus 非法。
+    SAMPLE_RATES = (8000, 12000, 16000, 22050, 24000, 44100, 48000)
+    OPUS_SAMPLE_RATES = (8000, 12000, 16000, 24000, 48000)
+
     def __init__(self, entry: dict) -> None:
         """初始化适配器，加载标准文档和声音设计专用文档。
 
@@ -202,6 +209,14 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter, VoiceManageable):
                             "enum": self.VALID_LANGS
                         },
                         "description": "指定语音合成的目标语言，建议与文本语种一致。"
+                    },
+                    "enable_markdown_filter": {
+                        "type": "boolean",
+                        "description": (
+                            "是否启用 Markdown 过滤。当待合成文本包含表格、链接、"
+                            "标题等 Markdown 结构时设为 true，服务会在合成前将其"
+                            "转换为适合朗读的文本；普通文本无需开启。默认 false。"
+                        )
                     }
                 },
                 "required": ["text"]
@@ -225,6 +240,25 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter, VoiceManageable):
 {docs}
 
 现在请根据用户提供的文本和上下文，调用 `tts_enhance` 工具，提供合适的参数（包括 text 和其他可选参数）。请直接调用工具，不要额外解释。"""
+
+    def _resolve_sample_rate(self, config: dict[str, Any]) -> int:
+        """解析采样率，非法档位回退到 24000。
+
+        采样率统一取自 ``sample_rate``。Opus 仅支持 8000/12000/16000/24000/48000，
+        若用户为 Opus 选了其他档位（例如配置页仍显示全档位），后端自动回退到 24000，
+        避免把非法组合发给百炼 API。
+        """
+        fmt = config.get("format", "wav")
+        allowed = self.OPUS_SAMPLE_RATES if fmt == "opus" else self.SAMPLE_RATES
+        raw = config.get("sample_rate", 24000)
+
+        rate = self._as_int(raw)
+        if rate not in allowed:
+            logger.warning(
+                f"{self.template_key} sample_rate={raw} 在 format={fmt} 下不受支持，回退到 24000"
+            )
+            return 24000
+        return rate
 
     # ---------- 3. 调用 TTS API ----------
     async def call_api(
@@ -274,9 +308,16 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter, VoiceManageable):
 
         timeout = config.get("timeout", 60)
         format_type = config.get("format", "wav")
-        sample_rate = config.get("sample_rate", 24000)
+        sample_rate = self._resolve_sample_rate(config)
         seed = config.get("seed", -1)
-        enable_aigc = config.get("enable_aigc_tag", False)
+
+        # AIGC 隐性标识仅 wav/mp3/opus 支持；pcm 及不支持的模型（CosyVoice v3.5）
+        # 即使旧配置残留开关也不传，避免把非法组合发给 API。
+        enable_aigc = (
+            self.SUPPORTS_AIGC_TAG
+            and format_type in ("wav", "mp3", "opus")
+            and self._as_bool(config.get("enable_aigc_tag", False)) is True
+        )
         aigc_propagator = config.get("aigc_propagator", "")
         aigc_propagate_id = config.get("aigc_propagate_id", "")
 
@@ -293,6 +334,10 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter, VoiceManageable):
         final_rate = raw_params.get("rate")
         final_pitch = raw_params.get("pitch")
         final_language_hints = raw_params.get("language_hints")
+        final_markdown_filter = (
+            self._as_bool(raw_params["enable_markdown_filter"])
+            if "enable_markdown_filter" in raw_params else None
+        )
 
         # 构造 payload
         payload = {
@@ -316,6 +361,8 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter, VoiceManageable):
             payload["input"]["pitch"] = final_pitch
         if final_language_hints:
             payload["input"]["language_hints"] = final_language_hints
+        if final_markdown_filter is not None:
+            payload["input"]["enable_markdown_filter"] = final_markdown_filter
 
         # 配置中的固定参数
         if seed != -1:
@@ -421,6 +468,13 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter, VoiceManageable):
                 if lang not in self.VALID_LANGS:
                     return False, f"不支持的语言代码: {lang}，支持: {', '.join(self.VALID_LANGS)}"
 
+        if "enable_markdown_filter" in params:
+            if self._as_bool(params["enable_markdown_filter"]) is None:
+                return False, (
+                    "enable_markdown_filter 必须是布尔值。"
+                    f"当前值: {params['enable_markdown_filter']}"
+                )
+
         return True, ""
 
     def sanitize_params(self, params: dict) -> dict:
@@ -469,6 +523,16 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter, VoiceManageable):
                     sanitized["language_hints"] = valid_hints
                 else:
                     logger.warning(f"丢弃非法的 language_hints 参数: {hints}")
+
+        if "enable_markdown_filter" in params:
+            flag = self._as_bool(params["enable_markdown_filter"])
+            if flag is not None:
+                sanitized["enable_markdown_filter"] = flag
+            else:
+                logger.warning(
+                    f"丢弃非法的 enable_markdown_filter 参数: "
+                    f"{params['enable_markdown_filter']}"
+                )
 
         return sanitized
 

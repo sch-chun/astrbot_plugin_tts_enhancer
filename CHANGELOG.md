@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [1.3.1] - 2026-11-20
+
+对齐阿里云百炼最新 TTS 文档，补齐 Markdown 清洗开关，修正采样率与 AIGC 标识的能力边界，并同步四语配置文案。
+
+### Added
+
+- **百炼 `enable_markdown_filter` 工具参数**：Qwen Audio 3.0 / 3.1 与 CosyVoice 3.5 三个适配器的 `tts_enhance` 工具 schema 新增布尔开关，由 SubAgent 依文本是否含 Markdown 自行决定是否开启；开启后服务端在合成前将表格 / 链接等结构转为适合朗读的文本。全链路贯通 schema 暴露 → 参数校验 → 清洗 → 请求 payload，仅显式传值时才带上该字段。基类新增 `_as_bool` 兼容 LLM 可能返回的字符串形式（`true/false`、`1/0`、`yes/no`）。对应能力说明书与 design 文档共 6 份同步更新。
+
+### Changed
+
+- **AIGC 配置项显示逻辑**：`aigc_propagator` / `aigc_propagate_id` 新增 `condition: {enable_aigc_tag: true}`，仅在总开关打开时显示；Qwen 3.0 / 3.1 的 hint 补充 pcm 格式不支持说明。
+- **配置文案四语同步**：上述采样率与 AIGC 变更同步至 zh-CN / en-US / ja-JP / ru-RU 四份 i18n；新增测试校验 schema 中带 hint 的字段在四语包中均有对应译文，防止非中文用户回退到中文原文。
+
+### Fixed
+
+- **OPUS 采样率越界兜底**：`sample_rate` 补齐文档支持的 12000 档；OPUS 格式仅接受 8000/12000/16000/24000/48000，选择其他档位时后端自动回退到 24000，避免非法组合触发百炼 API 报错。采样率统一取自 `sample_rate` 单一字段。
+- **AIGC 标识支持范围**：移除 CosyVoice 3.5 的 AIGC 配置项（该模型不支持），并在适配器层关闭标识能力以忽略旧配置残留；pcm 格式下强制不向 API 传递 AIGC 相关字段。
+
 ## [1.3.0] - 2026-11-19
 
 ### Added
