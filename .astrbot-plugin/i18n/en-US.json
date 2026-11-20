@@ -91,7 +91,8 @@
             "description": "Audio format"
           },
           "sample_rate": {
-            "description": "Sample rate"
+            "description": "Sample rate",
+            "hint": "All rates supported for WAV/MP3/PCM; OPUS supports only 8000/12000/16000/24000/48000, other rates fall back to 24000"
           },
           "seed": {
             "description": "Random seed",
@@ -99,15 +100,15 @@
           },
           "enable_aigc_tag": {
             "description": "AIGC invisible watermark",
-            "hint": "When enabled, embeds the invisible watermark into supported formats (wav/mp3/opus)"
+            "hint": "When enabled, embeds the invisible watermark into supported formats (wav/mp3/opus); not supported for pcm (setting has no effect)"
           },
           "aigc_propagator": {
             "description": "Content propagator",
-            "hint": "Sets the ContentPropagator field of the AIGC invisible watermark, identifying the content propagator. Only effective when the watermark is enabled. Empty = default: Alibaba Cloud UID"
+            "hint": "Sets the ContentPropagator field of the AIGC invisible watermark, identifying the content propagator. Only effective when the watermark is enabled. Empty = default: Alibaba Cloud UID; not supported for pcm"
           },
           "aigc_propagate_id": {
             "description": "Propagation ID",
-            "hint": "Sets the PropagateID field of the AIGC invisible watermark, uniquely identifying one propagation action. Only effective when the watermark is enabled. Empty = default: this synthesis request ID"
+            "hint": "Sets the PropagateID field of the AIGC invisible watermark, uniquely identifying one propagation action. Only effective when the watermark is enabled. Empty = default: this synthesis request ID; not supported for pcm"
           }
         },
         "bailian_qwen_audio_3_1_tts": {
@@ -146,7 +147,8 @@
             "description": "Audio format"
           },
           "sample_rate": {
-            "description": "Sample rate"
+            "description": "Sample rate",
+            "hint": "All rates supported for WAV/MP3/PCM; OPUS supports only 8000/12000/16000/24000/48000, other rates fall back to 24000"
           },
           "seed": {
             "description": "Random seed",
@@ -154,15 +156,15 @@
           },
           "enable_aigc_tag": {
             "description": "AIGC invisible watermark",
-            "hint": "When enabled, embeds the invisible watermark into supported formats (wav/mp3/opus)"
+            "hint": "When enabled, embeds the invisible watermark into supported formats (wav/mp3/opus); not supported for pcm (setting has no effect)"
           },
           "aigc_propagator": {
             "description": "Content propagator",
-            "hint": "Sets the ContentPropagator field of the AIGC invisible watermark, identifying the content propagator. Only effective when the watermark is enabled. Empty = default: Alibaba Cloud UID"
+            "hint": "Sets the ContentPropagator field of the AIGC invisible watermark, identifying the content propagator. Only effective when the watermark is enabled. Empty = default: Alibaba Cloud UID; not supported for pcm"
           },
           "aigc_propagate_id": {
             "description": "Propagation ID",
-            "hint": "Sets the PropagateID field of the AIGC invisible watermark, uniquely identifying one propagation action. Only effective when the watermark is enabled. Empty = default: this synthesis request ID"
+            "hint": "Sets the PropagateID field of the AIGC invisible watermark, uniquely identifying one propagation action. Only effective when the watermark is enabled. Empty = default: this synthesis request ID; not supported for pcm"
           }
         },
         "bailian_cosyvoice_v3_5": {
@@ -201,23 +203,12 @@
             "description": "Audio format"
           },
           "sample_rate": {
-            "description": "Sample rate"
+            "description": "Sample rate",
+            "hint": "All rates supported for WAV/MP3/PCM; OPUS supports only 8000/12000/16000/24000/48000, other rates fall back to 24000"
           },
           "seed": {
             "description": "Random seed",
             "hint": "A number within [0, 65535] fixes the seed so identical audio is produced when model, text, voice and other params are the same; outside this range a random seed is generated"
-          },
-          "enable_aigc_tag": {
-            "description": "AIGC invisible watermark",
-            "hint": "When enabled, embeds the invisible watermark into supported formats (wav/mp3/opus)"
-          },
-          "aigc_propagator": {
-            "description": "Content propagator",
-            "hint": "Sets the ContentPropagator field of the AIGC invisible watermark, identifying the content propagator. Only effective when the watermark is enabled. Empty = default: Alibaba Cloud UID"
-          },
-          "aigc_propagate_id": {
-            "description": "Propagation ID",
-            "hint": "Sets the PropagateID field of the AIGC invisible watermark, uniquely identifying one propagation action. Only effective when the watermark is enabled. Empty = default: this synthesis request ID"
           }
         },
         "minimax_speech_2_8": {

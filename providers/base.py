@@ -214,6 +214,29 @@ class TTSProviderAdapter(ABC):
                 return None
         return None
 
+    @staticmethod
+    def _as_bool(value) -> bool | None:
+        """将参数值安全转换为 bool。
+
+        接受 bool 以及常见字符串写法（true/false、1/0、yes/no，大小写不敏感）；
+        其他类型或无法识别的值返回 None。
+
+        Args:
+            value: 待转换的参数值，类型未知。
+
+        Returns:
+            转换成功返回 bool；无法识别的值返回 None。
+        """
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in ("true", "1", "yes"):
+                return True
+            if lowered in ("false", "0", "no"):
+                return False
+        return None
+
     def validate_params(self, params: dict) -> tuple[bool, str]:
         """验证 TTS 参数是否合法
         

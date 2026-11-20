@@ -23,6 +23,7 @@ CosyVoice v3.5 是阿里云百炼提供的非实时语音合成服务，支持�
 | `rate` | float | 0.5-2.0 | 1.0 | 语速倍率 |
 | `pitch` | float | 0.5-2.0 | 1.0 | 音调倍率 |
 | `language_hints` | array | 见下方枚举 | - | 指定语音合成的目标语言。建议与文本语种一致，以提升合成效果 |
+| `enable_markdown_filter` | boolean | true / false | false | 是否启用 Markdown 过滤。文本含表格、链接、标题等 Markdown 结构时设为 true，服务会先转换为适合朗读的文本；普通文本无需开启 |
 
 ### `language_hints` 枚举值
 `zh`（中文）、`en`（英语）、`fr`（法语）、`de`（德语）、`ja`（日语）、`ko`（韩语）、`ru`（俄语）、`pt`（葡萄牙语）、`th`（泰语）、`id`（印尼语）、`vi`（越南语）
