@@ -486,6 +486,24 @@ async def test_api_error_response_returns_empty(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("success_code", [0, "0"])
+async def test_code_zero_not_treated_as_error(monkeypatch, tmp_path, success_code):
+    """服务端成功响应若带 code: 0 / "0"，不应被 truthy 判断误判为错误。"""
+    client = _install(monkeypatch, _FakeClient())
+    monkeypatch.setattr(
+        "astrbot_plugin_tts_enhancer.providers.qwen_audio_3_1_tts_next.save_audio_bytes",
+        lambda data_dir, content, fmt: "/tmp/out.wav",
+    )
+    # 给成功 payload 注入 code: 0 / "0"
+    client._post_resp._payload["code"] = success_code
+
+    entry = _make_entry(tmp_path)
+    adapter = QwenAudio3_1TTSNextAdapter(entry)
+    assert await adapter.call_api("hi", {"text_prompt": "hi"}, entry) == "/tmp/out.wav"
+    assert len(client.get_calls) == 1  # 走到音频下载，未被错误分支短路
+
+
+@pytest.mark.asyncio
 async def test_timeout_returns_empty(monkeypatch, tmp_path):
     import httpx
 

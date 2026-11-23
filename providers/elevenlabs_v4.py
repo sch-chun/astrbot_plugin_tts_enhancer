@@ -59,6 +59,8 @@ OPUS_BITRATES = (32, 64, 96, 128, 192)
 
 class ElevenLabsV4Adapter(TTSProviderAdapter):
     DISPLAY_NAME = "Eleven v4"
+    TOOL_EXTRA_FIELDS = frozenset({'language_code'})
+
     """Eleven v4 / v4 Turbo TTS 适配器。"""
 
     def __init__(self, entry: dict) -> None:

@@ -42,6 +42,8 @@ FISH_AUDIO_MODELS = [
 
 class FishAudioS2Adapter(TTSProviderAdapter):
     DISPLAY_NAME = "Fish Audio S2"
+    TOOL_EXTRA_FIELDS = frozenset({'language', 'speed', 'volume'})
+
     """Fish Audio (S2 / S2-Pro) TTS 适配器。"""
 
     def __init__(self, entry: dict) -> None:
