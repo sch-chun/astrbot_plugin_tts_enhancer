@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [1.4.1] - 2026-11-23
+
+收紧工具参数契约，并修正音频生成供应商的 seed 默认值、缓存键与错误码边界判定。
+
+### Changed
+
+- **工具契约改为按适配器声明校验**：基类新增 `TOOL_EXTRA_FIELDS`（默认空集），各适配器按自身工具 schema 声明允许出现的额外字段；契约测试由全局白名单改为按声明断言，并校验声明与 schema 一致，防止放宽约束或声明漂移。
+- **随机种子默认值**：百炼音频生成模板的 `seed` 默认值改为 `-1`（每次随机），与其他供应商一致。
+
+### Fixed
+
+- **缓存键纳入截断参数**：参考音频缓存键加入时长上限与裁剪余量，确保截断逻辑变化后不会命中陈旧缓存。
+- **成功码 `0` 误判**：响应中 `code` 为 `0` 或 `"0"` 时不再被当作错误，避免成功请求被短路。
+- **文件规范**：`providers/utils/audio.py` 末尾补齐换行。
+
 ## [1.4.0] - 2026-11-23
 
 新增百炼「音频生成」供应商，带来与传统 TTS 不同的生成式声音场景能力，并完成工具分层、参考音频校验与全供应商文案统一。
