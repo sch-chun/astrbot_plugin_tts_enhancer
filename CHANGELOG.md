@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [1.4.0] - 2026-11-23
+
+新增百炼「音频生成」供应商，带来与传统 TTS 不同的生成式声音场景能力，并完成工具分层、参考音频校验与全供应商文案统一。
+
+### Added
+
+- **百炼音频生成供应商**（`qwen_audio_3_1_tts_next`，模型 `qwen-audio-3.1-tts-next`）：单说话人音频生成适配器，一次产出语音、音效与环境音，可构建完整声音场景。请求体以 `text_prompt` 为核心、参考音频走 `input.references[].audio_data`（Base64 data URI），与标准 TTS 的 `text` + 音色 ID 体系不同，因此采用独立适配器实现。配套配置模板、四语文案与能力说明书。
+- **参考音频文件管理**：沿用 MiMo 的思路，通过配置页 `type: file` 字段上传参考音频（wav/mp3/ogg），后端读取、Base64 编码并按「路径 + mtime + 大小」缓存；路径穿越校验、30 秒 / 10MB 限制齐备，超限自动截断并给出提示，不阻断合成。
+- **按参考音频状态切换的能力说明书**：有参考音频时要求固定用 `@voice1` 指代说话人；无参考音频时要求以文字写明人物身份与音色、不使用 `@voiceN`。SubAgent 依当前配置读取对应说明，避免提示词与音频槽位不匹配。
+- **通用音频工具增强**：`get_audio_duration()` 在 ffprobe 之外增加 pydub 兜底（WAV 走标准库后端、无需 ffmpeg）；`AudioConstraints` 新增百炼音频生成的 30 秒约束常量。
+
+### Changed
+
+- **工具参数分层**：该供应商的 `tts_enhance` 工具以 `text_prompt` 为主字段（SubAgent 直接产出完整提示词，不再拆分台词与指令），`volume` / `rate` 作为可选演绎参数逐次决定，未填则由服务端使用默认值。基类新增 `TOOL_PROMPT_FIELD` 声明，契约测试据此校验各供应商的主字段，其他供应商行为不变。
+- **随机种子**：`seed = -1` 时在本地生成随机值下发，避免固定使用服务端默认值导致同一提示词结果恒定；配置页仅说明「每次随机生成」。
+- **UI 文案统一**：所有供应商的人格配置 hint 统一为同一句；模板名称按供应商命名规范调整；配置提示中的服务端内部实现细节与数值已移除，仅保留面向用户的作用说明。四语同步。
+
+### Fixed
+
+- **时长读取在无 ffmpeg 环境的降级**：WAV 参考音频此前因只依赖 ffprobe 而无法读取时长、跳过自动截断；现在由 pydub 兜底，32 秒 WAV 可准确读到时长并截断至 29.5 秒。MP3/OGG 仍需 ffmpeg，读不到时给出明确提示并保持大小校验。
+- **参考音频超限不再直接拒绝**：时长或编码后大小超限时自动截断并打 warning；截断产物写入缓存目录，不污染用户上传目录；仍超限则交给服务端判定并给出排查提示。
+
 ## [1.3.1] - 2026-11-20
 
 对齐阿里云百炼最新 TTS 文档，补齐 Markdown 清洗开关，修正采样率与 AIGC 标识的能力边界，并同步四语配置文案。

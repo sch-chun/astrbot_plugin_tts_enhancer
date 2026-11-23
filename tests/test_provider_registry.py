@@ -94,8 +94,14 @@ class TestAllProvidersSmoke:
         assert tool.name == "tts_enhance", f"{key} 工具名不是 tts_enhance"
         params = tool.parameters
         assert params["type"] == "object"
-        assert "text" in params["properties"]
-        assert "text" in params["required"]
+        # 主字段名由 provider 声明（生成式音频类用 text_prompt，其余用 text）
+        prompt_field = adapter.TOOL_PROMPT_FIELD
+        assert prompt_field in params["properties"], (
+            f"{key} 工具缺少主字段 {prompt_field}"
+        )
+        assert prompt_field in params["required"], (
+            f"{key} 工具主字段 {prompt_field} 非必填"
+        )
 
     def test_system_prompt_is_non_empty(self, entry_and_adapter):
         _key, adapter = entry_and_adapter
@@ -108,11 +114,14 @@ class TestAllProvidersSmoke:
         assert adapter.validate_params({}) == (True, ""), f"{key} 空参数未被接受"
 
     def test_sanitize_params_preserves_text(self, entry_and_adapter):
-        """清洗后必须保留 text，且不得混入未声明的多余字段。"""
+        """清洗后必须保留主字段，且不得混入未声明的多余字段。"""
         key, adapter = entry_and_adapter
-        out = adapter.sanitize_params({"text": "hi"})
-        assert out["text"] == "hi", f"{key} 丢失了 text"
-        assert set(out) <= {"text", "instruction"}, f"{key} 出现意外字段: {sorted(out)}"
+        prompt_field = adapter.TOOL_PROMPT_FIELD
+        out = adapter.sanitize_params({prompt_field: "hi"})
+        assert out[prompt_field] == "hi", f"{key} 丢失了 {prompt_field}"
+        assert set(out) <= {"text", "instruction", "text_prompt", "volume", "rate"}, (
+            f"{key} 出现意外字段: {sorted(out)}"
+        )
 
 
 class TestDocsDiscovery:

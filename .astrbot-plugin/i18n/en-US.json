@@ -69,7 +69,7 @@
           },
           "persona_id": {
             "description": "Bound persona",
-            "hint": "Use this provider's voice only under the specified persona; leave empty to use it as a universal fallback voice"
+            "hint": "Use only under this persona; leave empty to serve as a general fallback voice"
           },
           "api_key": {
             "description": "API Key"
@@ -124,7 +124,7 @@
           },
           "persona_id": {
             "description": "Bound persona",
-            "hint": "Use this provider's voice only under the specified persona; leave empty to use it as a universal fallback voice"
+            "hint": "Use only under this persona; leave empty to serve as a general fallback voice"
           },
           "api_key": {
             "description": "API Key"
@@ -180,7 +180,7 @@
           },
           "persona_id": {
             "description": "Bound persona",
-            "hint": "Use this provider's voice only under the specified persona; leave empty to use it as a universal fallback voice"
+            "hint": "Use only under this persona; leave empty to serve as a general fallback voice"
           },
           "api_key": {
             "description": "API Key"
@@ -224,7 +224,7 @@
           },
           "persona_id": {
             "description": "Bound persona",
-            "hint": "Use this provider's voice only under the specified persona; leave empty to use it as a universal fallback voice"
+            "hint": "Use only under this persona; leave empty to serve as a general fallback voice"
           },
           "api_key": {
             "description": "API Key"
@@ -271,7 +271,7 @@
           },
           "persona_id": {
             "description": "Bound persona",
-            "hint": "Use this provider's voice only under the specified persona; leave empty to use it as a universal fallback voice"
+            "hint": "Use only under this persona; leave empty to serve as a general fallback voice"
           },
           "api_key": {
             "description": "Bailian API Key"
@@ -319,7 +319,7 @@
           },
           "persona_id": {
             "description": "Bound persona",
-            "hint": "Use this provider's voice only under the specified persona; leave empty to use it as a universal fallback voice"
+            "hint": "Use only under this persona; leave empty to serve as a general fallback voice"
           },
           "api_key": {
             "description": "API Key"
@@ -352,6 +352,70 @@
             "hint": "Cloned audio sample. mp3/wav only, Base64-encoded and under 10MB. Multiple allowed; the first is used."
           }
         },
+        "qwen_audio_3_1_tts_next": {
+          "hint": "Single speaker, reference audio and scene effects",
+          "name": "Bailian Qwen Audio 3.1 TTS Next",
+          "display_name": {
+            "description": "Display name",
+            "hint": "Display name for this provider config (to distinguish multiple configs of the same type)"
+          },
+          "priority": {
+            "description": "Priority",
+            "hint": "Lower numbers take precedence"
+          },
+          "persona_id": {
+            "description": "Bound persona",
+            "hint": "Use only under this persona; leave empty to serve as a general fallback voice"
+          },
+          "api_key": {
+            "description": "API Key",
+            "hint": "Alibaba Cloud Bailian DASHSCOPE_API_KEY"
+          },
+          "workspace_id": {
+            "description": "Workspace ID",
+            "hint": "Business space ID used in the request host {WorkspaceId}.cn-beijing.maas.aliyuncs.com"
+          },
+          "timeout": {
+            "description": "Timeout",
+            "hint": "In seconds. Audio generation is a long task; the official docs recommend 300"
+          },
+          "voice_sample": {
+            "description": "Reference audio sample",
+            "hint": "Single-speaker voice reference for @voice1. wav/mp3/ogg only; up to 30s and 10MB Base64-encoded, longer files are trimmed automatically. Multiple allowed; the first is used"
+          },
+          "format": {
+            "description": "Audio format",
+            "hint": "Output audio format"
+          },
+          "enable_cbr": {
+            "description": "Constant bitrate (CBR)",
+            "hint": "MP3 only. Enabled = constant bitrate (CBR), disabled = variable bitrate (VBR)"
+          },
+          "bit_rate": {
+            "description": "MP3 bitrate",
+            "hint": "MP3 + CBR only, in kbps. Available range depends on sample rate: 8000Hz 8-64; 16000/24000Hz 8-160; 44100/48000Hz 32-320"
+          },
+          "quality": {
+            "description": "MP3 quality",
+            "hint": "MP3 + VBR only, range 0 - 9, where 0 is the highest quality"
+          },
+          "sample_rate": {
+            "description": "Sample rate",
+            "hint": "Output sample rate in Hz"
+          },
+          "channels": {
+            "description": "Channels",
+            "hint": "1 = mono, 2 = stereo"
+          },
+          "seed": {
+            "description": "Random seed",
+            "hint": "Request-level seed. Set to -1 to use a different random value each time"
+          },
+          "enable_aigc_tag": {
+            "description": "Add AIGC tag",
+            "hint": "Whether to embed an AIGC watermark in the generated audio"
+          }
+        },
         "google_gemini_3_8_flash_tts": {
           "hint": "Official generative TTS with natural-language style",
           "name": "Google Gemini 3.8 Flash TTS",
@@ -365,7 +429,7 @@
           },
           "persona_id": {
             "description": "Bound persona",
-            "hint": "Use this provider's voice only under the specified persona; leave empty to use it as a universal fallback voice"
+            "hint": "Use only under this persona; leave empty to serve as a general fallback voice"
           },
           "api_key": {
             "description": "Gemini API Key"
@@ -400,7 +464,7 @@
           },
           "persona_id": {
             "description": "Bound persona",
-            "hint": "Use only under this persona; leave empty for a universal fallback voice"
+            "hint": "Use only under this persona; leave empty to serve as a general fallback voice"
           },
           "api_key": {
             "description": "API Key",
@@ -498,7 +562,7 @@
         },
         "stepfun_stepaudio_3_tts": {
           "name": "StepFun StepAudio 3 TTS",
-          "hint": "Human-like spoken delivery; emotion control via instruction",
+          "hint": "Lifelike speech, instruction-based emotion control",
           "display_name": {
             "description": "Display name",
             "hint": "Used to distinguish multiple providers of the same type"
@@ -509,7 +573,7 @@
           },
           "persona_id": {
             "description": "Bound persona",
-            "hint": "Use only under this persona; leave empty for a universal fallback voice"
+            "hint": "Use only under this persona; leave empty to serve as a general fallback voice"
           },
           "api_key": {
             "description": "API Key",
@@ -561,7 +625,7 @@
           },
           "persona_id": {
             "description": "Bound persona",
-            "hint": "Use only under this persona; leave empty for a universal fallback voice"
+            "hint": "Use only under this persona; leave empty to serve as a general fallback voice"
           },
           "api_key": {
             "description": "API Key",

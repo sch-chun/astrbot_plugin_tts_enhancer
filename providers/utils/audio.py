@@ -22,21 +22,31 @@ except ImportError:
 def get_audio_duration(file_path: str) -> Optional[float]:
     """获取音频时长（秒）。
 
+    优先用 ffprobe（mediainfo）；失败时用 pydub 兜底。pydub 对 WAV 使用
+    标准库后端，无需 ffmpeg 即可读取时长；MP3/OGG 仍需 ffmpeg 解码。
+
     Args:
         file_path: 音频文件路径
 
     Returns:
-        音频时长（秒），若 pydub 不可用或读取失败则返回 None
+        音频时长（秒）；两种方式都读不到时返回 None
     """
-    if mediainfo is None:
-        return None
-    try:
-        info = mediainfo(file_path)
-        duration = info.get("duration")
-        if duration is not None:
-            return float(duration)
-    except Exception as e:
-        logger.error(f"读取音频时长失败: {file_path}, 错误: {e}")
+    if mediainfo is not None:
+        try:
+            info = mediainfo(file_path)
+            duration = info.get("duration")
+            if duration is not None:
+                return float(duration)
+        except Exception as e:
+            # 有 pydub 兜底，ffprobe 失败不算最终失败，降级为 debug 避免噪声。
+            logger.debug(f"ffprobe 读取时长失败，尝试 pydub 兜底: {file_path}, {e}")
+
+    if AudioSegment is not None:
+        try:
+            duration_ms = len(AudioSegment.from_file(file_path))
+            return duration_ms / 1000.0 if duration_ms > 0 else None
+        except Exception as e:
+            logger.debug(f"pydub 读取时长失败: {file_path}, {e}")
     return None
 
 
@@ -184,4 +194,7 @@ class AudioConstraints:
     # 百炼（Qwen-Audio-TTS / CosyVoice / Qwen-TTS）
     BAILIAN_CLONE_MIN = 10.0       # 推荐 10~20 秒，强制至少 10 秒
     BAILIAN_CLONE_MAX = 60.0       # 最长不超过 60 秒
+
+    # 百炼音频生成（qwen-audio-3.1-tts-next）
+    QWEN_AUDIO_NEXT_MAX = 30.0     # 单条参考音频最长 30 秒
     

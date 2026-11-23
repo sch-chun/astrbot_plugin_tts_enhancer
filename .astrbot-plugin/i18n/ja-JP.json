@@ -69,7 +69,7 @@
           },
           "persona_id": {
             "description": "ペルソナ紐付け",
-            "hint": "指定したペルソナ配下のみでこのプロバイダーの音声を使用。空欄の場合は共通のフォールバック音声として使用"
+            "hint": "このペルソナでのみ使用；空欄の場合は共通のフォールバック音色として使用"
           },
           "api_key": {
             "description": "APIキー"
@@ -124,7 +124,7 @@
           },
           "persona_id": {
             "description": "ペルソナ紐付け",
-            "hint": "指定したペルソナ配下のみでこのプロバイダーの音声を使用。空欄の場合は共通のフォールバック音声として使用"
+            "hint": "このペルソナでのみ使用；空欄の場合は共通のフォールバック音色として使用"
           },
           "api_key": {
             "description": "APIキー"
@@ -180,7 +180,7 @@
           },
           "persona_id": {
             "description": "ペルソナ紐付け",
-            "hint": "指定したペルソナ配下のみでこのプロバイダーの音声を使用。空欄の場合は共通のフォールバック音声として使用"
+            "hint": "このペルソナでのみ使用；空欄の場合は共通のフォールバック音色として使用"
           },
           "api_key": {
             "description": "APIキー"
@@ -224,7 +224,7 @@
           },
           "persona_id": {
             "description": "ペルソナ紐付け",
-            "hint": "指定したペルソナ配下のみでこのプロバイダーの音声を使用。空欄の場合は共通のフォールバック音声として使用"
+            "hint": "このペルソナでのみ使用；空欄の場合は共通のフォールバック音色として使用"
           },
           "api_key": {
             "description": "APIキー"
@@ -271,7 +271,7 @@
           },
           "persona_id": {
             "description": "ペルソナ紐付け",
-            "hint": "指定したペルソナ配下のみでこのプロバイダーの音声を使用。空欄の場合は共通のフォールバック音声として使用"
+            "hint": "このペルソナでのみ使用；空欄の場合は共通のフォールバック音色として使用"
           },
           "api_key": {
             "description": "Bailian APIキー"
@@ -319,7 +319,7 @@
           },
           "persona_id": {
             "description": "ペルソナ紐付け",
-            "hint": "指定したペルソナ配下のみでこのプロバイダーの音声を使用。空欄の場合は共通のフォールバック音声として使用"
+            "hint": "このペルソナでのみ使用；空欄の場合は共通のフォールバック音色として使用"
           },
           "api_key": {
             "description": "APIキー"
@@ -352,6 +352,70 @@
             "hint": "音声クローンサンプル。mp3/wavのみ対応、Base64エンコードで10MB以下。複数選択可、実際には最初のものを使用"
           }
         },
+        "qwen_audio_3_1_tts_next": {
+          "hint": "単一話者、参照音声とシーン効果",
+          "name": "Bailian Qwen Audio 3.1 TTS Next",
+          "display_name": {
+            "description": "表示名",
+            "hint": "このプロバイダー設定の表示名（同じ種類の設定を区別するため）"
+          },
+          "priority": {
+            "description": "優先度",
+            "hint": "数値が小さいほど優先"
+          },
+          "persona_id": {
+            "description": "ペルソナ",
+            "hint": "このペルソナでのみ使用；空欄の場合は共通のフォールバック音色として使用"
+          },
+          "api_key": {
+            "description": "API Key",
+            "hint": "Alibaba Cloud 百錬の DASHSCOPE_API_KEY"
+          },
+          "workspace_id": {
+            "description": "Workspace ID",
+            "hint": "リクエストドメイン {WorkspaceId}.cn-beijing.maas.aliyuncs.com に使う業務スペース ID"
+          },
+          "timeout": {
+            "description": "タイムアウト",
+            "hint": "秒単位。音声生成は長時間タスクのため、公式ドキュメントでは 300 秒を推奨"
+          },
+          "voice_sample": {
+            "description": "参照音声サンプル",
+            "hint": "単一話者の音色参照（@voice1 対応）。wav/mp3/ogg のみ、最長 30 秒、Base64 エンコード後 10MB 以下。超過時は自動的に切り詰められます。複数選択可、最初のものを使用"
+          },
+          "format": {
+            "description": "音声形式",
+            "hint": "出力音声形式"
+          },
+          "enable_cbr": {
+            "description": "固定ビットレート CBR",
+            "hint": "MP3 のみ有効。オンで固定ビットレート（CBR）、オフで可変ビットレート（VBR）"
+          },
+          "bit_rate": {
+            "description": "MP3 ビットレート",
+            "hint": "MP3 + CBR のみ有効、単位 kbps。使用可能な範囲はサンプリングレートにより異なります：8000Hz は 8-64；16000/24000Hz は 8-160；44100/48000Hz は 32-320"
+          },
+          "quality": {
+            "description": "MP3 音質",
+            "hint": "MP3 + VBR のみ有効、範囲 0 ~ 9。0 が最高品質"
+          },
+          "sample_rate": {
+            "description": "サンプリングレート",
+            "hint": "出力サンプリングレート（Hz）"
+          },
+          "channels": {
+            "description": "チャンネル数",
+            "hint": "1 = モノラル、2 = ステレオ"
+          },
+          "seed": {
+            "description": "乱数シード",
+            "hint": "リクエスト単位のシード。-1 にすると毎回ランダムな値が生成されます"
+          },
+          "enable_aigc_tag": {
+            "description": "AIGC 識別を追加",
+            "hint": "生成音声に AIGC 識別ウォーターマークを埋め込むかどうか"
+          }
+        },
         "google_gemini_3_8_flash_tts": {
           "hint": "公式の生成系TTS。自然言語スタイル",
           "name": "Google Gemini 3.8 Flash TTS",
@@ -365,7 +429,7 @@
           },
           "persona_id": {
             "description": "ペルソナ紐付け",
-            "hint": "指定したペルソナ配下のみでこのプロバイダーの音声を使用。空欄の場合は共通のフォールバック音声として使用"
+            "hint": "このペルソナでのみ使用；空欄の場合は共通のフォールバック音色として使用"
           },
           "api_key": {
             "description": "Gemini APIキー"
@@ -400,7 +464,7 @@
           },
           "persona_id": {
             "description": "ペルソナ紐付け",
-            "hint": "このペルソナ配下のみで使用。空欄の場合は共通のフォールバック音声"
+            "hint": "このペルソナでのみ使用；空欄の場合は共通のフォールバック音色として使用"
           },
           "api_key": {
             "description": "APIキー",
@@ -498,7 +562,7 @@
         },
         "stepfun_stepaudio_3_tts": {
           "name": "StepFun StepAudio 3 TTS",
-          "hint": "自然な話し言葉の表現。instruction で感情を制御",
+          "hint": "自然な話し言葉、instruction による感情制御",
           "display_name": {
             "description": "表示名",
             "hint": "同一タイプの複数プロバイダーを区別するため"
@@ -509,7 +573,7 @@
           },
           "persona_id": {
             "description": "ペルソナ紐付け",
-            "hint": "このペルソナ配下のみで使用。空欄の場合は共通のフォールバック音声"
+            "hint": "このペルソナでのみ使用；空欄の場合は共通のフォールバック音色として使用"
           },
           "api_key": {
             "description": "APIキー",
@@ -561,7 +625,7 @@
           },
           "persona_id": {
             "description": "ペルソナ紐付け",
-            "hint": "このペルソナ配下のみで使用。空欄の場合は共通のフォールバック音声"
+            "hint": "このペルソナでのみ使用；空欄の場合は共通のフォールバック音色として使用"
           },
           "api_key": {
             "description": "APIキー",
