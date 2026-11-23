@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.3.1-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.4.0-green)](../../CHANGELOG.md)
 
 ---
 
@@ -100,8 +100,19 @@ SubAgent は合成時に**このドキュメントを動的に読み取り**、�
 | **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | 角括弧の感情タグ（64 種以上、文をまたいで自由に切り替え） | ✅ | ✅ | ❌ | ❌ | 13 種 | ❌ |
 | **Eleven v4** | v4 / v4 Turbo | 角括弧の感情タグ + `/IPA/` 発音 + `<break>` による一時停止 | ✅ | ✅ | ✅ | 広東語 | 90 種 | ❌ |
 | **StepFun StepAudio 3 TTS** | stepaudio-3-tts | `instruction` + テキスト内の `()` 指示 | ✅ | ✅ | ❌ | ❌ | 中国語中心 | ❌ |
+| **Bailian Qwen Audio 3.1 TTS Next** | qwen-audio-3.1-tts-next | 自然言語によるシーン記述（声質 / 感情 / 効果音） | ❌ | ❌ | ❌ | ❌ | 中国語、英語 | ❌ |
 
 > StepFun のクローン音色は**読み取り専用プレビュー**です（公式プレイグラウンドでクローンすると自動的に一覧表示）。音色デザインは公式スタジオで行い、プラグイン内では書き込み操作を行いません。
+
+### 百錬の音声生成について（他のプロバイダーと異なる点）
+
+`qwen-audio-3.1-tts-next` は従来の TTS ではなく**音声生成**です。1 回のリクエストで音声・効果音・環境音をまとめて生成し、完全なサウンドシーン（ナレーション、ラジオドラマ、ゲームのセリフなど）を構築できます。そのため上の表では特徴を伝えきれない部分があります。
+
+- **入力はセリフではなくプロンプト**：`tts_enhance` ツールのメイン項目は `text_prompt` で、SubAgent が「何を話すか」と「どう／どのような場面で話すか」を一つの記述にまとめます。`volume` / `rate` はユーザーが明示的に調整を求めた場合のみ入力します。
+- **単一話者**：このアダプターは単一話者モードのみを提供します。モデルは複数話者に対応していますが、複数キャラクターの演出は公開していません。
+- **参照音声は設定項目で管理**：プロバイダー設定の `type: file` 項目から参照音声をアップロードします（wav/mp3/ogg、最長 30 秒、Base64 後 10MB 以下）。これが声質を決定し、**プリセット音色一覧や音色クローン／デザインの管理ページはありません**。参照音声の有無で SubAgent に渡す説明が変わり、ある場合は `@voice1` で話者を指し、ない場合は話者の身分と声質を文字で記述します。
+- **過大な音声は自動処理**：長すぎる／大きすぎる参照音声は通知の上で自動的に切り詰められ、リクエストは失敗しません。
+- **音質設定**：`format` / `sample_rate` / `channels` と MP3 のビットレート／音質は設定項目で指定します。`seed = -1` の場合は毎回ランダムな値が生成されます。
 
 > 複数のプロバイダーを**同時に設定し、`priority` に従ってフォールバック**できます。各エントリは `persona_id` で**特定のペルソナにバインド**でき、「ペルソナごとに異なる音色を使う」ことが可能です。
 

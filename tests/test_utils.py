@@ -85,6 +85,41 @@ class TestGetAudioDuration:
         junk.write_bytes(b"not really audio")
         assert audio_utils.get_audio_duration(str(junk)) is None
 
+    def test_ffprobe_preferred(self, monkeypatch, tmp_path):
+        """ffprobe 可用时优先用其结果，不调用 pydub。"""
+        f = tmp_path / "a.wav"
+        f.write_bytes(b"fake")
+        monkeypatch.setattr(
+            audio_utils, "mediainfo", lambda p: {"duration": "12.5"}
+        )
+
+        class ForbiddenPydub:
+            @staticmethod
+            def from_file(*_args, **_kwargs):
+                raise AssertionError("ffprobe 成功时不应调用 pydub")
+
+        monkeypatch.setattr(audio_utils, "AudioSegment", ForbiddenPydub)
+        assert audio_utils.get_audio_duration(str(f)) == 12.5
+
+    def test_pydub_fallback_for_wav_without_ffmpeg(self, monkeypatch, tmp_path):
+        """ffprobe 失败时用 pydub 兜底：WAV 走标准库后端，无需 ffmpeg。"""
+        import wave
+
+        f = tmp_path / "sample.wav"
+        with wave.open(str(f), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(8000)
+            w.writeframes(b"\x00\x00" * (8000 * 3))  # 3 秒
+
+        def broken_ffprobe(_path):
+            raise RuntimeError("ffprobe missing")
+
+        monkeypatch.setattr(audio_utils, "mediainfo", broken_ffprobe)
+        duration = audio_utils.get_audio_duration(str(f))
+        assert duration is not None
+        assert 2.9 <= duration <= 3.1
+
 
 class TestValidateAudioDuration:
     def test_unknown_duration_is_invalid(self):

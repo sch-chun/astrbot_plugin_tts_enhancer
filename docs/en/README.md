@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.3.1-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.4.0-green)](../../CHANGELOG.md)
 
 ---
 
@@ -100,8 +100,19 @@ Per provider:
 | **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | Bracket emotion tags (64+, switch freely across sentences) | ✅ | ✅ | ❌ | ❌ | 13 | ❌ |
 | **Eleven v4** | v4 / v4 Turbo | Bracket emotion tags + `/IPA/` pronunciation + `<break>` pause | ✅ | ✅ | ✅ | Cantonese | 90 | ❌ |
 | **StepFun StepAudio 3 TTS** | stepaudio-3-tts | `instruction` + inline `()` directives | ✅ | ✅ | ❌ | ❌ | Mostly zh | ❌ |
+| **Bailian Qwen Audio 3.1 TTS Next** | qwen-audio-3.1-tts-next | Natural-language scene description (voice / emotion / effects) | ❌ | ❌ | ❌ | ❌ | Chinese, English | ❌ |
 
 > StepFun's cloned voices are **read-only preview** (clone in the official playground and they appear automatically); voice design is done at the official studio — the plugin performs no write operations.
+
+### About Bailian Audio Generation (different from other providers)
+
+`qwen-audio-3.1-tts-next` is not a traditional TTS — it is **audio generation**: a single call produces speech, sound effects and ambience together, enabling complete sound scenes (narration, radio drama, game lines, etc.). Its usage cannot be fully captured by the table above, so note:
+
+- **The input is a prompt, not a line of text**: the `tts_enhance` tool's main field is `text_prompt`, where the SubAgent writes both "what to say" and "how / in what scene to say it" in one description. `volume` / `rate` are filled only when the user explicitly asks for an overall adjustment.
+- **Single speaker**: this adapter exposes single-speaker mode only; multi-character orchestration is not exposed even though the model supports it.
+- **Reference audio lives in config**: upload a reference sample via the `type: file` field in the provider config (wav/mp3/ogg, up to 30 s and 10 MB Base64-encoded). It determines the voice — **there is no system voice list and no voice clone / design management page**. The SubAgent receives different writing guidance depending on whether a sample is set: use `@voice1` to refer to the speaker when one is present; otherwise describe the speaker's identity and timbre in words.
+- **Oversized samples are handled automatically**: an over-long or over-large reference sample is trimmed with a notice instead of failing the request.
+- **Audio quality**: `format` / `sample_rate` / `channels` and MP3 bitrate / quality options are set in config; `seed = -1` generates a new random value each time.
 
 > Multiple providers can be **configured simultaneously and fall back by `priority`**; each entry can also bind to a specific persona via `persona_id`, enabling "different personas use different voices".
 

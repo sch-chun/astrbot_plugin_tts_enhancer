@@ -121,7 +121,7 @@
             "type": "string",
             "_special": "select_persona",
             "default": "",
-            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+            "hint": "仅在该人格下使用；留空表示作为通用兜底音色"
           },
           "api_key": {
             "description": "API Key",
@@ -234,7 +234,7 @@
             "type": "string",
             "_special": "select_persona",
             "default": "",
-            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+            "hint": "仅在该人格下使用；留空表示作为通用兜底音色"
           },
           "api_key": {
             "description": "API Key",
@@ -348,7 +348,7 @@
             "type": "string",
             "_special": "select_persona",
             "default": "",
-            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+            "hint": "仅在该人格下使用；留空表示作为通用兜底音色"
           },
           "api_key": {
             "description": "API Key",
@@ -438,7 +438,7 @@
             "type": "string",
             "_special": "select_persona",
             "default": "",
-            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+            "hint": "仅在该人格下使用；留空表示作为通用兜底音色"
           },
           "api_key": {
             "description": "API Key",
@@ -545,7 +545,7 @@
             "type": "string",
             "_special": "select_persona",
             "default": "",
-            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+            "hint": "仅在该人格下使用；留空表示作为通用兜底音色"
           },
           "api_key": {
             "description": "百炼 API Key",
@@ -653,7 +653,7 @@
             "type": "string",
             "_special": "select_persona",
             "default": "",
-            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+            "hint": "仅在该人格下使用；留空表示作为通用兜底音色"
           },
           "api_key": {
             "description": "API Key",
@@ -740,6 +740,146 @@
           }
         }
       },
+      "qwen_audio_3_1_tts_next": {
+        "name": "百炼 Qwen Audio 3.1 TTS Next",
+        "hint": "单说话人，参考音频与场景音效",
+        "display_item": "display_name",
+        "items": {
+          "display_name": {
+            "description": "显示名称",
+            "type": "string",
+            "default": "Qwen Audio 3.1 TTS Next",
+            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+          },
+          "priority": {
+            "description": "优先级",
+            "type": "int",
+            "default": 0,
+            "hint": "数字越小越优先"
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "type": "string",
+            "_special": "select_persona",
+            "default": "",
+            "hint": "仅在该人格下使用；留空表示作为通用兜底音色"
+          },
+          "api_key": {
+            "description": "API Key",
+            "type": "string",
+            "default": "",
+            "secret": true,
+            "hint": "阿里云百炼 DASHSCOPE_API_KEY"
+          },
+          "workspace_id": {
+            "description": "Workspace ID",
+            "type": "string",
+            "default": "",
+            "hint": "业务空间 ID，用于拼接请求域名 {WorkspaceId}.cn-beijing.maas.aliyuncs.com"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "type": "int",
+            "default": 300,
+            "hint": "单位：秒。音频生成为异步长任务，官方文档建议 300 秒"
+          },
+          "voice_sample": {
+            "description": "参考音频样本",
+            "type": "file",
+            "file_types": [
+              "mp3",
+              "wav",
+              "ogg"
+            ],
+            "hint": "单说话人音色参考，对应 @voice1。仅支持 wav/mp3/ogg，最长 30 秒、Base64 编码后不超过 10MB；超出会自动截断。可多选，实际取第一个"
+          },
+          "format": {
+            "description": "音频格式",
+            "type": "string",
+            "default": "wav",
+            "options": [
+              "wav",
+              "mp3",
+              "pcm"
+            ],
+            "hint": "输出音频格式"
+          },
+          "enable_cbr": {
+            "description": "恒定码率 CBR",
+            "type": "bool",
+            "default": false,
+            "condition": {
+              "format": "mp3"
+            },
+            "hint": "仅 MP3 生效。开启为恒定码率（CBR），关闭为可变码率（VBR）"
+          },
+          "bit_rate": {
+            "description": "MP3 码率",
+            "type": "int",
+            "default": 128,
+            "slider": {
+              "min": 8,
+              "max": 320,
+              "step": 8
+            },
+            "condition": {
+              "format": "mp3",
+              "enable_cbr": true
+            },
+            "hint": "仅 MP3 + CBR 生效，单位 kbps。可用范围随采样率变化：8000Hz 为 8-64；16000/24000Hz 为 8-160；44100/48000Hz 为 32-320"
+          },
+          "quality": {
+            "description": "MP3 音质",
+            "type": "int",
+            "default": 5,
+            "slider": {
+              "min": 0,
+              "max": 9,
+              "step": 1
+            },
+            "condition": {
+              "format": "mp3",
+              "enable_cbr": false
+            },
+            "hint": "仅 MP3 + VBR 生效，范围 0 ~ 9，0 为最高质量"
+          },
+          "sample_rate": {
+            "description": "采样率",
+            "type": "int",
+            "default": 48000,
+            "options": [
+              8000,
+              16000,
+              24000,
+              44100,
+              48000
+            ],
+            "hint": "输出采样率，单位 Hz"
+          },
+          "channels": {
+            "description": "声道数",
+            "type": "int",
+            "default": 2,
+            "options": [
+              1,
+              2
+            ],
+            "hint": "1 为单声道，2 为双声道"
+          },
+          "seed": {
+            "description": "随机种子",
+            "type": "int",
+            "default": 42,
+            "hint": "请求级随机种子。设为 -1 表示每次随机生成"
+          },
+          "enable_aigc_tag": {
+            "description": "添加 AIGC 标识",
+            "type": "bool",
+            "default": false,
+            "hint": "是否在生成音频中添加 AIGC 标识水印"
+          }
+        }
+      },
       "google_gemini_3_8_flash_tts": {
         "name": "Google Gemini 3.8 Flash TTS",
         "hint": "官方生成式 TTS，自然语言风格",
@@ -762,7 +902,7 @@
             "type": "string",
             "_special": "select_persona",
             "default": "",
-            "hint": "仅在指定人格下使用此供应商音色；留空表示作为通用兜底音色"
+            "hint": "仅在该人格下使用；留空表示作为通用兜底音色"
           },
           "api_key": {
             "description": "Gemini API Key",
@@ -822,7 +962,7 @@
             "type": "string",
             "_special": "select_persona",
             "default": "",
-            "hint": "仅在该人格下使用；留空表示通用兜底音色"
+            "hint": "仅在该人格下使用；留空表示作为通用兜底音色"
           },
           "api_key": {
             "description": "API Key",
@@ -1017,7 +1157,7 @@
       },
       "stepfun_stepaudio_3_tts": {
         "name": "StepFun StepAudio 3 TTS",
-        "hint": "真人级口语表现，instruction 情绪控制",
+        "hint": "真人级口语，指令控制情绪",
         "display_item": "display_name",
         "items": {
           "display_name": {
@@ -1037,7 +1177,7 @@
             "type": "string",
             "_special": "select_persona",
             "default": "",
-            "hint": "仅在该人格下使用；留空表示通用兜底音色"
+            "hint": "仅在该人格下使用；留空表示作为通用兜底音色"
           },
           "api_key": {
             "description": "API Key",
@@ -1137,7 +1277,7 @@
             "type": "string",
             "_special": "select_persona",
             "default": "",
-            "hint": "仅在该人格下使用；留空表示通用兜底音色"
+            "hint": "仅在该人格下使用；留空表示作为通用兜底音色"
           },
           "api_key": {
             "description": "API Key",

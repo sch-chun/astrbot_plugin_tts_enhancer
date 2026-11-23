@@ -33,6 +33,11 @@ class TTSProviderAdapter(ABC):
     # 默认回退到 __template_key。
     DOCS_KEY: Optional[str] = None
 
+    # tts_enhance 工具中承载「待处理文本/提示词」的主字段名。
+    # 绝大多数供应商为 "text"；生成式音频类供应商可覆盖为 "text_prompt"，
+    # 表示 SubAgent 直接产出完整提示词而非原始台词。契约测试据此字段校验。
+    TOOL_PROMPT_FIELD: str = "text"
+
     # ———————— 语音合成 ————————
 
     def __init__(self, entry: dict) -> None:

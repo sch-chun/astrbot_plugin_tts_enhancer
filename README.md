@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.3.1-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.4.0-green)](CHANGELOG.md)
 
 ---
 
@@ -100,8 +100,19 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 | **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | 方括号情绪标记（64+ 种，跨句自由切换） | ✅ | ✅ | ❌ | ❌ | 13 种 | ❌ |
 | **Eleven v4** | v4 / v4 Turbo | 方括号情绪标记 + `/IPA/` 发音 + `<break>` 停顿 | ✅ | ✅ | ✅ | 粤语 | 90 种 | ❌ |
 | **StepFun StepAudio 3 TTS** | stepaudio-3-tts | `instruction` + `()` 内联指令 | ✅ | ✅ | ❌ | ❌ | 中文为主 | ❌ |
+| **百炼 Qwen Audio 3.1 TTS Next** | qwen-audio-3.1-tts-next | 自然语言场景描述（音色 / 情绪 / 音效） | ❌ | ❌ | ❌ | ❌ | 中文、英文 | ❌ |
 
 > StepFun 的复刻音色为**只读预览**（在官方 playground 克隆后自动列出）；设计音色需前往官方工作台操作，插件内不做写操作。
+
+### 关于百炼音频生成（与其他供应商不同）
+
+`qwen-audio-3.1-tts-next` 不是传统 TTS，而是**音频生成**：一次产出语音、音效与环境音，可构建完整的声音场景（单人旁白、广播剧、游戏台词等）。因此它的使用方式上表无法完整体现，需要单独说明：
+
+- **输入是提示词，不是台词**：`tts_enhance` 工具的主字段是 `text_prompt`，由 SubAgent 把「说什么」和「怎么读 / 什么场景」写在同一段描述里；`volume` / `rate` 仅在用户明确要求整体调整时填写。
+- **单说话人**：当前适配器只做单说话人，即使模型支持多人也不暴露多角色编排。
+- **参考音频走配置项**：在供应商配置里以 `type: file` 上传参考音频（wav/mp3/ogg，最长 30 秒、Base64 后不超过 10MB），它决定音色，**不使用系统音色列表，也没有音色复刻 / 设计的管理页**。有无参考音频时 SubAgent 收到的写作说明不同：有参考音频用 `@voice1` 指代说话人，没有则必须用文字写明人物身份与音色。
+- **超限自动处理**：参考音频过长或过大时自动截断并提示，不阻断合成。
+- **音质设置**：`format` / `sample_rate` / `channels` 以及 MP3 的码率 / 音质选项在配置项中设定；`seed` 设为 `-1` 时每次随机生成。
 
 > 多个供应商可以**同时配置并按 priority 回退**；每个供应商条目还可通过 `persona_id` **绑定到指定人格**，实现「不同人格使用不同音色」。
 
