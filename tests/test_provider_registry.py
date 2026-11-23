@@ -102,6 +102,12 @@ class TestAllProvidersSmoke:
         assert prompt_field in params["required"], (
             f"{key} 工具主字段 {prompt_field} 非必填"
         )
+        # 声明的额外字段必须与工具 schema 一致，防止声明漂移
+        schema_extra = set(params["properties"]) - {prompt_field}
+        assert schema_extra == set(adapter.TOOL_EXTRA_FIELDS), (
+            f"{key} TOOL_EXTRA_FIELDS 声明与工具 schema 不一致: "
+            f"声明={sorted(adapter.TOOL_EXTRA_FIELDS)}, schema={sorted(schema_extra)}"
+        )
 
     def test_system_prompt_is_non_empty(self, entry_and_adapter):
         _key, adapter = entry_and_adapter
@@ -114,13 +120,14 @@ class TestAllProvidersSmoke:
         assert adapter.validate_params({}) == (True, ""), f"{key} 空参数未被接受"
 
     def test_sanitize_params_preserves_text(self, entry_and_adapter):
-        """清洗后必须保留主字段，且不得混入未声明的多余字段。"""
+        """清洗后必须保留主字段，且不得混入该适配器未声明的多余字段。"""
         key, adapter = entry_and_adapter
         prompt_field = adapter.TOOL_PROMPT_FIELD
         out = adapter.sanitize_params({prompt_field: "hi"})
         assert out[prompt_field] == "hi", f"{key} 丢失了 {prompt_field}"
-        assert set(out) <= {"text", "instruction", "text_prompt", "volume", "rate"}, (
-            f"{key} 出现意外字段: {sorted(out)}"
+        allowed = {prompt_field, *adapter.TOOL_EXTRA_FIELDS}
+        assert set(out) <= allowed, (
+            f"{key} 出现未声明字段: {sorted(set(out) - allowed)}"
         )
 
 

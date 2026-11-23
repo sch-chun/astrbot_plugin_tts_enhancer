@@ -55,6 +55,8 @@ class StepfunStepaudio3TtsAdapter(TTSProviderAdapter, VoiceManageable):
 
     DISPLAY_NAME = "StepFun StepAudio 3 TTS"
 
+    TOOL_EXTRA_FIELDS = frozenset({"instruction", "speed", "text_normalization", "volume"})
+
     def __init__(self, entry: dict) -> None:
         super().__init__(entry)
         logger.debug(

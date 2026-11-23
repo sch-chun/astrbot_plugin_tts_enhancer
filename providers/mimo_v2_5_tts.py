@@ -28,6 +28,8 @@ from .utils.audio import save_audio_bytes
 
 class MimoV2_5TTSAdapter(TTSProviderAdapter):
     DISPLAY_NAME = "Mimo 2.5 TTS"
+    TOOL_EXTRA_FIELDS = frozenset({'instruction'})
+
     """Xiaomi MiMo V2.5 TTS provider adapter.
 
     Implements speech synthesis through the OpenAI-compatible

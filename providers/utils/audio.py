@@ -197,4 +197,3 @@ class AudioConstraints:
 
     # 百炼音频生成（qwen-audio-3.1-tts-next）
     QWEN_AUDIO_NEXT_MAX = 30.0     # 单条参考音频最长 30 秒
-    

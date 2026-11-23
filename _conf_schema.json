@@ -869,7 +869,7 @@
           "seed": {
             "description": "随机种子",
             "type": "int",
-            "default": 42,
+            "default": -1,
             "hint": "请求级随机种子。设为 -1 表示每次随机生成"
           },
           "enable_aigc_tag": {
