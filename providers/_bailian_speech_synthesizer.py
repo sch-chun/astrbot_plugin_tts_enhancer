@@ -89,6 +89,8 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter, VoiceManageable):
         "th", "id", "vi", "es", "it", "ms", "fil", "ar"
     ]
     MODEL_NAME = ""
+    TOOL_EXTRA_FIELDS = frozenset({'enable_markdown_filter', 'instruction', 'language_hints', 'pitch', 'rate', 'volume'})
+
 
     # 模型是否支持 AIGC 隐性标识。CosyVoice v3.5 不在官方支持范围内，子类关闭。
     SUPPORTS_AIGC_TAG = True

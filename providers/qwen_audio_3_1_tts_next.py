@@ -46,6 +46,7 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
 
     # 工具层只有 text_prompt：SubAgent 直接产出完整提示词，而非原始台词 + 指令。
     TOOL_PROMPT_FIELD = "text_prompt"
+    TOOL_EXTRA_FIELDS = frozenset({"volume", "rate"})
 
     # 官方文档：POST https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer
     _API_ENDPOINT = (
@@ -165,10 +166,12 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
             except Exception as exc:
                 logger.warning(f"[QwenAudioNext] voice_sample 自动截断失败，回退原文件: {exc}")
 
-        # 缓存 key 含截断标记，避免源文件未变但截断逻辑变化导致陈旧缓存命中。
+        # 缓存 key 含截断标记与截断参数，避免源文件未变但截断逻辑变化导致陈旧缓存命中。
         cache_key = (
             f"{digest}_{stat.st_mtime_ns}_{stat.st_size}_"
-            f"{'trim' if was_trimmed else 'raw'}.b64"
+            f"{'trim' if was_trimmed else 'raw'}_"
+            f"max{AudioConstraints.QWEN_AUDIO_NEXT_MAX:g}_"
+            f"margin{self.TRIM_MARGIN_SEC:g}.b64"
         )
         cache_file = cache_dir / cache_key
 
@@ -460,7 +463,13 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
                     logger.error(f"[QwenAudioNext] 响应格式异常: {data}")
                     return ""
 
-                if data.get("code") or data.get("error"):
+                # 服务端成功时可能带 code: 0 / "0"，不能当作错误（truthy 误判）。
+                code = data.get("code")
+                has_error = (
+                    code not in (None, "", 0, "0")
+                    or bool(data.get("error"))
+                )
+                if has_error:
                     error_msg = http.extract_error_message(data, str(data))
                     logger.error(f"[QwenAudioNext] API 错误: {error_msg}")
                     if any(k in error_msg.lower() for k in ("reference", "audio", "duration", "voice")):

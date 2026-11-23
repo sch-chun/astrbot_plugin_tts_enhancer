@@ -27,6 +27,8 @@ from .utils.audio import (
 
 class MinimaxSpeech2_8Adapter(TTSProviderAdapter, VoiceManageable, FileManageable):
     DISPLAY_NAME = "MiniMax Speech 2.8"
+    TOOL_EXTRA_FIELDS = frozenset({'emotion', 'language_boost', 'latex_read', 'pitch', 'speed', 'vol'})
+
     """MiniMax Speech 2.8 TTS 适配器。
 
     支持 HD 和 Turbo 两种模型，提供语音合成、参数校验、音色克隆与设计、
