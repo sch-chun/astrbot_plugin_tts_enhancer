@@ -39,6 +39,12 @@ def _make_entry(tmp_path, **overrides):
     return entry
 
 
+def _prepare(adapter):
+    """测试辅助：同步执行参考音频准备（与 ensure_voice_sample_ready 的线程体一致）。"""
+    adapter._prepare_voice_sample()
+    return adapter
+
+
 class _FakeResponse:
     def __init__(self, payload=None, status_code=200, content=b"fake-audio"):
         self._payload = payload or {}
@@ -300,14 +306,14 @@ async def test_mp3_params_ignored_for_wav(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_seed_minus_one_generates_local_random(monkeypatch, tmp_path):
-    """seed=-1 时本地随机一个正整数下发，避免固定用服务端默认 42。"""
+    """seed=-1 时本地随机一个 0~65535 的值下发，避免固定用服务端默认 42。"""
     _, captured = _capture_post(monkeypatch)
     entry = _make_entry(tmp_path, seed=-1)
     adapter = QwenAudio3_1TTSNextAdapter(entry)
     await adapter.call_api("x", {"text_prompt": "x"}, entry)
     seed = captured["input"]["seed"]
     assert isinstance(seed, int)
-    assert 0 <= seed <= 2**31 - 1
+    assert 0 <= seed <= 65535
 
     # 固定值仍原样下发
     _, captured2 = _capture_post(monkeypatch)
@@ -315,6 +321,40 @@ async def test_seed_minus_one_generates_local_random(monkeypatch, tmp_path):
     adapter2 = QwenAudio3_1TTSNextAdapter(entry2)
     await adapter2.call_api("x", {"text_prompt": "x"}, entry2)
     assert captured2["input"]["seed"] == 123
+
+
+@pytest.mark.asyncio
+async def test_seed_missing_key_generates_local_random(monkeypatch, tmp_path):
+    """配置缺 seed 键时同样走本地随机（与 -1 语义一致）。"""
+    _, captured = _capture_post(monkeypatch)
+    entry = _make_entry(tmp_path)
+    entry.pop("seed", None)
+    adapter = QwenAudio3_1TTSNextAdapter(entry)
+    await adapter.call_api("x", {"text_prompt": "x"}, entry)
+    seed = captured["input"]["seed"]
+    assert isinstance(seed, int)
+    assert 0 <= seed <= 65535
+
+
+@pytest.mark.asyncio
+async def test_seed_string_number_is_normalized(monkeypatch, tmp_path):
+    """字符串数字走 _as_int 归一后按固定种子下发。"""
+    _, captured = _capture_post(monkeypatch)
+    entry = _make_entry(tmp_path, seed="123")
+    adapter = QwenAudio3_1TTSNextAdapter(entry)
+    await adapter.call_api("x", {"text_prompt": "x"}, entry)
+    assert captured["input"]["seed"] == 123
+
+
+@pytest.mark.asyncio
+async def test_seed_out_of_range_generates_local_random(monkeypatch, tmp_path):
+    """超出 0~65535 的值按随机处理（与百炼服务端取值域一致）。"""
+    _, captured = _capture_post(monkeypatch)
+    entry = _make_entry(tmp_path, seed=999999)
+    adapter = QwenAudio3_1TTSNextAdapter(entry)
+    await adapter.call_api("x", {"text_prompt": "x"}, entry)
+    seed = captured["input"]["seed"]
+    assert 0 <= seed <= 65535
 
 
 def test_tool_schema_exposes_text_prompt_and_optional_vr(tmp_path):
@@ -341,8 +381,10 @@ def test_scenario_docs_switch_by_reference(tmp_path):
     sample = root / "files" / "voice.wav"
     sample.parent.mkdir(parents=True, exist_ok=True)
     sample.write_bytes(b"RIFFfake")
-    with_ref = QwenAudio3_1TTSNextAdapter(
-        _make_entry(tmp_path, voice_sample=["files/voice.wav"])
+    with_ref = _prepare(
+        QwenAudio3_1TTSNextAdapter(
+            _make_entry(tmp_path, voice_sample=["files/voice.wav"])
+        )
     )
     with_ref_prompt = with_ref.get_subagent_system_prompt()
     assert "已配置参考音频" in with_ref_prompt
@@ -381,8 +423,10 @@ def test_reference_duration_over_limit_auto_trims(monkeypatch, tmp_path):
     fake_trim, calls = _fake_trimmer(b"RIFF" + b"y" * 40)
     monkeypatch.setattr(f"{mod}.trim_audio_to_max", fake_trim)
 
-    adapter = QwenAudio3_1TTSNextAdapter(
-        _make_entry(tmp_path, voice_sample=["voice.wav"])
+    adapter = _prepare(
+        QwenAudio3_1TTSNextAdapter(
+            _make_entry(tmp_path, voice_sample=["voice.wav"])
+        )
     )
     assert adapter._voice_data_url is not None
     # 时长截断发生，目标 30s（函数内 margin 0.5 → 29.5s）
@@ -405,8 +449,10 @@ def test_reference_size_over_limit_auto_trims(monkeypatch, tmp_path):
     monkeypatch.setattr(f"{mod}.trim_audio_to_max", fake_trim)
     monkeypatch.setattr(QwenAudio3_1TTSNextAdapter, "MAX_VOICE_BASE64_BYTES", 100)
 
-    adapter = QwenAudio3_1TTSNextAdapter(
-        _make_entry(tmp_path, voice_sample=["big.wav"])
+    adapter = _prepare(
+        QwenAudio3_1TTSNextAdapter(
+            _make_entry(tmp_path, voice_sample=["big.wav"])
+        )
     )
     assert adapter._voice_data_url is not None
     assert len(calls) >= 1  # 二次截断被调用
@@ -414,30 +460,89 @@ def test_reference_size_over_limit_auto_trims(monkeypatch, tmp_path):
     assert base64.b64decode(encoded) == b"short"
 
 
-def test_cache_key_includes_size_limit_and_writes_atomically(monkeypatch, tmp_path):
-    """大小上限变化应产生不同缓存键；写入后目录不留 .tmp 半成品。"""
+def test_cache_key_includes_limits_and_writes_atomically(monkeypatch, tmp_path):
+    """缓存键含 max/margin/bytes 上限；写入后目录不留 .tmp 半成品。"""
     sample = tmp_path / "voice.wav"
     sample.write_bytes(b"RIFFdata")
     mod = "astrbot_plugin_tts_enhancer.providers.qwen_audio_3_1_tts_next"
     monkeypatch.setattr(f"{mod}.get_audio_duration", lambda p: None)  # 跳过时长分支
 
-    QwenAudio3_1TTSNextAdapter(_make_entry(tmp_path, voice_sample=["voice.wav"]))
+    _prepare(
+        QwenAudio3_1TTSNextAdapter(_make_entry(tmp_path, voice_sample=["voice.wav"]))
+    )
     cache_dir = tmp_path / "cache" / "qwen_audio_3_1_tts_next"
     first = list(cache_dir.glob("*.b64"))
     assert len(first) == 1
-    assert f"bytes{10 * 1024 * 1024}" in first[0].name
+    name = first[0].name
+    assert f"bytes{10 * 1024 * 1024}" in name
+    assert "margin0.5" in name
+    assert "max30.0" in name
+    # 冗余的 trim / raw 标记已从键里去掉（产物只取决于源文件状态 + 业务参数）
+    assert "_trim" not in name
+    assert "_raw" not in name
 
     # 调小上限后应写入新键，而不是复用旧缓存
     monkeypatch.setattr(
         QwenAudio3_1TTSNextAdapter, "MAX_VOICE_BASE64_BYTES", 1024
     )
-    QwenAudio3_1TTSNextAdapter(_make_entry(tmp_path, voice_sample=["voice.wav"]))
+    _prepare(
+        QwenAudio3_1TTSNextAdapter(_make_entry(tmp_path, voice_sample=["voice.wav"]))
+    )
     names = {p.name for p in cache_dir.glob("*.b64")}
     assert len(names) == 2
     assert any("bytes1024" in n for n in names)
 
     # 原子写：没有残留 .tmp 文件
     assert list(cache_dir.glob("*.tmp")) == []
+
+
+@pytest.mark.asyncio
+async def test_cache_hit_skips_duration_probe(monkeypatch, tmp_path):
+    """缓存命中路径零探测：不调用 get_audio_duration，也不重新编码。"""
+    sample = tmp_path / "voice.wav"
+    sample.write_bytes(b"RIFFdata")
+    mod = "astrbot_plugin_tts_enhancer.providers.qwen_audio_3_1_tts_next"
+
+    probes = []
+    monkeypatch.setattr(f"{mod}.get_audio_duration", lambda p: probes.append(p))
+
+    adapter = QwenAudio3_1TTSNextAdapter(_make_entry(tmp_path, voice_sample=["voice.wav"]))
+    await adapter.ensure_voice_sample_ready()
+    assert adapter._voice_data_url is not None
+    assert probes, "首次（未命中）应探测时长"
+
+    # 第二次：命中缓存 → 不得再探测
+    probes.clear()
+    adapter2 = QwenAudio3_1TTSNextAdapter(
+        _make_entry(tmp_path, voice_sample=["voice.wav"])
+    )
+    await adapter2.ensure_voice_sample_ready()
+    assert probes == [], "缓存命中路径不应探测时长"
+    assert adapter2._voice_data_url == adapter._voice_data_url
+
+
+@pytest.mark.asyncio
+async def test_corrupt_cache_is_deleted_and_reencoded(monkeypatch, tmp_path):
+    """坏缓存文件被删除后重新编码，不会把半截内容当成有效缓存。"""
+    sample = tmp_path / "voice.wav"
+    sample.write_bytes(b"RIFFdata")
+    mod = "astrbot_plugin_tts_enhancer.providers.qwen_audio_3_1_tts_next"
+    monkeypatch.setattr(f"{mod}.get_audio_duration", lambda p: None)
+
+    adapter = QwenAudio3_1TTSNextAdapter(_make_entry(tmp_path, voice_sample=["voice.wav"]))
+    await adapter.ensure_voice_sample_ready()
+    cache_dir = tmp_path / "cache" / "qwen_audio_3_1_tts_next"
+    cache_files = list(cache_dir.glob("*.b64"))
+    assert len(cache_files) == 1
+    cache_files[0].write_text("not-base64!!", encoding="utf-8")
+
+    adapter2 = QwenAudio3_1TTSNextAdapter(
+        _make_entry(tmp_path, voice_sample=["voice.wav"])
+    )
+    await adapter2.ensure_voice_sample_ready()
+    assert adapter2._voice_data_url is not None
+    encoded = adapter2._voice_data_url.split(",", 1)[1]
+    assert base64.b64decode(encoded) == b"RIFFdata"
 
 
 def test_reference_duration_unreadable_degrades(monkeypatch, tmp_path):
@@ -450,8 +555,10 @@ def test_reference_duration_unreadable_degrades(monkeypatch, tmp_path):
     fake_trim, calls = _fake_trimmer(b"x")
     monkeypatch.setattr(f"{mod}.trim_audio_to_max", fake_trim)
 
-    adapter = QwenAudio3_1TTSNextAdapter(
-        _make_entry(tmp_path, voice_sample=["voice.wav"])
+    adapter = _prepare(
+        QwenAudio3_1TTSNextAdapter(
+            _make_entry(tmp_path, voice_sample=["voice.wav"])
+        )
     )
     assert adapter._voice_data_url is not None
     assert calls == []  # 未尝试因时长截断
@@ -472,8 +579,10 @@ def test_reference_trim_failure_degrades(monkeypatch, tmp_path):
 
     monkeypatch.setattr(f"{mod}.trim_audio_to_max", failing_trim)
 
-    adapter = QwenAudio3_1TTSNextAdapter(
-        _make_entry(tmp_path, voice_sample=["voice.wav"])
+    adapter = _prepare(
+        QwenAudio3_1TTSNextAdapter(
+            _make_entry(tmp_path, voice_sample=["voice.wav"])
+        )
     )
     assert adapter._voice_data_url is not None
     encoded = adapter._voice_data_url.split(",", 1)[1]
@@ -512,21 +621,42 @@ async def test_api_error_response_returns_empty(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("success_code", [0, "0"])
-async def test_code_zero_not_treated_as_error(monkeypatch, tmp_path, success_code):
-    """服务端成功响应若带 code: 0 / "0"，不应被 truthy 判断误判为错误。"""
+@pytest.mark.parametrize("success_code", [0, "0", 200, "200"])
+async def test_success_codes_not_treated_as_error(monkeypatch, tmp_path, success_code):
+    """成功码不得被当成业务错误。
+
+    注意真正的 bug 是**字符串** ``"0"``——它是 truthy，按真值判断会把成功响应
+    误判为错误而短路请求；数值 ``0`` 本就 falsy，不会触发该分支。``200`` /
+    ``"200"`` 同理属于成功码。
+    """
     client = _install(monkeypatch, _FakeClient())
     monkeypatch.setattr(
         "astrbot_plugin_tts_enhancer.providers.qwen_audio_3_1_tts_next.save_audio_bytes",
         lambda data_dir, content, fmt: "/tmp/out.wav",
     )
-    # 给成功 payload 注入 code: 0 / "0"
+    # 给成功 payload 注入成功码
     client._post_resp._payload["code"] = success_code
 
     entry = _make_entry(tmp_path)
     adapter = QwenAudio3_1TTSNextAdapter(entry)
     assert await adapter.call_api("hi", {"text_prompt": "hi"}, entry) == "/tmp/out.wav"
     assert len(client.get_calls) == 1  # 走到音频下载，未被错误分支短路
+
+
+@pytest.mark.asyncio
+async def test_boolean_code_is_not_success(monkeypatch, tmp_path):
+    """``code: false`` 不能被当成成功（``False == 0`` 的陷阱）。"""
+    client = _install(monkeypatch, _FakeClient())
+    monkeypatch.setattr(
+        "astrbot_plugin_tts_enhancer.providers.qwen_audio_3_1_tts_next.save_audio_bytes",
+        lambda data_dir, content, fmt: "/tmp/out.wav",
+    )
+    client._post_resp._payload["code"] = False
+
+    entry = _make_entry(tmp_path)
+    adapter = QwenAudio3_1TTSNextAdapter(entry)
+    assert await adapter.call_api("hi", {"text_prompt": "hi"}, entry) == ""
+    assert client.get_calls == []  # 未进入下载
 
 
 @pytest.mark.asyncio
@@ -669,7 +799,7 @@ def test_wav_duration_fallback_without_ffmpeg(tmp_path):
         w.writeframes(b"\x00\x00" * (8000 * 32))  # 32 秒
 
     entry = _make_entry(tmp_path, voice_sample=["files/long.wav"])
-    adapter = QwenAudio3_1TTSNextAdapter(entry)
+    adapter = _prepare(QwenAudio3_1TTSNextAdapter(entry))
     assert adapter._voice_data_url is not None
 
     trimmed = base64.b64decode(adapter._voice_data_url.split(",", 1)[1])
