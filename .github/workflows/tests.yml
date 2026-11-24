@@ -9,8 +9,6 @@ jobs:
   pytest:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      pull-requests: write
     env:
       CI: "true"
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
@@ -35,25 +33,6 @@ jobs:
         run: |
           set -o pipefail
           python -m pytest -ra 2>&1 | tee pytest.log
-
-      - name: Publish pytest failure summary to PR (temporary diagnostics)
-        if: failure()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          {
-            echo "### pytest 失败摘要（临时诊断，稍后移除）"
-            echo
-            echo '```text'
-            grep -E '^(FAILED|ERROR) ' pytest.log | head -n 100 || true
-            echo
-            tail -n 40 pytest.log
-            echo '```'
-          } > pytest-summary.md
-          if [ -n "${PR_NUMBER:-}" ]; then
-            gh pr comment "$PR_NUMBER" --body-file pytest-summary.md || true
-          fi
 
       - name: Guard against silent all-skip
         if: always()
