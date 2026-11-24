@@ -252,10 +252,19 @@ class TestBase64FileCache:
     def test_key_parts_change_invalidates_cache(self, tmp_path):
         src = self._source(tmp_path)
         cache_dir = tmp_path / "cache"
-        audio_utils.Base64FileCache(cache_dir, key_parts={"bytes": 100}).save(src, "first")
-        assert audio_utils.Base64FileCache(cache_dir, key_parts={"bytes": 100}).load(src) == "first"
+        # 缓存内容必须是合法 Base64（命中时会做严格解码校验）
+        audio_utils.Base64FileCache(cache_dir, key_parts={"bytes": 100}).save(
+            src, "Zmlyc3Q="
+        )
+        assert (
+            audio_utils.Base64FileCache(cache_dir, key_parts={"bytes": 100}).load(src)
+            == "Zmlyc3Q="
+        )
         # 业务参数变化后不命中旧缓存
-        assert audio_utils.Base64FileCache(cache_dir, key_parts={"bytes": 50}).load(src) is None
+        assert (
+            audio_utils.Base64FileCache(cache_dir, key_parts={"bytes": 50}).load(src)
+            is None
+        )
 
     def test_save_is_atomic_no_tmp_left(self, tmp_path):
         src = self._source(tmp_path)
@@ -272,14 +281,14 @@ class TestBase64FileCache:
         for i in range(3):
             src = self._source(tmp_path, name=f"s{i}.wav", data=bytes([65 + i]) * 8)
             sources.append(src)
-            cache.save(src, f"v{i}")
+            cache.save(src, f"dj{i}=")  # base64("v0" / "v1" / "v2")
             time.sleep(0.01)  # 保证 mtime 递增
         files = list(cache_dir.glob("*.b64"))
         assert len(files) == 2
         # 第一个源文件（s0）的缓存应被淘汰，后两个保留
         assert cache.load(sources[0]) is None
-        assert cache.load(sources[1]) == "v1"
-        assert cache.load(sources[2]) == "v2"
+        assert cache.load(sources[1]) == "djE="
+        assert cache.load(sources[2]) == "djI="
 
     def test_corrupt_cache_is_ignored(self, tmp_path):
         src = self._source(tmp_path)

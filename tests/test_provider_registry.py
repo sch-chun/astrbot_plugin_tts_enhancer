@@ -164,16 +164,42 @@ class TestRuntimeToolContract:
             f"{key} 运行时泄漏未声明字段: {sorted(set(payload) - allowed)}"
         )
 
-    async def test_declared_params_are_kept(self, entry_and_adapter):
+    async def test_undeclared_params_never_reach_validation(
+        self, entry_and_adapter, monkeypatch
+    ):
+        """未声明字段连校验都不应进入（否则非法值会把整轮工具调用判为失败）。"""
+        key, adapter = entry_and_adapter
+        prompt_field = adapter.TOOL_PROMPT_FIELD
+        seen: dict = {}
+        original = adapter.validate_params
+
+        def spy(params):
+            seen.update(params)
+            return original(params)
+
+        monkeypatch.setattr(adapter, "validate_params", spy)
+        await adapter._handle_enhance_tool(
+            **{prompt_field: "hi", "junk_field": 1}
+        )
+        assert "junk_field" not in seen, f"{key} 未声明字段进入了校验流程"
+
+    async def test_declared_params_are_kept(self, entry_and_adapter, monkeypatch):
         """已声明的额外字段必须原样保留（过滤不能误伤）。"""
         key, adapter = entry_and_adapter
         prompt_field = adapter.TOOL_PROMPT_FIELD
         extra = sorted(adapter.tool_extra_fields())
         if not extra:
             pytest.skip(f"{key} 无额外字段")
-        kwargs = {prompt_field: "hi", extra[0]: "1"}
-        result = await adapter._handle_enhance_tool(**kwargs)
-        assert result.isError is False, f"{key} 合法参数不应报错"
+        seen: dict = {}
+        original = adapter.validate_params
+
+        def spy(params):
+            seen.update(params)
+            return original(params)
+
+        monkeypatch.setattr(adapter, "validate_params", spy)
+        await adapter._handle_enhance_tool(**{prompt_field: "hi", extra[0]: "keep-me"})
+        assert extra[0] in seen, f"{key} 已声明字段 {extra[0]} 被误丢弃"
 
 
 def test_eleven_tool_extra_fields_follows_injected_catalog_cache():
