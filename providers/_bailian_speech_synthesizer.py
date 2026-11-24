@@ -3,6 +3,7 @@
 import base64
 import binascii
 from pathlib import Path
+import random
 import re
 import traceback
 
@@ -25,6 +26,10 @@ _DATA_URL_RE = re.compile(
     r"data:audio/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=_-]+",
     re.IGNORECASE,
 )
+
+# 百炼 seed 合法区间（官方文档：0~65535 为固定种子，范围之外由服务端随机）。
+SEED_MIN = 0
+SEED_MAX = 65535
 
 # 复刻与声音设计音色创建后，百炼均会异步部署（DEPLOYING → OK）。状态查询交由
 # 前端轮询 /voice/query（见 main.py），后端创建即返回初始状态，不阻塞等待部署。
@@ -262,6 +267,27 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter, VoiceManageable):
             return 24000
         return rate
 
+    def _resolve_seed(self, raw: Any) -> int:
+        """把配置里的 seed 归一为合法值（0~65535）。
+
+        统一语义（与「百炼音频生成」一致，与 Eleven 不同）：
+
+        - ``0``~``65535``（含字符串数字）→ 原样下发，固定种子；
+        - ``-1`` / 缺键 / 越界 / 非法值 → **本地随机**一个 0~65535 的值。
+
+        此前 ``seed == -1`` 时不下发该字段，服务端会退化为固定默认种子，
+        导致同一文本每次生成结果完全相同；改为本地随机后，配置页「-1 每次随机」
+        的说明才真正成立。
+        """
+        seed = self._as_int(raw)
+        if seed is not None and SEED_MIN <= seed <= SEED_MAX:
+            return seed
+        if raw not in (None, -1, "-1"):
+            logger.warning(
+                f"{self.template_key} seed={raw!r} 不在 {SEED_MIN}-{SEED_MAX}，已改为本地随机"
+            )
+        return random.randint(SEED_MIN, SEED_MAX)
+
     # ---------- 3. 调用 TTS API ----------
     async def call_api(
         self,
@@ -311,7 +337,6 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter, VoiceManageable):
         timeout = config.get("timeout", 60)
         format_type = config.get("format", "wav")
         sample_rate = self._resolve_sample_rate(config)
-        seed = config.get("seed", -1)
 
         # AIGC 隐性标识仅 wav/mp3/opus 支持；pcm 及不支持的模型（CosyVoice v3.5）
         # 即使旧配置残留开关也不传，避免把非法组合发给 API。
@@ -366,9 +391,8 @@ class BailianSpeechSynthesizerAdapter(TTSProviderAdapter, VoiceManageable):
         if final_markdown_filter is not None:
             payload["input"]["enable_markdown_filter"] = final_markdown_filter
 
-        # 配置中的固定参数
-        if seed != -1:
-            payload["input"]["seed"] = seed
+        # 配置中的固定参数：seed 始终下发（-1 / 缺键 / 越界 → 本地随机）。
+        payload["input"]["seed"] = self._resolve_seed(config.get("seed", -1))
         if enable_aigc:
             payload["input"]["enable_aigc_tag"] = True
             if aigc_propagator:
