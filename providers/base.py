@@ -117,10 +117,24 @@ class TTSProviderAdapter(ABC):
         合法返回 ``isError=False``（清洗后的参数 JSON）；
         非法返回 ``isError=True``（中文错误提示）。
         TTSSubAgent 据此驱动重试。
+
+        契约在运行时生效：只接受主字段（``TOOL_PROMPT_FIELD``）与该适配器当前
+        声明的额外字段（``tool_extra_fields()``），其余入参一律丢弃 —— 既不会
+        进入 ``sanitize_params``，也不参与校验（避免未声明字段因非法值把整轮
+        工具调用判为失败）。SubAgent 可能记忆到不同供应商的字段名，这一步保证
+        它们不会漏到适配器内部。
         """
-        is_valid, err = self.validate_params(kwargs)
+        allowed = {self.TOOL_PROMPT_FIELD, *self.tool_extra_fields()}
+        dropped = sorted(key for key in kwargs if key not in allowed)
+        if dropped:
+            logger.warning(
+                f"[{self.template_key}] 丢弃未声明的 tts_enhance 参数: {dropped}"
+            )
+        filtered = {key: value for key, value in kwargs.items() if key in allowed}
+
+        is_valid, err = self.validate_params(filtered)
         if is_valid:
-            payload = json.dumps(self.sanitize_params(kwargs), ensure_ascii=False)
+            payload = json.dumps(self.sanitize_params(filtered), ensure_ascii=False)
             return CallToolResult(
                 isError=False, content=[TextContent(type="text", text=payload)]
             )
@@ -172,6 +186,20 @@ class TTSProviderAdapter(ABC):
         应覆写此方法，按配置超时有界等待，超时则不暴露对应参数但继续后台预热。
         ``tts_service`` 在构建工具 schema / SubAgent 提示词前统一调用，对所有适配
         器安全（无操作适配器零成本）。
+        """
+        return None
+
+    async def ensure_voice_sample_ready(self) -> None:
+        """合成前准备参考音频（编码 / 缓存 / 截断）。
+
+        基类默认无操作。需要预编码参考音频的供应商（百炼音频生成、MiMo
+        voiceclone）应覆写此方法，并把文件探测（ffprobe / pydub）、转码与
+        大文件读写等同步重活经 ``asyncio.to_thread`` 移出事件循环，保证缓存
+        命中路径零探测。
+
+        ``tts_service`` 在构建工具 schema 与 SubAgent 提示词**之前**统一调用：
+        适配器据此决定注入「有参考音频 / 无参考音频」哪份能力说明书，因此这
+        一步必须早于 ``get_subagent_system_prompt()``。
         """
         return None
 
