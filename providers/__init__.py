@@ -1,5 +1,6 @@
 """TTS Provider 适配器工厂 —— 自动发现机制"""
 
+import importlib
 import importlib.util
 import inspect
 from pathlib import Path
@@ -35,6 +36,13 @@ class ProviderFactory:
         动态导入每个模块并查找其中继承自TTSProviderAdapter的类。
         发现的适配器会被缓存在类变量_adapters中。
 
+        导入方式优先走包内正常导入（``importlib.import_module``），保证适配器
+        模块**唯一实例**：早前用 ``spec_from_file_location`` 动态执行模块时，
+        会另起一份模块对象，导致模块级状态（如 Eleven 的 ``_CATALOG_CACHE``）
+        被复制成两份——工厂创建的适配器与 ``from . import elevenlabs_v4`` 拿到的
+        模块互不可见，缓存注入、跨模块 isinstance 判断都会失真。
+        仅当包内导入失败（插件目录不在可导入包内）时，才回退到按文件路径加载。
+
         Returns:
             None: 该方法没有返回值，结果存储在类变量_adapters中
         """
@@ -50,15 +58,7 @@ class ProviderFactory:
 
             module_name = py_file.stem
             try:
-
-                # 动态导入模块
-                spec = importlib.util.spec_from_file_location(
-                    f"{__package__}.{module_name}", py_file
-                )
-                if spec is None or spec.loader is None:
-                    continue
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
+                module = cls._import_adapter_module(module_name, py_file)
 
                 # 查找继承 TTSProviderAdapter 的具体类
                 for _, obj in inspect.getmembers(module, inspect.isclass):
@@ -67,7 +67,7 @@ class ProviderFactory:
                         and obj is not TTSProviderAdapter
                         and obj.__module__ == module.__name__
                     ):
-                        
+
                         # 使用模块名作为映射 key（与 __template_key 一致）
                         discovered[module_name] = obj
             except Exception as e:
@@ -77,14 +77,39 @@ class ProviderFactory:
         cls._adapters = discovered
 
     @classmethod
+    def _import_adapter_module(cls, module_name: str, py_file: Path):
+        """导入单个适配器模块，优先保证模块唯一实例。
+
+        Args:
+            module_name: 模块名（= 文件名 = ``__template_key``）。
+            py_file: 适配器模块的绝对路径。
+
+        Returns:
+            导入后的模块对象。
+        """
+        try:
+            # 包内正常导入：复用 sys.modules 中的模块实例（唯一实例）。
+            return importlib.import_module(f"{__package__}.{module_name}")
+        except Exception:
+            # 回退：按文件路径加载（插件目录不在可导入包内时的兜底路径）。
+            spec = importlib.util.spec_from_file_location(
+                f"{__package__}.{module_name}", py_file
+            )
+            if spec is None or spec.loader is None:
+                raise ImportError(f"无法加载适配器模块: {py_file}")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+
+    @classmethod
     def get_adapter(cls, entry: dict) -> TTSProviderAdapter | None:
         """根据配置条目获取适配器实例。
 
         该方法会先自动发现所有可用的适配器，然后根据配置中的__template_key
-        来查找并返回对应的适配器实例。
+        来查找并返回对应的适配器类。
 
         Args:
-            entry (dict): 配置字典，必须包含__template_key字段来指定要使用的适配器类型
+            entry: 配置字典，必须包含__template_key字段来指定要使用的适配器类型
 
         Returns:
             TTSProviderAdapter | None: 如果找到对应的适配器类，返回其实例；否则返回None
