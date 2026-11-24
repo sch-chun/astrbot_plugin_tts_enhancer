@@ -45,6 +45,53 @@ class TestExtractErrorMessage:
         assert http.extract_error_message({"message": 12345}) == "12345"
 
 
+class TestHasBusinessError:
+    """HTTP 200 响应体的业务错误判定（按类型分别处理）。"""
+
+    def test_numeric_zero_is_success(self):
+        """数值 0 本就 falsy，不会触发真值判断的误判分支。"""
+        assert http.has_business_error({"code": 0}) is False
+
+    def test_string_zero_is_success(self):
+        """字符串 "0" 是 truthy —— 这才是原 bug 的真正来源，不得当错误。"""
+        assert http.has_business_error({"code": "0"}) is False
+
+    def test_numeric_200_is_success(self):
+        assert http.has_business_error({"code": 200}) is False
+
+    def test_string_200_is_success(self):
+        assert http.has_business_error({"code": "200"}) is False
+
+    def test_string_zero_with_spaces_is_success(self):
+        assert http.has_business_error({"code": " 0 "}) is False
+
+    def test_bool_false_is_error(self):
+        """False == 0 的陷阱：bool 不参与数值比较，不能被当成成功码。"""
+        assert http.has_business_error({"code": False}) is True
+
+    def test_bool_true_is_error(self):
+        assert http.has_business_error({"code": True}) is True
+
+    def test_absent_code_is_success(self):
+        assert http.has_business_error({}) is False
+
+    def test_empty_string_code_is_success(self):
+        assert http.has_business_error({"code": ""}) is False
+
+    def test_error_field_is_error(self):
+        assert http.has_business_error({"error": "server_busy"}) is True
+
+    def test_unknown_string_code_is_error(self):
+        assert http.has_business_error({"code": "CLIENT_ERROR"}) is True
+
+    def test_unknown_numeric_code_is_error(self):
+        assert http.has_business_error({"code": 1001}) is True
+
+    def test_non_dict_payload_is_not_error(self):
+        assert http.has_business_error("boom") is False
+        assert http.has_business_error(None) is False
+
+
 class TestSaveAudioBytes:
     def test_empty_data_dir_returns_empty(self):
         assert audio_utils.save_audio_bytes("", b"abc") == ""
@@ -165,6 +212,7 @@ class TestAudioConstraints:
         assert c.MINIMAX_CLONE_MIN < c.MINIMAX_CLONE_MAX
         assert c.BAILIAN_CLONE_MIN < c.BAILIAN_CLONE_MAX
         assert c.MINIMAX_PROMPT_MAX < c.MINIMAX_CLONE_MAX
+        assert c.QWEN_AUDIO_NEXT_MAX == 30.0
 
 
 def _missing_path():
@@ -185,3 +233,130 @@ class TestPydubAvailability:
         f.write_bytes(b"not audio")
         with pytest.raises(RuntimeError, match="pydub 未安装"):
             audio_utils.trim_audio_to_max(str(f), max_sec=10)
+
+
+class TestBase64FileCache:
+    def _source(self, tmp_path, name="sample.wav", data=b"RIFFdata"):
+        f = tmp_path / name
+        f.write_bytes(data)
+        return f
+
+    def test_roundtrip_and_hit(self, tmp_path):
+        src = self._source(tmp_path)
+        cache_dir = tmp_path / "cache"
+        cache = audio_utils.Base64FileCache(cache_dir, key_parts={"bytes": 100})
+        assert cache.load(src) is None
+        cache.save(src, "QUJD")
+        assert cache.load(src) == "QUJD"
+
+    def test_key_parts_change_invalidates_cache(self, tmp_path):
+        src = self._source(tmp_path)
+        cache_dir = tmp_path / "cache"
+        # 缓存内容必须是合法 Base64（命中时会做严格解码校验）
+        audio_utils.Base64FileCache(cache_dir, key_parts={"bytes": 100}).save(
+            src, "Zmlyc3Q="
+        )
+        assert (
+            audio_utils.Base64FileCache(cache_dir, key_parts={"bytes": 100}).load(src)
+            == "Zmlyc3Q="
+        )
+        # 业务参数变化后不命中旧缓存
+        assert (
+            audio_utils.Base64FileCache(cache_dir, key_parts={"bytes": 50}).load(src)
+            is None
+        )
+
+    def test_save_is_atomic_no_tmp_left(self, tmp_path):
+        src = self._source(tmp_path)
+        cache_dir = tmp_path / "cache"
+        audio_utils.Base64FileCache(cache_dir).save(src, "QUJD")
+        assert list(cache_dir.glob("*.tmp")) == []
+
+    def test_lru_prunes_oldest(self, tmp_path):
+        import time
+
+        cache_dir = tmp_path / "cache"
+        cache = audio_utils.Base64FileCache(cache_dir, max_entries=2)
+        sources = []
+        contents = []
+        for i in range(3):
+            src = self._source(tmp_path, name=f"s{i}.wav", data=bytes([65 + i]) * 8)
+            sources.append(src)
+            content = f"dj{i}="  # 合法 Base64（4 的倍数，可严格解码）
+            contents.append(content)
+            cache.save(src, content)
+            time.sleep(0.01)  # 保证 mtime 递增
+        files = list(cache_dir.glob("*.b64"))
+        assert len(files) == 2
+        # 第一个源文件（s0）的缓存应被淘汰，后两个保留
+        assert cache.load(sources[0]) is None
+        assert cache.load(sources[1]) == contents[1]
+        assert cache.load(sources[2]) == contents[2]
+
+    def test_corrupt_cache_is_ignored(self, tmp_path):
+        src = self._source(tmp_path)
+        cache_dir = tmp_path / "cache"
+        cache = audio_utils.Base64FileCache(cache_dir)
+        path = cache.save(src, "QUJD")
+        path.write_bytes(b"\xff\xfe")  # 非 ASCII 半截文件
+        assert cache.load(src) is None
+
+    def test_key_contains_version_marker_and_parts(self, tmp_path):
+        """键里固定带 v2 段，并包含业务参数段。"""
+        src = self._source(tmp_path)
+        cache_dir = tmp_path / "cache"
+        cache = audio_utils.Base64FileCache(
+            cache_dir, key_parts={"bytes": 100, "margin": 0.5}
+        )
+        path = cache.save(src, "QUJD")
+        stem = path.name[: -len(".b64")]
+        parts = stem.split("_")
+        assert parts[3] == "v2"
+        assert "bytes100" in parts
+        assert "margin0.5" in parts
+
+    def test_legacy_key_files_are_pruned(self, tmp_path):
+        """旧键格式文件（无 v2 段）在写入时顺手清理。"""
+        src = self._source(tmp_path)
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        legacy_mimo = cache_dir / "abcdef123456_111_222.b64"
+        legacy_qwen = cache_dir / "abcdef123456_111_222_trim.b64"
+        legacy_mimo.write_text("QUJD", encoding="ascii")
+        legacy_qwen.write_text("QUJD", encoding="ascii")
+
+        cache = audio_utils.Base64FileCache(cache_dir)
+        cache.save(src, "QUJD")
+
+        assert not legacy_mimo.exists()
+        assert not legacy_qwen.exists()
+        # 新键文件保留
+        assert len(list(cache_dir.glob("*.b64"))) == 1
+
+    def test_unrelated_files_are_not_touched(self, tmp_path):
+        """只清理 *.b64，且只在本缓存目录顶层；其它文件不受影响。"""
+        src = self._source(tmp_path)
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        keep = cache_dir / "notes.txt"
+        keep.write_text("user data", encoding="utf-8")
+        nested = cache_dir / "nested"
+        nested.mkdir()
+        nested_b64 = nested / "abcdef123456_111_222.b64"
+        nested_b64.write_text("QUJD", encoding="ascii")
+
+        cache = audio_utils.Base64FileCache(cache_dir)
+        cache.save(src, "QUJD")
+
+        assert keep.exists()
+        assert nested_b64.exists()  # 不递归、不越层
+
+    def test_corrupt_cache_file_is_deleted(self, tmp_path):
+        """坏缓存（内容不是合法 Base64）被删除，随后重新编码。"""
+        src = self._source(tmp_path)
+        cache_dir = tmp_path / "cache"
+        cache = audio_utils.Base64FileCache(cache_dir)
+        path = cache.save(src, "QUJD")
+        path.write_text("not-base64!!", encoding="utf-8")
+        assert cache.load(src) is None
+        assert not path.exists()

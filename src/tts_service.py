@@ -145,7 +145,7 @@ class TTSService:
 
         Args:
             raw_text: 待合成文本
-            event: 消息事件
+            event: 聊天事件
             context_messages: 上下文消息列表
 
         Returns:
@@ -257,7 +257,7 @@ class TTSService:
             raw_text: 待合成文本。
             entry_name: 供应商显示名（用于日志与记录）。
             event: 聊天事件（用于解析会话标识与记录来源）；预览为 None。
-            enhance: 是否允许本供应商走 SubAgent 增强（还需该供应商有文档）。
+            enhance: 是否允许该供应商走 SubAgent 增强（还需该供应商有文档）。
                 聊天路径传全局 enable_enhance；预览路径传前端开关。
             persona: 说话人人格（仅聊天路径注入）。
             context_messages: 对话上下文（仅聊天路径注入）。
@@ -275,6 +275,14 @@ class TTSService:
         adapter = ProviderFactory.get_adapter(entry_with_data_dir)
         if not adapter:
             return None, raw_text
+
+        # 参考音频准备：ffprobe / pydub 探测、截断与大文件读写在适配器里是同步
+        # 重活，统一经异步钩子卸载到线程（缓存命中时零探测）。
+        # 必须早于 get_subagent_system_prompt()：适配器据此决定注入「有/无参考
+        # 音频」哪份能力说明书，顺序反了会让说明书与实际请求不一致。
+        voice_hook = getattr(adapter, "ensure_voice_sample_ready", None)
+        if callable(voice_hook) and asyncio.iscoroutinefunction(voice_hook):
+            await voice_hook()
 
         # 配置快照：本次合成实际使用的供应商配置（不含密钥），供记录展示。
         config_snapshot = build_config_snapshot(entry)

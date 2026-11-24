@@ -14,8 +14,8 @@
 当前是否配置了参考音频择一注入。
 """
 
+import asyncio
 import base64
-import hashlib
 import random
 import re
 
@@ -31,6 +31,7 @@ from .base import TTSProviderAdapter
 from .utils import http
 from .utils.audio import (
     AudioConstraints,
+    Base64FileCache,
     get_audio_duration,
     save_audio_bytes,
     trim_audio_to_max,
@@ -46,6 +47,7 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
 
     # 工具层只有 text_prompt：SubAgent 直接产出完整提示词，而非原始台词 + 指令。
     TOOL_PROMPT_FIELD = "text_prompt"
+    TOOL_EXTRA_FIELDS = frozenset({"volume", "rate"})
 
     # 官方文档：POST https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer
     _API_ENDPOINT = (
@@ -64,6 +66,11 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
     MAX_VOICE_BASE64_BYTES = 10 * 1024 * 1024
     MAX_PROMPT_CHARS = 3000
 
+    # seed 取值域（百炼音频生成）：0~65535 为固定种子，其余（含 -1 / 缺键）
+    # → 本地随机一个 0~65535 的值。
+    SEED_MIN = 0
+    SEED_MAX = 65535
+
     # 参考音频支持 WAV / MP3 / OGG Opus（不支持裸 PCM）。
     _MIME_BY_EXT = {
         ".wav": "audio/wav",
@@ -77,24 +84,22 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
     def __init__(self, entry: dict) -> None:
         super().__init__(entry)
         self._voice_data_url: Optional[str] = None
-        self._prepare_voice_sample()
+        # __init__ 只做「廉价准备」（路径解析 + 格式白名单），不读文件、不探测
+        # 时长、不落盘：重活统一由 ensure_voice_sample_ready() 调度到线程。
+        self._voice_sample: Optional[tuple[Path, str]] = self._resolve_voice_sample()
+        self._voice_sample_ready = False
 
     # ———————— 参考音频 ————————
 
-    def _prepare_voice_sample(self) -> None:
-        """预编码并缓存参考音频样本，超限时自动截断而非拒绝。
+    def _resolve_voice_sample(self) -> Optional[tuple[Path, str]]:
+        """解析并校验参考音频路径（纯元数据操作，不读取文件内容）。
 
         ``_data_dir`` 由 ``src/tts_service.py`` 注入，指向 ``<plugin_data>/<name>/audio``，
         其父目录即插件数据根目录。AstrBot 配置页上传的 ``type: file`` 字段保存的是
-        相对该根目录的路径（如 ``files/voice_sample/xxx.wav``）。处理流程：
+        相对该根目录的路径（如 ``files/voice_sample/xxx.wav``）。
 
-        1. 路径穿越校验（必须，无法自动修复）与格式白名单校验；
-        2. 时长超过 30 秒 → 自动截断到 29.5 秒并打 warning；
-        3. Base64 编码后超过 10MB → 按超出比例再次截断并打 warning；
-        4. 时长读取 ffprobe 优先、pydub 兜底（WAV 免 ffmpeg）；两者都失败
-           → 降级跳过时长校验（仍按大小截断），不阻断合成；
-        5. 截断产物写入缓存目录，不污染用户上传目录；缓存 key 含原文件
-           mtime/size 与「是否被截断」标记，避免源文件变更后命中陈旧缓存。
+        Returns:
+            (绝对路径, MIME) 二元组；未配置 / 文件不存在 / 格式不支持时为 None。
 
         Raises:
             ValueError: 路径越权（唯一保留的硬失败项）。
@@ -102,16 +107,16 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
         data_dir = self.entry.get("_data_dir", "")
         if not data_dir:
             logger.debug("[QwenAudioNext] 未注入 _data_dir，跳过参考音频预编码")
-            return
+            return None
 
         samples = self.entry.get("voice_sample")
         if not isinstance(samples, list) or not samples:
             logger.debug("[QwenAudioNext] 未配置 voice_sample，使用纯文本生成")
-            return
+            return None
 
         rel_path = str(samples[0]).strip()
         if not rel_path:
-            return
+            return None
 
         root = Path(data_dir).parent
         sample_path = (root / rel_path).resolve()
@@ -122,7 +127,7 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
 
         if not sample_path.is_file():
             logger.warning(f"[QwenAudioNext] voice_sample 文件不存在: {sample_path}")
-            return
+            return None
 
         mime = self._MIME_BY_EXT.get(sample_path.suffix.lower())
         if mime is None:
@@ -130,15 +135,68 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
                 f"[QwenAudioNext] 不支持的 voice_sample 格式: {sample_path.suffix}，"
                 "仅支持 wav/mp3/ogg"
             )
+            return None
+
+        return sample_path, mime
+
+    async def ensure_voice_sample_ready(self) -> None:
+        """准备参考音频：把同步重活卸载到线程，缓存命中时零探测。
+
+        - 命中缓存：只算键 + 读缓存，**不调用** ``get_audio_duration()``（不产生
+          ffprobe / pydub 子进程），也不重新读源文件；
+        - 未命中：时长探测、截断、Base64 编码与大文件读写均在
+          ``asyncio.to_thread`` 中执行，不阻塞事件循环；
+        - 任何异常都降级为「本次不带参考音频」，不影响合成。
+        """
+        if self._voice_sample_ready:
+            return
+        self._voice_sample_ready = True
+        if self._voice_sample is None or self._voice_data_url:
+            return
+        try:
+            await asyncio.to_thread(self._prepare_voice_sample)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[QwenAudioNext] 参考音频准备失败（本次不带参考音频）: {exc}")
+
+    def _prepare_voice_sample(self) -> None:
+        """预编码并缓存参考音频样本（同步重活，由 ensure_voice_sample_ready 调度）。
+
+        流程：
+
+        1. 先算缓存键并读缓存 —— 键含源文件状态（路径摘要 / mtime / size）与
+           业务参数（时长上限、裁剪余量、Base64 大小上限）；**命中即返回，
+           不做任何时长探测**；
+        2. 未命中才读文件、探测时长、超限截断、Base64 编码，并原子写回缓存。
+
+        产物完全由「源文件状态 + 业务参数」决定，因此键里不再需要 trim / raw
+        这类冗余标记（同一源文件 + 同一参数 → 同一产物）。
+        """
+        if self._voice_sample is None:
+            return
+        sample_path, mime = self._voice_sample
+
+        data_dir = self.entry.get("_data_dir", "")
+        root = Path(data_dir).parent
+        cache_dir = root / self._CACHE_DIRNAME
+
+        # 业务参数进缓存键：时长上限 + 裁剪余量 + Base64 大小上限，
+        # 任一变化都会生成新键，避免命中按旧规则产出的缓存。
+        cache = Base64FileCache(
+            cache_dir,
+            key_parts={
+                "max": AudioConstraints.QWEN_AUDIO_NEXT_MAX,
+                "margin": self.TRIM_MARGIN_SEC,
+                "bytes": self.MAX_VOICE_BASE64_BYTES,
+            },
+        )
+        encoded = cache.load(sample_path)
+        if encoded is not None:
+            # 命中路径：零探测、零转码。
+            self._voice_data_url = f"data:{mime};base64,{encoded}"
             return
 
-        cache_dir = root / self._CACHE_DIRNAME
-        stat = sample_path.stat()
-        digest = hashlib.sha1(str(sample_path).encode("utf-8")).hexdigest()[:12]
-
-        # 先按时长截断（需要读取时长），得到一个「处理中」文件路径与是否已截断的标记。
+        # 未命中：先按时长截断（需要读取时长），得到一个「处理中」文件路径。
         work_path = sample_path
-        was_trimmed = False
         duration = get_audio_duration(str(sample_path))
         if duration is None:
             # 时长读不到（MP3/OGG 且无 ffmpeg）时无法精确校验，
@@ -157,7 +215,6 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
                 )
                 if Path(trimmed).resolve() != sample_path.resolve():
                     work_path = Path(trimmed)
-                    was_trimmed = True
                     logger.warning(
                         f"[QwenAudioNext] voice_sample 时长 {duration:.1f}s 超过 "
                         f"{AudioConstraints.QWEN_AUDIO_NEXT_MAX:.0f}s，已自动截断: {work_path.name}"
@@ -165,69 +222,55 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
             except Exception as exc:
                 logger.warning(f"[QwenAudioNext] voice_sample 自动截断失败，回退原文件: {exc}")
 
-        # 缓存 key 含截断标记，避免源文件未变但截断逻辑变化导致陈旧缓存命中。
-        cache_key = (
-            f"{digest}_{stat.st_mtime_ns}_{stat.st_size}_"
-            f"{'trim' if was_trimmed else 'raw'}.b64"
-        )
-        cache_file = cache_dir / cache_key
+        encoded = base64.b64encode(work_path.read_bytes()).decode("ascii")
 
-        if cache_file.is_file():
-            encoded = cache_file.read_text(encoding="ascii")
-            logger.debug(f"[QwenAudioNext] 命中 voice_sample 缓存: {cache_file.name}")
-        else:
+        # 编码后超限：按超出比例估算目标时长再截一次（最多 2 次，避免死循环）。
+        for _ in range(2):
+            encoded_bytes = len(encoded.encode("utf-8"))
+            if encoded_bytes <= self.MAX_VOICE_BASE64_BYTES:
+                break
+            cur_duration = get_audio_duration(str(work_path))
+            if cur_duration is None or cur_duration <= 1.0:
+                logger.warning(
+                    f"[QwenAudioNext] voice_sample 编码后 "
+                    f"{encoded_bytes / 1024 / 1024:.1f}MB 超过 10MB，"
+                    "但无法读取时长或音频过短，已跳过二次截断"
+                )
+                break
+            # 线性估算：目标时长 = 当前时长 × (上限 / 实际大小) × 0.9 留余量
+            target_sec = max(
+                1.0,
+                cur_duration
+                * self.MAX_VOICE_BASE64_BYTES
+                / encoded_bytes
+                * 0.9,
+            )
+            try:
+                trimmed = trim_audio_to_max(
+                    str(work_path),
+                    max_sec=target_sec,
+                    margin=self.TRIM_MARGIN_SEC,
+                    output_dir=str(cache_dir),
+                )
+            except Exception as exc:
+                logger.warning(f"[QwenAudioNext] voice_sample 二次截断失败: {exc}")
+                break
+            new_path = Path(trimmed)
+            if new_path.resolve() == work_path.resolve():
+                break
+            work_path = new_path
             encoded = base64.b64encode(work_path.read_bytes()).decode("ascii")
 
-            # 编码后超限：按超出比例估算目标时长再截一次（最多 2 次，避免死循环）。
-            for _ in range(2):
-                encoded_bytes = len(encoded.encode("utf-8"))
-                if encoded_bytes <= self.MAX_VOICE_BASE64_BYTES:
-                    break
-                cur_duration = get_audio_duration(str(work_path))
-                if cur_duration is None or cur_duration <= 1.0:
-                    logger.warning(
-                        f"[QwenAudioNext] voice_sample 编码后 "
-                        f"{encoded_bytes / 1024 / 1024:.1f}MB 超过 10MB，"
-                        "但无法读取时长或音频过短，已跳过二次截断"
-                    )
-                    break
-                # 线性估算：目标时长 = 当前时长 × (上限 / 实际大小) × 0.9 留余量
-                target_sec = max(
-                    1.0,
-                    cur_duration
-                    * self.MAX_VOICE_BASE64_BYTES
-                    / encoded_bytes
-                    * 0.9,
-                )
-                try:
-                    trimmed = trim_audio_to_max(
-                        str(work_path),
-                        max_sec=target_sec,
-                        margin=self.TRIM_MARGIN_SEC,
-                        output_dir=str(cache_dir),
-                    )
-                except Exception as exc:
-                    logger.warning(f"[QwenAudioNext] voice_sample 二次截断失败: {exc}")
-                    break
-                new_path = Path(trimmed)
-                if new_path.resolve() == work_path.resolve():
-                    break
-                work_path = new_path
-                encoded = base64.b64encode(work_path.read_bytes()).decode("ascii")
+        # 仍超限则不再抛错，打 warning 让请求继续（服务端会给出明确错误）。
+        final_bytes = len(encoded.encode("utf-8"))
+        if final_bytes > self.MAX_VOICE_BASE64_BYTES:
+            logger.warning(
+                f"[QwenAudioNext] voice_sample 截断后仍为 "
+                f"{final_bytes / 1024 / 1024:.1f}MB（超过 10MB），仍将提交，"
+                "如服务端拒绝请更换更短的参考音频"
+            )
 
-            # 仍超限则不再抛错，打 warning 让请求继续（服务端会给出明确错误）。
-            final_bytes = len(encoded.encode("utf-8"))
-            if final_bytes > self.MAX_VOICE_BASE64_BYTES:
-                logger.warning(
-                    f"[QwenAudioNext] voice_sample 截断后仍为 "
-                    f"{final_bytes / 1024 / 1024:.1f}MB（超过 10MB），仍将提交，"
-                    "如服务端拒绝请更换更短的参考音频"
-                )
-
-            cache_file.parent.mkdir(parents=True, exist_ok=True)
-            cache_file.write_text(encoded, encoding="ascii")
-            logger.debug(f"[QwenAudioNext] voice_sample 已编码缓存: {cache_file.name}")
-
+        cache.save(sample_path, encoded)
         self._voice_data_url = f"data:{mime};base64,{encoded}"
 
     # ———————— 提示词文档 ————————
@@ -281,12 +324,16 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
         if isinstance(rate, (int, float)) and not isinstance(rate, bool) and 0.5 <= rate <= 2.0:
             input_obj["rate"] = rate
 
+        # seed 语义（本适配器，与其他供应商**不同**，勿混用）：
+        # - 0~65535：固定种子，原样下发（字符串数字走 _as_int 归一）；
+        # - -1 / 缺键 / 越界：本地随机一个 0~65535 的值下发，避免服务端用固定
+        #   默认值（42）导致同一提示词结果恒定。
+        # 对比：Eleven 的 seed 取值域是 0~4294967295，且 -1 表示「不下发」
+        # （服务端随机），不是本地随机（见 providers/elevenlabs_v4.py）。
         seed = self._as_int(config.get("seed"))
-        if seed == -1:
-            # 官方默认 seed=42，不传会导致每次结果固定；-1 表示本地随机一个，
-            # 让同一提示词的多次生成真正不同。
-            input_obj["seed"] = random.randint(0, 2**31 - 1)
-        elif seed is not None:
+        if seed is None or not (self.SEED_MIN <= seed <= self.SEED_MAX):
+            input_obj["seed"] = random.randint(self.SEED_MIN, self.SEED_MAX)
+        else:
             input_obj["seed"] = seed
 
         aigc = self._as_bool(config.get("enable_aigc_tag"))
@@ -398,6 +445,10 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
         Returns:
             保存后的音频文件路径；失败时返回空字符串，由主流程切换到下一个供应商。
         """
+        # 参考音频准备（缓存命中时零探测；未命中时线程内完成），确保请求带上
+        # references。tts_service 通常已提前调用，这里是兼底（幂等）。
+        await self.ensure_voice_sample_ready()
+
         api_key = config.get("api_key", "")
         if not api_key:
             logger.error("[QwenAudioNext] api_key 未配置")
@@ -460,7 +511,10 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
                     logger.error(f"[QwenAudioNext] 响应格式异常: {data}")
                     return ""
 
-                if data.get("code") or data.get("error"):
+                # 业务错误判定按类型分开：成功码 0 / "0" / 200 / "200" 不算错误，
+                # 而字符串 "0" 是真值（真正的 bug 源），bool 型 code 不参与数值
+                # 比较（False 不能被当成成功）。
+                if http.has_business_error(data):
                     error_msg = http.extract_error_message(data, str(data))
                     logger.error(f"[QwenAudioNext] API 错误: {error_msg}")
                     if any(k in error_msg.lower() for k in ("reference", "audio", "duration", "voice")):

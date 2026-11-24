@@ -4,6 +4,7 @@
 工具 Schema 符合契约，以及参数校验不会在常规输入下崩溃。
 """
 
+import time
 from pathlib import Path
 import json
 
@@ -102,6 +103,14 @@ class TestAllProvidersSmoke:
         assert prompt_field in params["required"], (
             f"{key} 工具主字段 {prompt_field} 非必填"
         )
+        # 声明的额外字段必须与工具 schema 一致，防止声明漂移。
+        # 用动态方法读取：Eleven 等适配器会按运行时状态返回不同的字段集合。
+        schema_extra = set(params["properties"]) - {prompt_field}
+        declared = set(adapter.tool_extra_fields())
+        assert schema_extra == declared, (
+            f"{key} tool_extra_fields() 与工具 schema 不一致: "
+            f"声明={sorted(declared)}, schema={sorted(schema_extra)}"
+        )
 
     def test_system_prompt_is_non_empty(self, entry_and_adapter):
         _key, adapter = entry_and_adapter
@@ -114,14 +123,123 @@ class TestAllProvidersSmoke:
         assert adapter.validate_params({}) == (True, ""), f"{key} 空参数未被接受"
 
     def test_sanitize_params_preserves_text(self, entry_and_adapter):
-        """清洗后必须保留主字段，且不得混入未声明的多余字段。"""
+        """清洗后必须保留主字段，且不得混入该适配器未声明的多余字段。"""
         key, adapter = entry_and_adapter
         prompt_field = adapter.TOOL_PROMPT_FIELD
         out = adapter.sanitize_params({prompt_field: "hi"})
         assert out[prompt_field] == "hi", f"{key} 丢失了 {prompt_field}"
-        assert set(out) <= {"text", "instruction", "text_prompt", "volume", "rate"}, (
-            f"{key} 出现意外字段: {sorted(out)}"
+        allowed = {prompt_field, *adapter.tool_extra_fields()}
+        assert set(out) <= allowed, (
+            f"{key} 出现未声明字段: {sorted(set(out) - allowed)}"
         )
+
+
+class TestRuntimeToolContract:
+    """契约真正落到运行时：未声明的工具参数必须被丢弃（P2-8）。"""
+
+    @pytest.fixture(params=ALL_KEYS)
+    def entry_and_adapter(self, request):
+        key = request.param
+        entry = {
+            "__template_key": key,
+            "api_key": "test-key",
+            "voice_id": "Testvoice1",
+        }
+        return key, _adapters()[key](entry)
+
+    async def test_undeclared_params_are_dropped(self, entry_and_adapter):
+        """tts_enhance 传入未声明字段时，该字段不得出现在返回参数里。"""
+        key, adapter = entry_and_adapter
+        prompt_field = adapter.TOOL_PROMPT_FIELD
+        result = await adapter._handle_enhance_tool(
+            **{prompt_field: "hi", "junk_field": 1, "another_junk": "x"}
+        )
+        assert result.isError is False, f"{key} 合法参数不应报错"
+        payload = json.loads(result.content[0].text)
+        assert payload.get(prompt_field) == "hi"
+        assert "junk_field" not in payload
+        assert "another_junk" not in payload
+        allowed = {prompt_field, *adapter.tool_extra_fields()}
+        assert set(payload) <= allowed, (
+            f"{key} 运行时泄漏未声明字段: {sorted(set(payload) - allowed)}"
+        )
+
+    async def test_undeclared_params_never_reach_validation(
+        self, entry_and_adapter, monkeypatch
+    ):
+        """未声明字段连校验都不应进入（否则非法值会把整轮工具调用判为失败）。"""
+        key, adapter = entry_and_adapter
+        prompt_field = adapter.TOOL_PROMPT_FIELD
+        seen: dict = {}
+        original = adapter.validate_params
+
+        def spy(params):
+            seen.update(params)
+            return original(params)
+
+        monkeypatch.setattr(adapter, "validate_params", spy)
+        await adapter._handle_enhance_tool(
+            **{prompt_field: "hi", "junk_field": 1}
+        )
+        assert "junk_field" not in seen, f"{key} 未声明字段进入了校验流程"
+
+    async def test_declared_params_are_kept(self, entry_and_adapter, monkeypatch):
+        """已声明的额外字段必须原样保留（过滤不能误伤）。"""
+        key, adapter = entry_and_adapter
+        prompt_field = adapter.TOOL_PROMPT_FIELD
+        extra = sorted(adapter.tool_extra_fields())
+        if not extra:
+            pytest.skip(f"{key} 无额外字段")
+        seen: dict = {}
+        original = adapter.validate_params
+
+        def spy(params):
+            seen.update(params)
+            return original(params)
+
+        monkeypatch.setattr(adapter, "validate_params", spy)
+        await adapter._handle_enhance_tool(**{prompt_field: "hi", extra[0]: "keep-me"})
+        assert extra[0] in seen, f"{key} 已声明字段 {extra[0]} 被误丢弃"
+
+
+def test_eleven_tool_extra_fields_follows_injected_catalog_cache():
+    """注入 catalog 类级缓存后，Eleven 的声明与工具 schema 同步扩展（P1-1）。
+
+    之前这里只 monkeypatch 了 ``_get_catalog``，未真正走「类级缓存就绪」这条
+    路径；本次直接写入 ``_CATALOG_CACHE``，验证声明与 schema 都随缓存状态变化。
+
+    注意：``ProviderFactory`` 用 ``spec_from_file_location`` 动态加载适配器模块，
+    得到的模块对象与常规 ``import`` 得到的**不是同一个**（模块级状态各自独立）。
+    因此必须从适配器类的方法闭包（``__globals__``）里取它真正使用的
+    ``_CATALOG_CACHE``，否则注入会落到另一个模块对象上（假失败）。
+    """
+    adapter_cls = _adapters()["elevenlabs_v4"]
+    entry = {
+        "__template_key": "elevenlabs_v4",
+        "api_key": "test-key",
+        "voice_id": "Testvoice1",
+        "use_audio_effects": True,
+    }
+    adapter = adapter_cls(entry)
+    catalog_cache = adapter_cls._get_catalog.__globals__["_CATALOG_CACHE"]
+    cache_key = adapter._catalog_key()
+    catalog_cache[cache_key] = {
+        "catalog": {
+            "filter_presets": ["phone"],
+            "environments": ["hall"],
+            "background_noises": ["cafe"],
+        },
+        "ts": time.time(),
+    }
+    try:
+        declared = set(adapter.tool_extra_fields())
+        schema_extra = set(adapter.get_tool_schema().parameters["properties"]) - {"text"}
+        assert declared == schema_extra
+        assert "filter_preset_id" in declared
+        assert "language_code" in declared
+        assert len(declared) == len(adapter.AUDIO_EFFECT_FIELDS) + 1
+    finally:
+        catalog_cache.pop(cache_key, None)
 
 
 class TestDocsDiscovery:

@@ -736,7 +736,7 @@
             "condition": {
               "model": "mimo-v2.5-tts-voiceclone"
             },
-            "hint": "音频复刻样本。仅支持 mp3/wav，Base64 编码后不超过 10MB。可多选，实际取第一个"
+            "hint": "音频复刻样本。仅支持 mp3/wav，Base64 编码后不超过 10MB；超出会自动截断。可多选，实际取第一个"
           }
         }
       },
@@ -869,7 +869,7 @@
           "seed": {
             "description": "随机种子",
             "type": "int",
-            "default": 42,
+            "default": -1,
             "hint": "请求级随机种子。设为 -1 表示每次随机生成"
           },
           "enable_aigc_tag": {
