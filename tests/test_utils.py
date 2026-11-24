@@ -185,3 +185,58 @@ class TestPydubAvailability:
         f.write_bytes(b"not audio")
         with pytest.raises(RuntimeError, match="pydub 未安装"):
             audio_utils.trim_audio_to_max(str(f), max_sec=10)
+
+
+class TestBase64FileCache:
+    def _source(self, tmp_path, name="sample.wav", data=b"RIFFdata"):
+        f = tmp_path / name
+        f.write_bytes(data)
+        return f
+
+    def test_roundtrip_and_hit(self, tmp_path):
+        src = self._source(tmp_path)
+        cache_dir = tmp_path / "cache"
+        cache = audio_utils.Base64FileCache(cache_dir, key_parts={"bytes": 100})
+        assert cache.load(src) is None
+        cache.save(src, "QUJD")
+        assert cache.load(src) == "QUJD"
+
+    def test_key_parts_change_invalidates_cache(self, tmp_path):
+        src = self._source(tmp_path)
+        cache_dir = tmp_path / "cache"
+        audio_utils.Base64FileCache(cache_dir, key_parts={"bytes": 100}).save(src, "first")
+        assert audio_utils.Base64FileCache(cache_dir, key_parts={"bytes": 100}).load(src) == "first"
+        # 业务参数变化后不命中旧缓存
+        assert audio_utils.Base64FileCache(cache_dir, key_parts={"bytes": 50}).load(src) is None
+
+    def test_save_is_atomic_no_tmp_left(self, tmp_path):
+        src = self._source(tmp_path)
+        cache_dir = tmp_path / "cache"
+        audio_utils.Base64FileCache(cache_dir).save(src, "QUJD")
+        assert list(cache_dir.glob("*.tmp")) == []
+
+    def test_lru_prunes_oldest(self, tmp_path):
+        import time
+
+        cache_dir = tmp_path / "cache"
+        cache = audio_utils.Base64FileCache(cache_dir, max_entries=2)
+        sources = []
+        for i in range(3):
+            src = self._source(tmp_path, name=f"s{i}.wav", data=bytes([65 + i]) * 8)
+            sources.append(src)
+            cache.save(src, f"v{i}")
+            time.sleep(0.01)  # 保证 mtime 递增
+        files = list(cache_dir.glob("*.b64"))
+        assert len(files) == 2
+        # 第一个源文件（s0）的缓存应被淘汰，后两个保留
+        assert cache.load(sources[0]) is None
+        assert cache.load(sources[1]) == "v1"
+        assert cache.load(sources[2]) == "v2"
+
+    def test_corrupt_cache_is_ignored(self, tmp_path):
+        src = self._source(tmp_path)
+        cache_dir = tmp_path / "cache"
+        cache = audio_utils.Base64FileCache(cache_dir)
+        path = cache.save(src, "QUJD")
+        path.write_bytes(b"\xff\xfe")  # 非 ASCII 半截文件
+        assert cache.load(src) is None

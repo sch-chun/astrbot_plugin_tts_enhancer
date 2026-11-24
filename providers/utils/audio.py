@@ -3,10 +3,13 @@
 提供音频时长获取、校验与裁剪功能，并定义各 TTS 模型/用途的预设约束常量。
 依赖 pydub 库进行音频处理，若未安装则相关功能将降级或失效。
 """
+import hashlib
+import os
+
 from datetime import datetime
 from pathlib import Path
 
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from astrbot.api import logger
 
@@ -175,6 +178,84 @@ def save_audio_bytes(data_dir: str, content: bytes, fmt: str = "mp3") -> str:
 
     logger.debug(f"TTS 音频已保存: {filepath}")
     return str(filepath)
+
+
+class Base64FileCache:
+    """音频文件 → Base64 文本的磁盘缓存，供参考音频类供应商复用。
+
+    缓存键由「源文件路径摘要 + mtime + size」构成，源文件不变即可复用；
+    ``key_parts`` 让适配器把影响产物内容的业务参数（如时长上限、裁剪余量、
+    大小上限）纳入键，避免参数变化后命中陈旧缓存。
+
+    写入采用同目录临时文件 + ``os.replace`` 原子替换，进程被杀不会留下
+    半截缓存被永久命中。每次写入后按 mtime 淘汰最旧条目，只保留最近
+    ``max_entries`` 个，避免换文件后旧缓存无限堆积。
+
+    Args:
+        cache_dir: 缓存目录（由适配器按供应商隔离）。
+        key_parts: 附加到缓存键的业务参数，值的字符串表示参与键计算。
+        max_entries: 最多保留的缓存条目数，<= 0 表示不淘汰。
+    """
+
+    def __init__(
+        self,
+        cache_dir: Path,
+        key_parts: Optional[dict[str, Any]] = None,
+        max_entries: int = 20,
+    ) -> None:
+        self.cache_dir = Path(cache_dir)
+        self.key_parts = dict(key_parts or {})
+        self.max_entries = max_entries
+
+    def path_for(self, source: Path) -> Path:
+        """按源文件状态与业务参数计算缓存文件路径。"""
+        source = Path(source)
+        stat = source.stat()
+        digest = hashlib.sha1(str(source.resolve()).encode("utf-8")).hexdigest()[:12]
+        parts = [digest, str(stat.st_mtime_ns), str(stat.st_size)]
+        parts += [f"{k}{v}" for k, v in sorted(self.key_parts.items())]
+        return self.cache_dir / f"{'_'.join(parts)}.b64"
+
+    def load(self, source: Path) -> Optional[str]:
+        """命中缓存则返回 Base64 文本（ASCII），否则返回 None。"""
+        cache_file = self.path_for(source)
+        if not cache_file.is_file():
+            return None
+        try:
+            encoded = cache_file.read_text(encoding="ascii")
+        except (OSError, UnicodeError) as exc:
+            logger.debug(f"读取音频缓存失败，将重新编码: {cache_file.name}, {exc}")
+            return None
+        logger.debug(f"命中音频缓存: {cache_file.name}")
+        return encoded
+
+    def save(self, source: Path, encoded: str) -> Path:
+        """原子写入 Base64 文本并执行 LRU 淘汰，返回缓存文件路径。"""
+        cache_file = self.path_for(source)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        tmp_file = cache_file.with_name(f".{cache_file.name}.{os.getpid()}.tmp")
+        try:
+            tmp_file.write_text(encoded, encoding="ascii")
+            os.replace(tmp_file, cache_file)
+        finally:
+            tmp_file.unlink(missing_ok=True)
+        logger.debug(f"音频已编码缓存: {cache_file.name}")
+        self._prune()
+        return cache_file
+
+    def _prune(self) -> None:
+        """按 mtime 淘汰最旧缓存，只保留最近 max_entries 个。"""
+        if self.max_entries <= 0:
+            return
+        try:
+            files = sorted(
+                self.cache_dir.glob("*.b64"),
+                key=lambda p: p.stat().st_mtime_ns,
+            )
+            for stale in files[:-self.max_entries]:
+                stale.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning(f"清理音频缓存失败（不影响合成）: {exc}")
 
 
 # ========== 各模型/用途的预设约束常量 ==========

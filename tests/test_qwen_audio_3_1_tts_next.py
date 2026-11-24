@@ -414,6 +414,32 @@ def test_reference_size_over_limit_auto_trims(monkeypatch, tmp_path):
     assert base64.b64decode(encoded) == b"short"
 
 
+def test_cache_key_includes_size_limit_and_writes_atomically(monkeypatch, tmp_path):
+    """大小上限变化应产生不同缓存键；写入后目录不留 .tmp 半成品。"""
+    sample = tmp_path / "voice.wav"
+    sample.write_bytes(b"RIFFdata")
+    mod = "astrbot_plugin_tts_enhancer.providers.qwen_audio_3_1_tts_next"
+    monkeypatch.setattr(f"{mod}.get_audio_duration", lambda p: None)  # 跳过时长分支
+
+    QwenAudio3_1TTSNextAdapter(_make_entry(tmp_path, voice_sample=["voice.wav"]))
+    cache_dir = tmp_path / "cache" / "qwen_audio_3_1_tts_next"
+    first = list(cache_dir.glob("*.b64"))
+    assert len(first) == 1
+    assert f"bytes{10 * 1024 * 1024}" in first[0].name
+
+    # 调小上限后应写入新键，而不是复用旧缓存
+    monkeypatch.setattr(
+        QwenAudio3_1TTSNextAdapter, "MAX_VOICE_BASE64_BYTES", 1024
+    )
+    QwenAudio3_1TTSNextAdapter(_make_entry(tmp_path, voice_sample=["voice.wav"]))
+    names = {p.name for p in cache_dir.glob("*.b64")}
+    assert len(names) == 2
+    assert any("bytes1024" in n for n in names)
+
+    # 原子写：没有残留 .tmp 文件
+    assert list(cache_dir.glob("*.tmp")) == []
+
+
 def test_reference_duration_unreadable_degrades(monkeypatch, tmp_path):
     """时长读取失败（如无 ffprobe）→ 跳过时长截断、不抛错、不影响合成。"""
     sample = tmp_path / "voice.wav"
@@ -504,6 +530,23 @@ async def test_code_zero_not_treated_as_error(monkeypatch, tmp_path, success_cod
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("payload", [
+    {"code": "CLIENT_ERROR", "message": "bad request"},
+    {"error": "server_busy"},
+])
+async def test_http_200_with_business_error_short_circuits(
+    monkeypatch, tmp_path, payload
+):
+    """HTTP 200 但 payload 带业务错误码时，应走错误分支且不下载音频。"""
+    client = _install(monkeypatch, _FakeClient(_FakeResponse(payload, status_code=200)))
+    entry = _make_entry(tmp_path)
+    adapter = QwenAudio3_1TTSNextAdapter(entry)
+    assert await adapter.call_api("hi", {"text_prompt": "hi"}, entry) == ""
+    assert len(client.post_calls) == 1
+    assert client.get_calls == []  # 未进入下载
+
+
+@pytest.mark.asyncio
 async def test_timeout_returns_empty(monkeypatch, tmp_path):
     import httpx
 
@@ -563,6 +606,8 @@ def test_config_schema_template_present():
     assert "prompt_template" not in items
     assert "volume" not in items  # volume/rate 现在只存在于 tool schema
     assert "rate" not in items
+    # seed 默认为 -1（每次随机），与运行时随机化行为一致
+    assert items["seed"]["default"] == -1
     # MP3 三参数带条件显示
     assert items["enable_cbr"]["condition"] == {"format": "mp3"}
     assert items["bit_rate"]["condition"] == {"format": "mp3", "enable_cbr": True}

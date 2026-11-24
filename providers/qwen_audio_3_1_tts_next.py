@@ -15,7 +15,6 @@
 """
 
 import base64
-import hashlib
 import random
 import re
 
@@ -31,6 +30,7 @@ from .base import TTSProviderAdapter
 from .utils import http
 from .utils.audio import (
     AudioConstraints,
+    Base64FileCache,
     get_audio_duration,
     save_audio_bytes,
     trim_audio_to_max,
@@ -134,8 +134,6 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
             return
 
         cache_dir = root / self._CACHE_DIRNAME
-        stat = sample_path.stat()
-        digest = hashlib.sha1(str(sample_path).encode("utf-8")).hexdigest()[:12]
 
         # 先按时长截断（需要读取时长），得到一个「处理中」文件路径与是否已截断的标记。
         work_path = sample_path
@@ -166,19 +164,20 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
             except Exception as exc:
                 logger.warning(f"[QwenAudioNext] voice_sample 自动截断失败，回退原文件: {exc}")
 
-        # 缓存 key 含截断标记与截断参数，避免源文件未变但截断逻辑变化导致陈旧缓存命中。
-        cache_key = (
-            f"{digest}_{stat.st_mtime_ns}_{stat.st_size}_"
-            f"{'trim' if was_trimmed else 'raw'}_"
-            f"max{AudioConstraints.QWEN_AUDIO_NEXT_MAX:g}_"
-            f"margin{self.TRIM_MARGIN_SEC:g}.b64"
+        # 业务参数进缓存键：截断标记 + 时长上限 + 裁剪余量 + 大小上限，
+        # 任一变化都会生成新键，避免命中按旧规则产出的缓存。
+        cache = Base64FileCache(
+            cache_dir,
+            key_parts={
+                "trim" if was_trimmed else "raw": "",
+                "max": AudioConstraints.QWEN_AUDIO_NEXT_MAX,
+                "margin": self.TRIM_MARGIN_SEC,
+                "bytes": self.MAX_VOICE_BASE64_BYTES,
+            },
         )
-        cache_file = cache_dir / cache_key
+        encoded = cache.load(sample_path)
 
-        if cache_file.is_file():
-            encoded = cache_file.read_text(encoding="ascii")
-            logger.debug(f"[QwenAudioNext] 命中 voice_sample 缓存: {cache_file.name}")
-        else:
+        if encoded is None:
             encoded = base64.b64encode(work_path.read_bytes()).decode("ascii")
 
             # 编码后超限：按超出比例估算目标时长再截一次（最多 2 次，避免死循环）。
@@ -227,9 +226,7 @@ class QwenAudio3_1TTSNextAdapter(TTSProviderAdapter):
                     "如服务端拒绝请更换更短的参考音频"
                 )
 
-            cache_file.parent.mkdir(parents=True, exist_ok=True)
-            cache_file.write_text(encoded, encoding="ascii")
-            logger.debug(f"[QwenAudioNext] voice_sample 已编码缓存: {cache_file.name}")
+            cache.save(sample_path, encoded)
 
         self._voice_data_url = f"data:{mime};base64,{encoded}"
 

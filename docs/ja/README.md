@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.4.0-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.5.0-green)](../../CHANGELOG.md)
 
 ---
 
@@ -103,6 +103,8 @@ SubAgent は合成時に**このドキュメントを動的に読み取り**、�
 | **Bailian Qwen Audio 3.1 TTS Next** | qwen-audio-3.1-tts-next | 自然言語によるシーン記述（声質 / 感情 / 効果音） | ❌ | ❌ | ❌ | ❌ | 中国語、英語 | ❌ |
 
 > StepFun のクローン音色は**読み取り専用プレビュー**です（公式プレイグラウンドでクローンすると自動的に一覧表示）。音色デザインは公式スタジオで行い、プラグイン内では書き込み操作を行いません。
+
+> Xiaomi MiMo V2.5 のクローン用サンプル（Base64 後 10MB 以下）は、超過時に**自動的に切り詰められ通知**されます（エラーにはなりません）。百錬の音声生成と同じキャッシュ機構を共有しています。
 
 ### 百錬の音声生成について（他のプロバイダーと異なる点）
 

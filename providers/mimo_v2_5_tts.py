@@ -10,7 +10,6 @@ It supports the three MiMo-V2.5-TTS models:
 """
 
 import base64
-import hashlib
 
 from pathlib import Path
 
@@ -23,7 +22,12 @@ from astrbot.core.agent.tool import FunctionTool
 
 from .base import TTSProviderAdapter
 from .utils import http
-from .utils.audio import save_audio_bytes
+from .utils.audio import (
+    Base64FileCache,
+    get_audio_duration,
+    save_audio_bytes,
+    trim_audio_to_max,
+)
 
 
 class MimoV2_5TTSAdapter(TTSProviderAdapter):
@@ -54,6 +58,7 @@ class MimoV2_5TTSAdapter(TTSProviderAdapter):
 
     # MiMo requires the *base64-encoded* voice sample to stay under 10 MB.
     MAX_VOICE_BASE64_BYTES = 10 * 1024 * 1024
+    TRIM_MARGIN_SEC = 0.5  # 自动截断时留的余量，确保严格小于估算时长
 
     # MIME type lookup for the supported voice sample extensions.
     _MIME_BY_EXT = {".mp3": "audio/mpeg", ".wav": "audio/wav"}
@@ -110,15 +115,14 @@ class MimoV2_5TTSAdapter(TTSProviderAdapter):
     def _prepare_voice_sample(self) -> None:
         """Pre-encode and cache the voice sample for ``voiceclone`` entries.
 
-        The base64 payload is cached under ``<plugin_data>/cache/mimo_voiceclone``
-        keyed by a digest of the source path plus its size and mtime, so the
-        sample is re-encoded only when the underlying file changes. The encoded
-        size is checked against MiMo's 10 MB limit. The data root is derived
+        The base64 payload goes through the shared ``Base64FileCache`` under
+        ``<plugin_data>/cache/mimo_voiceclone``, keyed by source path digest,
+        mtime, size and the encoded-size limit. An over-limit sample is
+        trimmed automatically instead of rejected; the data root is derived
         from ``entry["_data_dir"]``, which points at ``<plugin_data>/audio``.
 
         Raises:
-            ValueError: If the encoded sample exceeds the 10 MB limit or the
-                configured path escapes the plugin data directory.
+            ValueError: If the configured path escapes the plugin data directory.
         """
         if self.entry.get("model") != self.MODEL_VOICE_CLONE:
             return
@@ -154,27 +158,58 @@ class MimoV2_5TTSAdapter(TTSProviderAdapter):
             logger.error(f"[MiMo] 不支持的 voice_sample 格式: {sample_path.suffix}")
             return
 
-        stat = sample_path.stat()
-        digest = hashlib.sha1(str(sample_path).encode("utf-8")).hexdigest()[:12]
-        cache_file = (
-            root / self._CACHE_DIRNAME / f"{digest}_{stat.st_mtime_ns}_{stat.st_size}.b64"
+        cache = Base64FileCache(
+            root / self._CACHE_DIRNAME,
+            key_parts={"bytes": self.MAX_VOICE_BASE64_BYTES},
         )
+        encoded = cache.load(sample_path)
 
-        if cache_file.is_file():
-            encoded = cache_file.read_text(encoding="ascii")
-            logger.debug(f"[MiMo] 命中 voice_sample 缓存: {cache_file.name}")
-        else:
-            encoded = base64.b64encode(sample_path.read_bytes()).decode("ascii")
+        if encoded is None:
+            work_path = sample_path
+            encoded = base64.b64encode(work_path.read_bytes()).decode("ascii")
 
-            if len(encoded.encode("utf-8")) > self.MAX_VOICE_BASE64_BYTES:
-                raise ValueError(
-                    f"voice_sample 编码后超过 10MB 限制 "
-                    f"({len(encoded) / 1024 / 1024:.1f} MB)，请使用更小的音频样本"
+            # 超过 10MB 不再直接拒绝：按时长比例自动截断，最多 2 轮。
+            # MiMo 只限制大小、无时长上下限，截断是天然可行的兜底。
+            for _ in range(2):
+                encoded_bytes = len(encoded.encode("utf-8"))
+                if encoded_bytes <= self.MAX_VOICE_BASE64_BYTES:
+                    break
+                duration = get_audio_duration(str(work_path))
+                if duration is None or duration <= 1.0:
+                    logger.warning(
+                        f"[MiMo] voice_sample 编码后 "
+                        f"{encoded_bytes / 1024 / 1024:.1f}MB 超过 10MB，"
+                        "但无法读取时长或音频过短，已跳过自动截断"
+                    )
+                    break
+                target_sec = max(
+                    1.0,
+                    duration * self.MAX_VOICE_BASE64_BYTES / encoded_bytes * 0.9,
                 )
+                try:
+                    trimmed = trim_audio_to_max(
+                        str(work_path),
+                        max_sec=target_sec,
+                        margin=self.TRIM_MARGIN_SEC,
+                        output_dir=str(root / self._CACHE_DIRNAME),
+                    )
+                except Exception as exc:
+                    logger.warning(f"[MiMo] voice_sample 自动截断失败: {exc}")
+                    break
+                new_path = Path(trimmed)
+                if new_path.resolve() == work_path.resolve():
+                    break
+                work_path = new_path
+                encoded = base64.b64encode(work_path.read_bytes()).decode("ascii")
 
-            cache_file.parent.mkdir(parents=True, exist_ok=True)
-            cache_file.write_text(encoded, encoding="ascii")
-            logger.debug(f"[MiMo] voice_sample 已编码缓存: {cache_file.name}")
+            final_bytes = len(encoded.encode("utf-8"))
+            if final_bytes > self.MAX_VOICE_BASE64_BYTES:
+                logger.warning(
+                    f"[MiMo] voice_sample 截断后仍为 "
+                    f"{final_bytes / 1024 / 1024:.1f}MB（超过 10MB），仍将提交，"
+                    "如服务端拒绝请更换更短的音频样本"
+                )
+            cache.save(sample_path, encoded)
 
         self._voice_data_url = f"data:{mime};base64,{encoded}"
 
