@@ -7,6 +7,8 @@ import base64
 import binascii
 import hashlib
 import os
+import threading
+import uuid
 
 from datetime import datetime
 from pathlib import Path
@@ -195,6 +197,10 @@ class Base64FileCache:
     删除并重新编码。每次写入后按 mtime 淘汰最旧条目（只保留最近 ``max_entries``
     个），并顺手清理旧键格式文件，避免换文件后旧缓存无限堆积。
 
+    临时文件名带 pid + 线程 id + 随机后缀：同一进程内多个线程并发写同一个
+    缓存键（如两条消息同时预热同一份参考音频）时不会互相覆盖临时文件，
+    也就不会把半截内容 ``os.replace`` 成正式缓存。
+
     安全边界：只操作 ``cache_dir`` 这一层目录下的 ``*.b64`` 文件，绝不递归、
     绝不触碰用户上传目录，因此不会误删用户文件。
 
@@ -232,7 +238,12 @@ class Base64FileCache:
         坏文件（非 ASCII / 非严格 Base64 / 空文件）会被删除，调用方随后重新
         编码并回写，不会把半截内容当成有效缓存使用。
         """
-        cache_file = self.path_for(source)
+        try:
+            cache_file = self.path_for(source)
+        except OSError as exc:
+            # 源文件在解析后被删除/不可读：按未命中处理，交给调用方重新编码。
+            logger.debug(f"源文件不可用，缓存未命中: {source}, {exc}")
+            return None
         if not cache_file.is_file():
             return None
         try:
@@ -261,15 +272,28 @@ class Base64FileCache:
         return True
 
     def save(self, source: Path, encoded: str) -> Path:
-        """原子写入 Base64 文本并执行淘汰，返回缓存文件路径。"""
+        """原子写入 Base64 文本并执行淘汰，返回缓存文件路径。
+
+        写入失败（磁盘满 / 权限不足）只告警不抛异常：缓存是优化项，
+        不应因此丢掉已经准备好的参考音频。
+        """
         cache_file = self.path_for(source)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        tmp_file = cache_file.with_name(f".{cache_file.name}.{os.getpid()}.tmp")
         try:
-            tmp_file.write_text(encoded, encoding="ascii")
-            os.replace(tmp_file, cache_file)
-        finally:
-            tmp_file.unlink(missing_ok=True)
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            # 临时文件名唯一化（pid + 线程 id + 随机后缀）：同进程内并发写同一
+            # 缓存键时不会互相覆盖，避免把半截内容发布成正式缓存。
+            tmp_file = cache_file.with_name(
+                f".{cache_file.name}.{os.getpid()}.{threading.get_ident()}"
+                f".{uuid.uuid4().hex[:8]}.tmp"
+            )
+            try:
+                tmp_file.write_text(encoded, encoding="ascii")
+                os.replace(tmp_file, cache_file)
+            finally:
+                tmp_file.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning(f"写入音频缓存失败（不影响合成）: {cache_file.name}, {exc}")
+            return cache_file
         logger.debug(f"音频已编码缓存: {cache_file.name}")
         self._prune()
         return cache_file
