@@ -207,9 +207,12 @@ def test_eleven_tool_extra_fields_follows_injected_catalog_cache():
 
     之前这里只 monkeypatch 了 ``_get_catalog``，未真正走「类级缓存就绪」这条
     路径；本次直接写入 ``_CATALOG_CACHE``，验证声明与 schema 都随缓存状态变化。
-    """
-    from astrbot_plugin_tts_enhancer.providers import elevenlabs_v4 as eleven_mod
 
+    注意：``ProviderFactory`` 用 ``spec_from_file_location`` 动态加载适配器模块，
+    得到的模块对象与常规 ``import`` 得到的**不是同一个**（模块级状态各自独立）。
+    因此必须从适配器类的方法闭包（``__globals__``）里取它真正使用的
+    ``_CATALOG_CACHE``，否则注入会落到另一个模块对象上（假失败）。
+    """
     adapter_cls = _adapters()["elevenlabs_v4"]
     entry = {
         "__template_key": "elevenlabs_v4",
@@ -218,8 +221,9 @@ def test_eleven_tool_extra_fields_follows_injected_catalog_cache():
         "use_audio_effects": True,
     }
     adapter = adapter_cls(entry)
+    catalog_cache = adapter_cls._get_catalog.__globals__["_CATALOG_CACHE"]
     cache_key = adapter._catalog_key()
-    eleven_mod._CATALOG_CACHE[cache_key] = {
+    catalog_cache[cache_key] = {
         "catalog": {
             "filter_presets": ["phone"],
             "environments": ["hall"],
@@ -235,7 +239,7 @@ def test_eleven_tool_extra_fields_follows_injected_catalog_cache():
         assert "language_code" in declared
         assert len(declared) == len(adapter.AUDIO_EFFECT_FIELDS) + 1
     finally:
-        eleven_mod._CATALOG_CACHE.pop(cache_key, None)
+        catalog_cache.pop(cache_key, None)
 
 
 class TestDocsDiscovery:

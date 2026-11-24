@@ -278,17 +278,20 @@ class TestBase64FileCache:
         cache_dir = tmp_path / "cache"
         cache = audio_utils.Base64FileCache(cache_dir, max_entries=2)
         sources = []
+        contents = []
         for i in range(3):
             src = self._source(tmp_path, name=f"s{i}.wav", data=bytes([65 + i]) * 8)
             sources.append(src)
-            cache.save(src, f"dj{i}=")  # base64("v0" / "v1" / "v2")
+            content = f"dj{i}="  # 合法 Base64（4 的倍数，可严格解码）
+            contents.append(content)
+            cache.save(src, content)
             time.sleep(0.01)  # 保证 mtime 递增
         files = list(cache_dir.glob("*.b64"))
         assert len(files) == 2
         # 第一个源文件（s0）的缓存应被淘汰，后两个保留
         assert cache.load(sources[0]) is None
-        assert cache.load(sources[1]) == "djE="
-        assert cache.load(sources[2]) == "djI="
+        assert cache.load(sources[1]) == contents[1]
+        assert cache.load(sources[2]) == contents[2]
 
     def test_corrupt_cache_is_ignored(self, tmp_path):
         src = self._source(tmp_path)

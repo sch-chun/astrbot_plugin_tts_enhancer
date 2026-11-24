@@ -145,23 +145,38 @@ def test_sample_path_traversal_blocked(tmp_path):
 
 @pytest.mark.asyncio
 async def test_cache_hit_skips_duration_probe(monkeypatch, tmp_path):
-    """缓存命中路径零探测：不调用 get_audio_duration。"""
+    """缓存命中路径零探测：不调用 get_audio_duration。
+
+    首次（未命中且超限）才需要探测时长以估算截断目标；命中缓存时只算键 +
+    读缓存，不得产生任何 ffprobe / pydub 探测。
+    """
     sample = tmp_path / "voice.wav"
-    sample.write_bytes(b"RIFFdata")
+    sample.write_bytes(b"x" * 2000)  # 编码后远超下面的限额 → 触发探测与截断
     mod = "astrbot_plugin_tts_enhancer.providers.mimo_v2_5_tts"
     probes = []
-    monkeypatch.setattr(f"{mod}.get_audio_duration", lambda p: probes.append(p))
+
+    def fake_duration(path):
+        probes.append(path)
+        return 20.0
+
+    monkeypatch.setattr(f"{mod}.get_audio_duration", fake_duration)
+    fake_trim, calls = _fake_trimmer(b"short")
+    monkeypatch.setattr(f"{mod}.trim_audio_to_max", fake_trim)
+    monkeypatch.setattr(MimoV2_5TTSAdapter, "MAX_VOICE_BASE64_BYTES", 64)
 
     entry = _make_entry(tmp_path, voice_sample=["voice.wav"])
     adapter = MimoV2_5TTSAdapter(entry)
     await adapter.ensure_voice_sample_ready()
     assert adapter._voice_data_url is not None
-    assert probes, "首次（未命中）应探测时长"
+    assert probes, "首次（未命中且超限）应探测时长"
+    assert calls, "首次（未命中且超限）应触发截断"
 
     probes.clear()
+    calls.clear()
     adapter2 = MimoV2_5TTSAdapter(entry)
     await adapter2.ensure_voice_sample_ready()
     assert probes == [], "缓存命中路径不应探测时长"
+    assert calls == [], "缓存命中路径不应触发截断"
     assert adapter2._voice_data_url == adapter._voice_data_url
 
 
