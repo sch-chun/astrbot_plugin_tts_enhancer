@@ -1,7 +1,7 @@
 """阿里云百炼「音频生成」适配器（qwen-audio-3.1-tts-next）。
 
 与 ``bailian_qwen_audio_3_*`` 的标准语音合成不同，本适配器调用百炼的
-音频生成接口 ``SpeechSynthesizer``：请求体以 ``text_prompt``（提示词）为���心，
+音频生成接口 ``SpeechSynthesizer``：请求体以 ``text_prompt``（提示词）为核心，
 可通过 ``references`` 提交 Base64 参考音频，在提示词中用 ``@voice1`` 引用。
 
 本适配器只暴露「单说话人」能力：参考音频取配置项 ``voice_sample`` 的第一个文件，
