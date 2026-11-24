@@ -58,13 +58,32 @@ OPUS_BITRATES = (32, 64, 96, 128, 192)
 
 
 class ElevenLabsV4Adapter(TTSProviderAdapter):
-    DISPLAY_NAME = "Eleven v4"
-    TOOL_EXTRA_FIELDS = frozenset({'language_code'})
-
     """Eleven v4 / v4 Turbo TTS 适配器。"""
+
+    DISPLAY_NAME = "Eleven v4"
+    TOOL_EXTRA_FIELDS = frozenset({"language_code"})
+
+    # audio_effects 开启且 catalog 就绪时，工具 schema 会动态多出这 6 个字段。
+    # 与 get_tool_schema() 共用，避免声明与 schema 两处硬编码漂移。
+    AUDIO_EFFECT_FIELDS = frozenset(
+        {
+            "filter_preset_id",
+            "environment_id",
+            "background_noise_id",
+            "distance",
+            "send_level",
+            "pan",
+        }
+    )
 
     def __init__(self, entry: dict) -> None:
         super().__init__(entry)
+
+    def tool_extra_fields(self) -> frozenset[str]:
+        """按运行时状态返回实际字段：catalog 就绪时含 6 个 audio_effects 字段。"""
+        if self.entry.get("use_audio_effects") and self._get_catalog():
+            return self.TOOL_EXTRA_FIELDS | self.AUDIO_EFFECT_FIELDS
+        return self.TOOL_EXTRA_FIELDS
 
     # ————————————————————————————————
     # 工具 Schema 与 SubAgent 提示词

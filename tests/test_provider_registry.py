@@ -102,11 +102,13 @@ class TestAllProvidersSmoke:
         assert prompt_field in params["required"], (
             f"{key} 工具主字段 {prompt_field} 非必填"
         )
-        # 声明的额外字段必须与工具 schema 一致，防止声明漂移
+        # 声明的额外字段必须与工具 schema 一致，防止声明漂移。
+        # 用动态方法读取：Eleven 等适配器会按运行时状态返回不同的字段集合。
         schema_extra = set(params["properties"]) - {prompt_field}
-        assert schema_extra == set(adapter.TOOL_EXTRA_FIELDS), (
-            f"{key} TOOL_EXTRA_FIELDS 声明与工具 schema 不一致: "
-            f"声明={sorted(adapter.TOOL_EXTRA_FIELDS)}, schema={sorted(schema_extra)}"
+        declared = set(adapter.tool_extra_fields())
+        assert schema_extra == declared, (
+            f"{key} tool_extra_fields() 与工具 schema 不一致: "
+            f"声明={sorted(declared)}, schema={sorted(schema_extra)}"
         )
 
     def test_system_prompt_is_non_empty(self, entry_and_adapter):
@@ -125,7 +127,7 @@ class TestAllProvidersSmoke:
         prompt_field = adapter.TOOL_PROMPT_FIELD
         out = adapter.sanitize_params({prompt_field: "hi"})
         assert out[prompt_field] == "hi", f"{key} 丢失了 {prompt_field}"
-        allowed = {prompt_field, *adapter.TOOL_EXTRA_FIELDS}
+        allowed = {prompt_field, *adapter.tool_extra_fields()}
         assert set(out) <= allowed, (
             f"{key} 出现未声明字段: {sorted(set(out) - allowed)}"
         )

@@ -38,9 +38,14 @@ class TTSProviderAdapter(ABC):
     # 表示 SubAgent 直接产出完整提示词而非原始台词。契约测试据此字段校验。
     TOOL_PROMPT_FIELD: str = "text"
 
-    # tts_enhance 工具中允许出现的额外参数名集合。
-    # 由各适配器按自身工具 schema 声明，契约测试据此校验清洗结果不混入未声明字段。
+    # tts_enhance 工具中允许出现的额外参数名集合（静态默认值）。
+    # 契约测试通过 tool_extra_fields() 读取；schema 随运行时状态变化的适配器
+    # 应覆盖该方法，返回当前状态下的实际字段集合。
     TOOL_EXTRA_FIELDS: frozenset[str] = frozenset()
+
+    def tool_extra_fields(self) -> frozenset[str]:
+        """返回当前状态下 tts_enhance 工具允许的额外参数名集合。"""
+        return self.TOOL_EXTRA_FIELDS
 
     # ———————— 语音合成 ————————
 
