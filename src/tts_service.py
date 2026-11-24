@@ -62,7 +62,7 @@ class TTSService:
         """获取上下文消息（按对话轮次，即 user 消息的条数）
 
         Args:
-            event: AstrBot 事件对象，用于获取会话标识。
+            event: 消息事件对象，用于获取会话标识。
 
         Returns:
             包含历史消息字典的列表，每条消息包含 'role' 和 'content' 键。
@@ -97,7 +97,7 @@ class TTSService:
                                 if role == "user":
                                     user_count += 1
 
-                                    # 当收集到 context_window 条 user 消息时停止
+                                    # 当收集到第 context_window 条 user 消息时停止
                                     if user_count >= context_window:
                                         break
 
@@ -112,10 +112,10 @@ class TTSService:
         """获取当前会话的人格提示词与人格 ID
 
         Args:
-            event: AstrBot 事件对象，用于获取会话标识和平台名称。
+            event: 消息事件对象，用于获取会话标识和平台名称。
 
         Returns:
-            (prompt, persona_id) 二元组；未生效人格时两者为空字符串。
+            (prompt, persona_id) 元组；未生效人格时两者均为空字符串。
         """
         # 人格解析交给兼容层：按上游签名决定旧版是否传 conversation_persona_id，
         # 并把 3/4 元组统一为 (persona_id, persona)。
@@ -145,8 +145,8 @@ class TTSService:
 
         Args:
             raw_text: 待合成文本
-            event: 事件对象
-            context_messages: 上下文消息
+            event: 聊天事件
+            context_messages: 上下文消息列表
 
         Returns:
             Record 对象或 None
@@ -155,11 +155,11 @@ class TTSService:
             logger.warning("没有配置任何 TTS 供应商")
             return None
 
-        # 解析当前人格（失败时降级为通用音色）
+        # 解析当前人格（失败时降级为空，避免异常冒泡中断整条消息装饰）
         try:
             persona, persona_id = await self.get_current_persona(event)
         except Exception as e:
-            logger.warning(f"解析当前人格失败，已降级为通用音色: {e}")
+            logger.warning(f"解析当前人格失败: {e}，降级为通用音色")
             persona, persona_id = "", ""
         logger.debug(f"persona: {persona}")
 
@@ -170,10 +170,12 @@ class TTSService:
         if top_k > 0:
             try:
                 strategy = str(
-                    self.config.get("memory_retrieval_query_strategy", "context_window")
-                    or "context_window"
+                    self.config.get("memory_retrieval_query_strategy", "user_message")
+                    or "user_message"
                 ).strip()
-                prefix = str(self.config.get("memory_retrieval_prefix", "") or "").strip()
+                prefix = str(
+                    self.config.get("memory_retrieval_prefix", "") or ""
+                ).strip()
                 if strategy == "prefix":
                     query = prefix
                 else:
@@ -257,7 +259,7 @@ class TTSService:
             event: 聊天事件（用于解析会话标识与记录来源）；预览为 None。
             enhance: 是否允许该供应商走 SubAgent 增强（还需该供应商有文档）。
                 聊天路径传全局 enable_enhance；预览路径传前端开关。
-            persona: 人格提示词（仅聊天路径注入）。
+            persona: 说话人人格（仅聊天路径注入）。
             context_messages: 对话上下文（仅聊天路径注入）。
             memory_context: 长期记忆上下文（仅聊天路径注入）。
             voice_id: 显式音色 ID（预览场景覆盖配置音色）；聊天为 None。
@@ -406,7 +408,7 @@ class TTSService:
 
         Returns:
             (audio_path, ext)：成功时 audio_path 为音频路径，ext 为扩展名（不含点）；
-            失败时两者都为 None。
+            失败时两者为 None。
         """
         audio_path, _final_text = await self._synthesize_one(
             entry,
@@ -427,7 +429,7 @@ class TTSService:
         text: str,
         provider: str,
         event: AstrMessageEvent | None,
-        source: str,
+        source: str = SOURCE_CHAT,
         params: dict | None = None,
         config: dict | None = None,
     ) -> None:
@@ -454,7 +456,7 @@ class TTSService:
         text: str,
         provider: str,
         event: AstrMessageEvent | None,
-        source: str,
+        source: str = SOURCE_CHAT,
         params: dict | None = None,
         config: dict | None = None,
     ) -> None:

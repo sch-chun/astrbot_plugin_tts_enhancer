@@ -287,7 +287,7 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
     def _catalog_ttl(self) -> int:
         """返回 audio_effects 目录缓存 TTL（秒），可被配置 catalog_ttl 覆盖。
 
-        非法 / 零 / 负值 / 非整数值回退到模块默认 ``CATALOG_TTL``（300s）。
+        非法 / 零 / 负 / 非整数值回退到模块默认 ``CATALOG_TTL``（300s）。
         """
         ttl = self._as_int(self.entry.get("catalog_ttl"))
         if isinstance(ttl, int) and ttl > 0:
@@ -297,7 +297,7 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
     def _catalog_fetch_timeout(self) -> int:
         """返回目录拉取超时（秒），可被配置 catalog_fetch_timeout 覆盖。
 
-        非法 / 零 / 负值 / 非整数值回退到模块默认 ``CATALOG_FETCH_TIMEOUT``（5s）。
+        非法 / 零 / 负 / 非整数值回退到模块默认 ``CATALOG_FETCH_TIMEOUT``（5s）。
         """
         t = self._as_int(self.entry.get("catalog_fetch_timeout"))
         if isinstance(t, int) and t > 0:
@@ -484,7 +484,7 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
             return default
         if value < lo or value > hi:
             logger.warning(f"参数 {value} 超出允许范围 [{lo},{hi}]，已夹紧到边界")
-            return lo if value < hi else hi
+            return lo if value < lo else hi
         return value
 
     # ————————————————————————————————
