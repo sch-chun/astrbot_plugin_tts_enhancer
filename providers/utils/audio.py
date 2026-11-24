@@ -3,6 +3,8 @@
 提供音频时长获取、校验与裁剪功能，并定义各 TTS 模型/用途的预设约束常量。
 依赖 pydub 库进行音频处理，若未安装则相关功能将降级或失效。
 """
+import base64
+import binascii
 import hashlib
 import os
 
@@ -183,19 +185,27 @@ def save_audio_bytes(data_dir: str, content: bytes, fmt: str = "mp3") -> str:
 class Base64FileCache:
     """音频文件 → Base64 文本的磁盘缓存，供参考音频类供应商复用。
 
-    缓存键由「源文件路径摘要 + mtime + size」构成，源文件不变即可复用；
+    缓存键由「源文件路径摘要 + mtime + size + 键版本」构成，源文件不变即可复用；
     ``key_parts`` 让适配器把影响产物内容的业务参数（如时长上限、裁剪余量、
-    大小上限）纳入键，避免参数变化后命中陈旧缓存。
+    大小上限）纳入键，避免参数变化后命中陈旧缓存。由于产物完全由「源文件状态
+    + 业务参数」决定，键里**不再**需要 trim / raw 之类的冗余标记。
 
-    写入采用同目录临时文件 + ``os.replace`` 原子替换，进程被杀不会留下
-    半截缓存被永久命中。每次写入后按 mtime 淘汰最旧条目，只保留最近
-    ``max_entries`` 个，避免换文件后旧缓存无限堆积。
+    写入采用同目录临时文件 + ``os.replace`` 原子替换，进程被杀不会留下半截
+    缓存被永久命中；读取时做轻量完整性校验（严格 Base64 解码），坏文件直接
+    删除并重新编码。每次写入后按 mtime 淘汰最旧条目（只保留最近 ``max_entries``
+    个），并顺手清理旧键格式文件，避免换文件后旧缓存无限堆积。
+
+    安全边界：只操作 ``cache_dir`` 这一层目录下的 ``*.b64`` 文件，绝不递归、
+    绝不触碰用户上传目录，因此不会误删用户文件。
 
     Args:
         cache_dir: 缓存目录（由适配器按供应商隔离）。
         key_parts: 附加到缓存键的业务参数，值的字符串表示参与键计算。
-        max_entries: 最多保留的缓存条目数，<= 0 表示不淘汰。
+        max_entries: 最多保留的缓存条目数，<= 0 表示不按数量淘汰。
     """
+
+    # 缓存键版本：键中固定带上该标记，非本版本的遗留文件在 ``_prune`` 中清理。
+    KEY_VERSION = "v2"
 
     def __init__(
         self,
@@ -212,12 +222,16 @@ class Base64FileCache:
         source = Path(source)
         stat = source.stat()
         digest = hashlib.sha1(str(source.resolve()).encode("utf-8")).hexdigest()[:12]
-        parts = [digest, str(stat.st_mtime_ns), str(stat.st_size)]
+        parts = [digest, str(stat.st_mtime_ns), str(stat.st_size), self.KEY_VERSION]
         parts += [f"{k}{v}" for k, v in sorted(self.key_parts.items())]
         return self.cache_dir / f"{'_'.join(parts)}.b64"
 
     def load(self, source: Path) -> Optional[str]:
-        """命中缓存则返回 Base64 文本（ASCII），否则返回 None。"""
+        """命中且内容完整时返回 Base64 文本（ASCII），否则返回 None。
+
+        坏文件（非 ASCII / 非严格 Base64 / 空文件）会被删除，调用方随后重新
+        编码并回写，不会把半截内容当成有效缓存使用。
+        """
         cache_file = self.path_for(source)
         if not cache_file.is_file():
             return None
@@ -225,12 +239,29 @@ class Base64FileCache:
             encoded = cache_file.read_text(encoding="ascii")
         except (OSError, UnicodeError) as exc:
             logger.debug(f"读取音频缓存失败，将重新编码: {cache_file.name}, {exc}")
+            self._discard(cache_file)
+            return None
+        text = encoded.strip()
+        if not self._is_complete(text):
+            logger.warning(f"音频缓存内容不完整，已删除并重新编码: {cache_file.name}")
+            self._discard(cache_file)
             return None
         logger.debug(f"命中音频缓存: {cache_file.name}")
-        return encoded
+        return text
+
+    @staticmethod
+    def _is_complete(text: str) -> bool:
+        """轻量完整性校验：非空、长度为 4 的倍数且能按严格 Base64 解码。"""
+        if not text or len(text) % 4 != 0:
+            return False
+        try:
+            base64.b64decode(text, validate=True)
+        except (binascii.Error, ValueError):
+            return False
+        return True
 
     def save(self, source: Path, encoded: str) -> Path:
-        """原子写入 Base64 文本并执行 LRU 淘汰，返回缓存文件路径。"""
+        """原子写入 Base64 文本并执行淘汰，返回缓存文件路径。"""
         cache_file = self.path_for(source)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         tmp_file = cache_file.with_name(f".{cache_file.name}.{os.getpid()}.tmp")
@@ -243,17 +274,50 @@ class Base64FileCache:
         self._prune()
         return cache_file
 
-    def _prune(self) -> None:
-        """按 mtime 淘汰最旧缓存，只保留最近 max_entries 个。"""
-        if self.max_entries <= 0:
+    def _discard(self, cache_file: Path) -> None:
+        """删除损坏缓存（仅在确认是本缓存目录内的 .b64 文件时才动手）。"""
+        if cache_file.parent != self.cache_dir or cache_file.suffix != ".b64":
             return
         try:
-            files = sorted(
-                self.cache_dir.glob("*.b64"),
-                key=lambda p: p.stat().st_mtime_ns,
+            cache_file.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.debug(f"删除损坏的音频缓存失败: {cache_file.name}, {exc}")
+
+    def _is_legacy(self, cache_file: Path) -> bool:
+        """判断是否旧键格式文件（键中缺少当前 ``KEY_VERSION`` 段）。
+
+        旧格式为 ``{digest}_{mtime}_{size}.b64``（MiMo）与
+        ``{digest}_{mtime}_{size}_{trim|raw}.b64``（百炼音频生成）；两者都没有
+        版本段。段数少于 3 的文件不像本缓存的键，保守起见不碰。
+        """
+        stem = cache_file.name
+        if stem.endswith(".b64"):
+            stem = stem[: -len(".b64")]
+        parts = stem.split("_")
+        if len(parts) < 3:
+            return False
+        if len(parts) == 3:
+            return True
+        return parts[3] != self.KEY_VERSION
+
+    def _prune(self) -> None:
+        """清理旧键格式缓存，并按 mtime 淘汰最旧条目（只保留最近 N 条）。"""
+        if not self.cache_dir.is_dir():
+            return
+        try:
+            files = [path for path in self.cache_dir.glob("*.b64") if path.is_file()]
+            legacy = [path for path in files if self._is_legacy(path)]
+            current = sorted(
+                (path for path in files if not self._is_legacy(path)),
+                key=lambda path: path.stat().st_mtime_ns,
             )
-            for stale in files[:-self.max_entries]:
-                stale.unlink(missing_ok=True)
+            stale = list(legacy)
+            if self.max_entries > 0 and len(current) > self.max_entries:
+                stale.extend(current[: -self.max_entries])
+            for path in stale:
+                path.unlink(missing_ok=True)
+            if stale:
+                logger.debug(f"清理 {len(stale)} 个过期音频缓存")
         except OSError as exc:
             logger.warning(f"清理音频缓存失败（不影响合成）: {exc}")
 
