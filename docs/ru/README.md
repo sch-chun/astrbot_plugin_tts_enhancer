@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.4.0-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.5.0-green)](../../CHANGELOG.md)
 
 ---
 
@@ -103,6 +103,8 @@ SubAgent **динамически читает этот документ** в м
 | **Bailian Qwen Audio 3.1 TTS Next** | qwen-audio-3.1-tts-next | Описание сцены на ест. языке (голос / эмоции / эффекты) | ❌ | ❌ | ❌ | ❌ | Китайский, английский | ❌ |
 
 > Клонированные голоса StepFun доступны **только для просмотра** (клонируйте в официальной песочнице — они появятся автоматически). Дизайн голосов выполняется в официальной студии; плагин не выполняет операций записи.
+
+> Образцы для клонирования Xiaomi MiMo V2.5 (до 10 МБ в Base64) при превышении лимита **обрезаются автоматически** с уведомлением, а не отклоняются; они используют тот же механизм кэширования, что и генерация аудио Bailian.
 
 ### О генерации аудио Bailian (отличается от других провайдеров)
 

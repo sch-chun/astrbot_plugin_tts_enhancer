@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.4.0-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.5.0-green)](CHANGELOG.md)
 
 ---
 
@@ -103,6 +103,8 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 | **百炼 Qwen Audio 3.1 TTS Next** | qwen-audio-3.1-tts-next | 自然语言场景描述（音色 / 情绪 / 音效） | ❌ | ❌ | ❌ | ❌ | 中文、英文 | ❌ |
 
 > StepFun 的复刻音色为**只读预览**（在官方 playground 克隆后自动列出）；设计音色需前往官方工作台操作，插件内不做写操作。
+
+> MiMo V2.5 的复刻参考音频（Base64 后不超过 10MB）若超限会**自动截断**并提示，不会直接报错；与百炼音频生成的参考音频共用同一套缓存机制。
 
 ### 关于百炼音频生成（与其他供应商不同）
 

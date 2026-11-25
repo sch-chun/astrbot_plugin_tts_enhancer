@@ -105,6 +105,30 @@ def test_tool_schema_with_audio_effects_injects_dynamic_enums(monkeypatch):
     assert props["pan"]["minimum"] == -1 and props["pan"]["maximum"] == 1
 
 
+def test_tool_extra_fields_reflects_runtime_catalog_state(monkeypatch):
+    """契约声明必须随 catalog 就绪状态变化，与工具 schema 始终一致。"""
+    catalog = {
+        "filter_presets": ["phone"],
+        "environments": ["hall"],
+        "background_noises": ["cafe"],
+    }
+    adapter = _make_adapter(use_audio_effects=True)
+    monkeypatch.setattr(adapter, "_get_catalog", lambda: catalog)
+
+    declared = set(adapter.tool_extra_fields())
+    schema_extra = set(adapter.get_tool_schema().parameters["properties"]) - {"text"}
+    assert declared == schema_extra
+    assert declared == {"language_code", *adapter.AUDIO_EFFECT_FIELDS}
+    assert len(adapter.AUDIO_EFFECT_FIELDS) == 6
+
+    # catalog 未就绪时退回静态集合，schema 同步收缩
+    monkeypatch.setattr(adapter, "_get_catalog", lambda: None)
+    assert set(adapter.tool_extra_fields()) == {"language_code"}
+    assert set(adapter.get_tool_schema().parameters["properties"]) - {"text"} == {
+        "language_code"
+    }
+
+
 def test_tool_schema_with_audio_effects_unwarmed_drops_schema(monkeypatch):
     # 缓存未命中（预热前/失败）时，_get_catalog 返回 None，audio_effects 字段不出现
     adapter = _make_adapter(use_audio_effects=True)

@@ -9,8 +9,8 @@ It supports the three MiMo-V2.5-TTS models:
 - ``mimo-v2.5-tts-voiceclone``: synthesis driven by an audio sample.
 """
 
+import asyncio
 import base64
-import hashlib
 
 from pathlib import Path
 
@@ -23,11 +23,18 @@ from astrbot.core.agent.tool import FunctionTool
 
 from .base import TTSProviderAdapter
 from .utils import http
-from .utils.audio import save_audio_bytes
+from .utils.audio import (
+    Base64FileCache,
+    get_audio_duration,
+    save_audio_bytes,
+    trim_audio_to_max,
+)
 
 
 class MimoV2_5TTSAdapter(TTSProviderAdapter):
     DISPLAY_NAME = "Mimo 2.5 TTS"
+    TOOL_EXTRA_FIELDS = frozenset({'instruction'})
+
     """Xiaomi MiMo V2.5 TTS provider adapter.
 
     Implements speech synthesis through the OpenAI-compatible
@@ -52,6 +59,7 @@ class MimoV2_5TTSAdapter(TTSProviderAdapter):
 
     # MiMo requires the *base64-encoded* voice sample to stay under 10 MB.
     MAX_VOICE_BASE64_BYTES = 10 * 1024 * 1024
+    TRIM_MARGIN_SEC = 0.5  # 自动截断时留的余量，确保严格小于估算时长
 
     # MIME type lookup for the supported voice sample extensions.
     _MIME_BY_EXT = {".mp3": "audio/mpeg", ".wav": "audio/wav"}
@@ -59,11 +67,14 @@ class MimoV2_5TTSAdapter(TTSProviderAdapter):
     _CACHE_DIRNAME = "cache/mimo_voiceclone"
 
     def __init__(self, entry: dict) -> None:
-        """Initialize the adapter and pre-encode the voice sample if needed.
+        """Initialize the adapter and prepare the voice sample plan.
 
         The main flow injects ``_data_dir`` into ``entry`` before calling
-        ``get_adapter``, so the voiceclone sample can be encoded and cached
-        here, mirroring how other providers read paths from config.
+        ``get_adapter``, so the voiceclone sample path can be resolved here.
+        Only cheap metadata work happens in ``__init__`` (path resolution and
+        format whitelisting); the heavy encoding / duration probing / trimming
+        is deferred to :meth:`ensure_voice_sample_ready`, which runs it in a
+        worker thread so the event loop is never blocked.
 
         Args:
             entry: Provider config dictionary (``__template_key``, ``model``,
@@ -73,7 +84,8 @@ class MimoV2_5TTSAdapter(TTSProviderAdapter):
 
         self._voice_data_url: Optional[str] = None
         self.preset_docs_content = self._load_preset_docs()
-        self._prepare_voice_sample()
+        self._voice_sample: Optional[tuple[Path, str]] = self._resolve_voice_sample()
+        self._voice_sample_ready = False
 
     def _load_preset_docs(self) -> str:
         """Load the capability doc dedicated to the preset voice model.
@@ -105,36 +117,36 @@ class MimoV2_5TTSAdapter(TTSProviderAdapter):
             return self.preset_docs_content or self.docs_content
         return self.docs_content
 
-    def _prepare_voice_sample(self) -> None:
-        """Pre-encode and cache the voice sample for ``voiceclone`` entries.
+    def _resolve_voice_sample(self) -> Optional[tuple[Path, str]]:
+        """Resolve and validate the voiceclone sample path (metadata only).
 
-        The base64 payload is cached under ``<plugin_data>/cache/mimo_voiceclone``
-        keyed by a digest of the source path plus its size and mtime, so the
-        sample is re-encoded only when the underlying file changes. The encoded
-        size is checked against MiMo's 10 MB limit. The data root is derived
-        from ``entry["_data_dir"]``, which points at ``<plugin_data>/audio``.
+        The data root is derived from ``entry["_data_dir"]``, which points at
+        ``<plugin_data>/audio``. No file content is read here, so this stays
+        cheap enough to run inside the event loop.
+
+        Returns:
+            ``(path, mime)`` for a usable sample, otherwise ``None``.
 
         Raises:
-            ValueError: If the encoded sample exceeds the 10 MB limit or the
-                configured path escapes the plugin data directory.
+            ValueError: If the configured path escapes the plugin data directory.
         """
         if self.entry.get("model") != self.MODEL_VOICE_CLONE:
-            return
+            return None
 
         data_dir = self.entry.get("_data_dir", "")
         if not data_dir:
             logger.warning("[MiMo] 未注入 _data_dir，无法定位 voice_sample")
-            return
+            return None
 
         samples = self.entry.get("voice_sample")
         if not isinstance(samples, list) or not samples:
             logger.debug("[MiMo] voiceclone 未配置 voice_sample，跳过样本预编码")
-            return
+            return None
 
         rel_path = str(samples[0]).strip()
         if not rel_path:
             logger.debug("[MiMo] voiceclone 未配置 voice_sample，跳过样本预编码")
-            return
+            return None
 
         root = Path(data_dir).parent
         sample_path = (root / rel_path).resolve()
@@ -145,34 +157,105 @@ class MimoV2_5TTSAdapter(TTSProviderAdapter):
 
         if not sample_path.is_file():
             logger.warning(f"[MiMo] voice_sample 文件不存在: {sample_path}")
-            return
+            return None
 
         mime = self._MIME_BY_EXT.get(sample_path.suffix.lower())
         if mime is None:
             logger.error(f"[MiMo] 不支持的 voice_sample 格式: {sample_path.suffix}")
+            return None
+
+        return sample_path, mime
+
+    async def ensure_voice_sample_ready(self) -> None:
+        """Encode / cache the voice sample off the event loop.
+
+        A cache hit only costs a key computation plus a cache read, so no
+        ffprobe / pydub probing happens on the hit path. A miss runs the whole
+        encode-and-trim pipeline inside ``asyncio.to_thread``; any failure
+        degrades to “this request carries no sample” instead of breaking TTS.
+        """
+        if self._voice_sample_ready:
             return
+        self._voice_sample_ready = True
+        if self._voice_sample is None or self._voice_data_url:
+            return
+        try:
+            await asyncio.to_thread(self._prepare_voice_sample)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[MiMo] voice_sample 准备失败（本次不带参考音频）: {exc}")
 
-        stat = sample_path.stat()
-        digest = hashlib.sha1(str(sample_path).encode("utf-8")).hexdigest()[:12]
-        cache_file = (
-            root / self._CACHE_DIRNAME / f"{digest}_{stat.st_mtime_ns}_{stat.st_size}.b64"
+    def _prepare_voice_sample(self) -> None:
+        """Pre-encode and cache the voice sample for ``voiceclone`` entries.
+
+        The base64 payload goes through the shared ``Base64FileCache`` under
+        ``<plugin_data>/cache/mimo_voiceclone``, keyed by source path digest,
+        mtime, size and the business parameters (encoded-size limit and trim
+        margin). The cache is consulted *before* any duration probing. An
+        over-limit sample is trimmed automatically instead of rejected.
+        """
+        if self._voice_sample is None:
+            return
+        sample_path, mime = self._voice_sample
+
+        data_dir = self.entry.get("_data_dir", "")
+        root = Path(data_dir).parent
+        cache_dir = root / self._CACHE_DIRNAME
+
+        cache = Base64FileCache(
+            cache_dir,
+            key_parts={
+                "bytes": self.MAX_VOICE_BASE64_BYTES,
+                "margin": self.TRIM_MARGIN_SEC,
+            },
         )
+        encoded = cache.load(sample_path)
 
-        if cache_file.is_file():
-            encoded = cache_file.read_text(encoding="ascii")
-            logger.debug(f"[MiMo] 命中 voice_sample 缓存: {cache_file.name}")
-        else:
-            encoded = base64.b64encode(sample_path.read_bytes()).decode("ascii")
+        if encoded is None:
+            work_path = sample_path
+            encoded = base64.b64encode(work_path.read_bytes()).decode("ascii")
 
-            if len(encoded.encode("utf-8")) > self.MAX_VOICE_BASE64_BYTES:
-                raise ValueError(
-                    f"voice_sample 编码后超过 10MB 限制 "
-                    f"({len(encoded) / 1024 / 1024:.1f} MB)，请使用更小的音频样本"
+            # 超过 10MB 不再直接拒绝：按时长比例自动截断，最多 2 轮。
+            # MiMo 只限制大小、无时长上下限，截断是天然可行的兜底。
+            for _ in range(2):
+                encoded_bytes = len(encoded.encode("utf-8"))
+                if encoded_bytes <= self.MAX_VOICE_BASE64_BYTES:
+                    break
+                duration = get_audio_duration(str(work_path))
+                if duration is None or duration <= 1.0:
+                    logger.warning(
+                        f"[MiMo] voice_sample 编码后 "
+                        f"{encoded_bytes / 1024 / 1024:.1f}MB 超过 10MB，"
+                        "但无法读取时长或音频过短，已跳过自动截断"
+                    )
+                    break
+                target_sec = max(
+                    1.0,
+                    duration * self.MAX_VOICE_BASE64_BYTES / encoded_bytes * 0.9,
                 )
+                try:
+                    trimmed = trim_audio_to_max(
+                        str(work_path),
+                        max_sec=target_sec,
+                        margin=self.TRIM_MARGIN_SEC,
+                        output_dir=str(cache_dir),
+                    )
+                except Exception as exc:
+                    logger.warning(f"[MiMo] voice_sample 自动截断失败: {exc}")
+                    break
+                new_path = Path(trimmed)
+                if new_path.resolve() == work_path.resolve():
+                    break
+                work_path = new_path
+                encoded = base64.b64encode(work_path.read_bytes()).decode("ascii")
 
-            cache_file.parent.mkdir(parents=True, exist_ok=True)
-            cache_file.write_text(encoded, encoding="ascii")
-            logger.debug(f"[MiMo] voice_sample 已编码缓存: {cache_file.name}")
+            final_bytes = len(encoded.encode("utf-8"))
+            if final_bytes > self.MAX_VOICE_BASE64_BYTES:
+                logger.warning(
+                    f"[MiMo] voice_sample 截断后仍为 "
+                    f"{final_bytes / 1024 / 1024:.1f}MB（超过 10MB），仍将提交，"
+                    "如服务端拒绝请更换更短的音频样本"
+                )
+            cache.save(sample_path, encoded)
 
         self._voice_data_url = f"data:{mime};base64,{encoded}"
 
@@ -311,6 +394,9 @@ class MimoV2_5TTSAdapter(TTSProviderAdapter):
         Returns:
             The saved audio file path, or an empty string on failure.
         """
+        # voiceclone 需要参考音频；确保已在线程内完成编码（幂等，非克隆模型直接返回）。
+        await self.ensure_voice_sample_ready()
+
         api_key = config.get("api_key", "")
         if not api_key:
             logger.error("[MiMo] api_key 未配置")

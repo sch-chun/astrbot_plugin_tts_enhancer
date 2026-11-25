@@ -2,6 +2,11 @@
 
 from typing import Any
 
+# 业务成功码：同一平台可能返回数值或字符串两种形态（如百炼网关 0 / "0"、
+# 部分兼容层 200 / "200"）。统一在此声明，避免各适配器各自硬编码。
+_SUCCESS_CODES = (0, 200)
+_SUCCESS_CODE_STRINGS = tuple(str(code) for code in _SUCCESS_CODES)
+
 
 def bearer_headers(api_key: str, with_json: bool = True) -> dict[str, str]:
     """构造带 Bearer 认证的请求头。
@@ -40,3 +45,36 @@ def extract_error_message(payload: Any, fallback_text: str = "") -> str:
         if value:
             return str(value)
     return fallback_text
+
+
+def has_business_error(payload: Any) -> bool:
+    """判断 HTTP 200 响应体是否携带业务错误。
+
+    按类型分别判定，修掉两类典型误判：
+
+    - 成功码不能按真值判断：字符串 ``"0"`` 是真值，``if data.get("code")``
+      会把成功响应当成错误短路请求；数值 ``0`` 本就 falsy，真正的 bug 是字符串
+      ``"0"``。数值 / 字符串 ``200`` 同理视为成功。
+    - ``bool`` 不参与数值比较：``False == 0`` 会让 ``code: false`` 落进成功码集合
+      被当成成功；这里把 bool 一律视为错误码（既非文档里的成功码，也非合法错误码）。
+
+    Args:
+        payload: 已解析的响应 JSON。
+
+    Returns:
+        True 表示业务错误；False 表示成功、或没有可判定的错误码。
+    """
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("error"):
+        return True
+    code = payload.get("code")
+    if code is None or code == "":
+        return False
+    if isinstance(code, bool):
+        return True
+    if isinstance(code, (int, float)):
+        return code not in _SUCCESS_CODES
+    if isinstance(code, str):
+        return code.strip() not in _SUCCESS_CODE_STRINGS
+    return True

@@ -58,11 +58,32 @@ OPUS_BITRATES = (32, 64, 96, 128, 192)
 
 
 class ElevenLabsV4Adapter(TTSProviderAdapter):
-    DISPLAY_NAME = "Eleven v4"
     """Eleven v4 / v4 Turbo TTS 适配器。"""
+
+    DISPLAY_NAME = "Eleven v4"
+    TOOL_EXTRA_FIELDS = frozenset({"language_code"})
+
+    # audio_effects 开启且 catalog 就绪时，工具 schema 会动态多出这 6 个字段。
+    # 与 get_tool_schema() 共用，避免声明与 schema 两处硬编码漂移。
+    AUDIO_EFFECT_FIELDS = frozenset(
+        {
+            "filter_preset_id",
+            "environment_id",
+            "background_noise_id",
+            "distance",
+            "send_level",
+            "pan",
+        }
+    )
 
     def __init__(self, entry: dict) -> None:
         super().__init__(entry)
+
+    def tool_extra_fields(self) -> frozenset[str]:
+        """按运行时状态返回实际字段：catalog 就绪时含 6 个 audio_effects 字段。"""
+        if self.entry.get("use_audio_effects") and self._get_catalog():
+            return self.TOOL_EXTRA_FIELDS | self.AUDIO_EFFECT_FIELDS
+        return self.TOOL_EXTRA_FIELDS
 
     # ————————————————————————————————
     # 工具 Schema 与 SubAgent 提示词
@@ -613,6 +634,11 @@ class ElevenLabsV4Adapter(TTSProviderAdapter):
         if norm in ("auto", "on", "off"):
             payload["apply_text_normalization"] = norm
 
+        # seed 语义（Eleven 与百炼**不同**，勿按百炼的「-1 = 本地随机」理解）：
+        # - 取值域 0~4294967295，只有落在该区间内才下发；
+        # - -1 / 缺键 / 越界 → 不下发，由服务端随机（不是本地随机）；
+        # 对比：百炼音频生成（qwen-audio-3.1-tts-next）的 -1 / 缺键 → 本地随机
+        # 0~65535（见 providers/qwen_audio_3_1_tts_next.py）。
         seed = self._as_int(config.get("seed"))
         if isinstance(seed, int) and 0 <= seed <= 4294967295:
             payload["seed"] = seed

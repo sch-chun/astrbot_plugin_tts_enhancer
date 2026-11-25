@@ -349,7 +349,7 @@
           },
           "voice_sample": {
             "description": "复刻音频样本",
-            "hint": "音频复刻样本。仅支持 mp3/wav，Base64 编码后不超过 10MB。可多选，实际取第一个"
+            "hint": "音频复刻样本。仅支持 mp3/wav，Base64 编码后不超过 10MB；超出会自动截断。可多选，实际取第一个"
           }
         },
         "qwen_audio_3_1_tts_next": {

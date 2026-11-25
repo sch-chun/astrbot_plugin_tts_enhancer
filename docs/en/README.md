@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.4.0-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.5.0-green)](../../CHANGELOG.md)
 
 ---
 
@@ -103,6 +103,8 @@ Per provider:
 | **Bailian Qwen Audio 3.1 TTS Next** | qwen-audio-3.1-tts-next | Natural-language scene description (voice / emotion / effects) | ❌ | ❌ | ❌ | ❌ | Chinese, English | ❌ |
 
 > StepFun's cloned voices are **read-only preview** (clone in the official playground and they appear automatically); voice design is done at the official studio — the plugin performs no write operations.
+
+> Xiaomi MiMo V2.5 clone samples (under 10MB Base64-encoded) are **trimmed automatically** with a notice when over the limit, rather than rejected; they share the same cache mechanism as Bailian audio generation.
 
 ### About Bailian Audio Generation (different from other providers)
 

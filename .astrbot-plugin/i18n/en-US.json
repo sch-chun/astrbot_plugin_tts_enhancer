@@ -349,7 +349,7 @@
           },
           "voice_sample": {
             "description": "Cloned audio sample",
-            "hint": "Cloned audio sample. mp3/wav only, Base64-encoded and under 10MB. Multiple allowed; the first is used."
+            "hint": "Cloned audio sample. mp3/wav only, under 10MB Base64-encoded; larger files are trimmed automatically. Multiple allowed; the first is used"
           }
         },
         "qwen_audio_3_1_tts_next": {
