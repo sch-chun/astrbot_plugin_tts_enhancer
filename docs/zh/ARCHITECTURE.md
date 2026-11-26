@@ -227,7 +227,17 @@ flowchart TD
 
 具体百炼适配器（如 `bailian_qwen_audio_3_0_tts.py`）往往只有数行，仅声明 `MODEL_NAME` 等差异。
 
-### 5.4 能力说明书机制
+### 5.4 公共基类 `FishAudioAdapter`
+
+Fish Audio 适配器共享的基底（`providers/_fish_audio.py`，以下划线前缀避免被自动发现）：
+
+- 封装 `POST https://api.fish.audio/v1/tts`、Bearer 鉴权和 `model` 请求头。
+- 统一参数校验/清洗、代理、文本与语言字段、`prosody` 语速/音量、音频格式与码率/采样率、采样与分块参数、发音词典引用、错误处理和音频落盘。
+- `_resolve_model()`：子类设置非空 `MODEL_NAME` 时直接返回固定模型；S2 则从配置中选择 `s2.1-pro`、`s2.1-pro-free` 或 `s2-pro`。
+- `_resolve_reference_id()`：预览 `voice_id` 优先，否则使用配置中的单一 `reference_id`。
+- `FishAudioS2Adapter` 保留 S2 工具 schema 与能力文档；`FishAudioDrama3Adapter` 固定 `MODEL_NAME = "drama-3"`，关闭仅适用于 S2 家族的 `normalize_loudness`，并提供独立的导演指令工具 schema 与能力文档。
+
+### 5.5 能力说明书机制
 
 "能力说明书"是 SubAgent 智能生成参数的依据，存放在 `providers/docs/<docs_key>.md`：
 

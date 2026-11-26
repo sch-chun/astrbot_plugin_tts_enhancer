@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [Unreleased]
+
+### Added
+
+- **Fish Audio Drama 3 供应商**（`fish_audio_drama_3`，模型固定为 `drama-3`）：新增独立适配器与能力说明书，支持方括号自然语言导演指令、音效/停顿、7 个局部成对标签和实验性局部语言切换，使用单一 `reference_id` 音色；同步四语配置文案、README、架构与开发文档，并补充离线回归测试。
+
+### Changed
+
+- **Fish Audio 公共请求层**：将 S2 的 `/v1/tts` 请求、Bearer 鉴权、模型头、格式编码、代理、错误处理和音频保存抽到 `_fish_audio.py`，S2 与 Drama 3 共享；Drama 3 不发送仅适用于 S2 家族的 `normalize_loudness`。
+- **Fish Audio S2 表达指引**：明确方括号支持自然语言描述而非固定标签集，逐项列出 71 个官方参考标签，补充音效与停顿标记的位置说明，并移除“中文必须使用英文标记”的无依据表述。
+
 ## [1.5.0] - 2026-11-24
 
 引入通用 Base64 参考音频缓存器，统一百炼音频生成与小米 MiMo 的缓存、淘汰与超限处理；参考音频准备（ffprobe / pydub / 大文件落盘）移出事件循环；工具参数契约真正落到运行时；统一 seed 语义与业务错误码判定。本版为次版本，含行为变更，**升级前请阅读文末 Upgrade notes**。

@@ -53,6 +53,7 @@ astrbot_plugin_tts_enhancer/
 │   ├── __init__.py              # ProviderFactory (автоматическое обнаружение)
 │   ├── base.py                  # абстрактный базовый класс TTSProviderAdapter
 │   ├── _bailian_speech_synthesizer.py  # общая база Bailian (с подчёркиванием, не обнаруживается)
+│   ├── _fish_audio.py          # общая база Fish Audio (слой запросов для S2 / Drama 3)
 │   ├── <vendor>_<model>.py      # конкретный адаптер (т. е. template_key)
 │   ├── utils/{http,audio}.py    # общие утилиты HTTP / аудио
 │   └── docs/<docs_key>.md       # документы о возможностях (включая *_design.md)

@@ -53,6 +53,7 @@ astrbot_plugin_tts_enhancer/
 │   ├── __init__.py              # ProviderFactory (auto-discovery)
 │   ├── base.py                  # TTSProviderAdapter abstract base class
 │   ├── _bailian_speech_synthesizer.py  # Bailian common base (underscore prefix, not discovered)
+│   ├── _fish_audio.py          # Fish Audio common base (shared request layer for S2 / Drama 3)
 │   ├── <vendor>_<model>.py      # Concrete adapter (i.e. the template_key)
 │   ├── utils/{http,audio}.py    # Shared HTTP / audio utilities
 │   └── docs/<docs_key>.md       # Capability docs (including *_design.md)

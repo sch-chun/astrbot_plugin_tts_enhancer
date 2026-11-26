@@ -229,7 +229,17 @@ Bailian 系アダプターが共有する基底（`providers/_bailian_speech_syn
 
 具体的な Bailian アダプター（例 `bailian_qwen_audio_3_0_tts.py`）は数行程度で、`MODEL_NAME` などの差異のみを宣言します。
 
-### 5.4 ケイパビリティドキュメントの仕組み
+### 5.4 共通基底クラス `FishAudioAdapter`
+
+Fish Audio 系アダプターが共有する基底（`providers/_fish_audio.py`、自動検出を避けるためアンダースコア接頭辞）：
+
+- `POST https://api.fish.audio/v1/tts`、Bearer 認証、`model` リクエストヘッダーをカプセル化。
+- パラメータ検証 / 清洗、プロキシ、テキストと言語フィールド、`prosody` の話速 / 音量、音声形式とビットレート / サンプリングレート、サンプリング / チャンク引数、発音辞書参照、エラー処理、音声の落盤を統一。
+- `_resolve_model()`：サブクラスで空でない `MODEL_NAME` を設定した場合はその固定モデルを直接返します。S2 は設定から `s2.1-pro`、`s2.1-pro-free`、`s2-pro` を選択します。
+- `_resolve_reference_id()`：プレビューの `voice_id` を優先し、それ以外は設定の単一 `reference_id` を使用します。
+- `FishAudioS2Adapter` は S2 のツールスキーマと能力説明書を保持します。`FishAudioDrama3Adapter` は `MODEL_NAME = "drama-3"` を固定し、S2 系専用の `normalize_loudness` を無効化して、独立した演技指示のツールスキーマと能力説明書を提供します。
+
+### 5.5 ケイパビリティドキュメントの仕組み
 
 「ケイパビリティドキュメント」は SubAgent がインテリジェントにパラメータを生成する根拠であり、`providers/docs/<docs_key>.md` に格納されます：
 

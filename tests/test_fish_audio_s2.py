@@ -39,6 +39,7 @@ def test_discovery():
 def test_docs_loaded():
     adapter = _make_adapter()
     assert adapter.docs_content.strip(), "缺少能力文档 docs/fish_audio_s2.md"
+    assert "不限于固定标签集" in adapter.docs_content
 
 
 def test_tool_schema_contract():
@@ -48,11 +49,18 @@ def test_tool_schema_contract():
     assert tool.name == "tts_enhance"
     assert "text" in tool.parameters["properties"]
     assert "text" in tool.parameters["required"]
+    assert "[warm and happy]" in tool.description
+    assert "[break]" in tool.description
+    assert "官方参考标签枚举" in tool.description
+    for marker in ("[sarcastic]", "[resigned]", "[clear throat]", "[long-break]"):
+        assert marker in tool.description
 
 
 def test_system_prompt_nonempty():
     adapter = _make_adapter()
-    assert adapter.get_subagent_system_prompt().strip()
+    prompt = adapter.get_subagent_system_prompt()
+    assert prompt.strip()
+    assert "[long-break]" in prompt
 
 
 def test_validate_accepts_empty():
@@ -99,7 +107,7 @@ async def test_model_fallback_for_unknown(tmp_path, monkeypatch):
     entry = dict(adapter.entry, _data_dir=str(tmp_path))
     fake = _FakeClient(_FakeResp(b"\x00\x01" * 100))
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.fish_audio_s2.httpx.AsyncClient",
+        "astrbot_plugin_tts_enhancer.providers._fish_audio.httpx.AsyncClient",
         lambda *a, **k: fake,
     )
     path = await adapter.call_api(text="hi", raw_params={}, config=entry)
@@ -157,7 +165,7 @@ async def test_call_api_saves_audio(tmp_path, monkeypatch):
     entry = dict(ENTRY, _data_dir=str(tmp_path))
     fake = _FakeClient(_FakeResp(b"\x00\x01" * 2000))
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.fish_audio_s2.httpx.AsyncClient",
+        "astrbot_plugin_tts_enhancer.providers._fish_audio.httpx.AsyncClient",
         lambda *a, **k: fake,
     )
     path = await adapter.call_api(
@@ -193,7 +201,7 @@ async def test_call_api_http_error_returns_empty(monkeypatch):
     entry = dict(ENTRY, _data_dir="/tmp/x")
     fake = _FakeClient(_FakeResp(b"", status=402))
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.fish_audio_s2.httpx.AsyncClient",
+        "astrbot_plugin_tts_enhancer.providers._fish_audio.httpx.AsyncClient",
         lambda *a, **k: fake,
     )
     path = await adapter.call_api(text="hi", raw_params={}, config=entry)
@@ -210,7 +218,7 @@ async def test_call_api_pronunciation_dictionary(tmp_path, monkeypatch):
     entry = dict(adapter.entry, _data_dir=str(tmp_path))
     fake = _FakeClient(_FakeResp(b"\x00\x01" * 100))
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.fish_audio_s2.httpx.AsyncClient",
+        "astrbot_plugin_tts_enhancer.providers._fish_audio.httpx.AsyncClient",
         lambda *a, **k: fake,
     )
     path = await adapter.call_api(text="hi", raw_params={}, config=entry)
@@ -225,7 +233,7 @@ async def test_call_api_opus_uses_opus_bitrate(tmp_path, monkeypatch):
     entry = dict(adapter.entry, _data_dir=str(tmp_path), format="opus")
     fake = _FakeClient(_FakeResp(b"\x00\x01" * 100))
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.fish_audio_s2.httpx.AsyncClient",
+        "astrbot_plugin_tts_enhancer.providers._fish_audio.httpx.AsyncClient",
         lambda *a, **k: fake,
     )
     path = await adapter.call_api(text="hi", raw_params={}, config=entry)
@@ -241,7 +249,7 @@ async def test_call_api_clamps_volume(tmp_path, monkeypatch):
     entry = dict(ENTRY, _data_dir=str(tmp_path))
     fake = _FakeClient(_FakeResp(b"\x00\x01" * 100))
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.fish_audio_s2.httpx.AsyncClient",
+        "astrbot_plugin_tts_enhancer.providers._fish_audio.httpx.AsyncClient",
         lambda *a, **k: fake,
     )
     # 上边界：30 -> 20
@@ -273,7 +281,7 @@ async def test_call_api_http_error_surfaces_reason(monkeypatch):
     )
     fake = _FakeClient(_ReasonResp(b"", status=402))
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.fish_audio_s2.httpx.AsyncClient",
+        "astrbot_plugin_tts_enhancer.providers._fish_audio.httpx.AsyncClient",
         lambda *a, **k: fake,
     )
     path = await adapter.call_api(text="hi", raw_params={}, config=entry)

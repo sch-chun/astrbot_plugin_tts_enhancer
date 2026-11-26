@@ -452,7 +452,7 @@
           }
         },
         "fish_audio_s2": {
-          "hint": "Emotion markers written into text",
+          "hint": "Bracket emotions, free-form descriptions, sounds and pauses",
           "name": "Fish Audio S2 Family",
           "display_name": {
             "description": "Display name",
@@ -554,6 +554,111 @@
           "normalize_loudness": {
             "description": "Loudness normalization",
             "hint": "Recommended to keep default"
+          },
+          "features": {
+            "description": "Feature flags",
+            "hint": "Comma-separated, e.g. quality-guard; empty = default; recommended to keep default"
+          }
+        },
+        "fish_audio_drama_3": {
+          "hint": "Natural-language direction, sound and pause cues, and scoped tags",
+          "name": "Fish Audio Drama 3",
+          "display_name": {
+            "description": "Display name",
+            "hint": "Used to distinguish multiple providers of the same type"
+          },
+          "priority": {
+            "description": "Priority",
+            "hint": "Smaller number = higher priority"
+          },
+          "persona_id": {
+            "description": "Bound persona",
+            "hint": "Use only under this persona; leave empty to serve as a general fallback voice"
+          },
+          "api_key": {
+            "description": "API Key",
+            "hint": "Fish Audio API key"
+          },
+          "model": {
+            "description": "Model",
+            "hint": "Fixed to drama-3; supports natural-language direction, sound and pause cues, and scoped tags"
+          },
+          "reference_id": {
+            "description": "Voice ID",
+            "hint": "Enter one Voice Library voice model ID. Voice library: https://fish.audio/zh-CN/discovery"
+          },
+          "format": {
+            "description": "Output format"
+          },
+          "mp3_bitrate": {
+            "description": "MP3 bitrate",
+            "hint": "In kbps, only effective for mp3"
+          },
+          "sample_rate": {
+            "description": "Sample rate",
+            "hint": "In Hz, only effective for wav/pcm (8000/16000/24000/32000/44100); ignored for mp3/opus"
+          },
+          "opus_bitrate": {
+            "description": "Opus bitrate",
+            "hint": "In bps, -1000 = auto, only effective for opus"
+          },
+          "latency": {
+            "description": "Latency tradeoff"
+          },
+          "normalize": {
+            "description": "Text normalization",
+            "hint": "Rewrite numbers/dates into spoken words before synthesis (affects reading only, not accent); on by default"
+          },
+          "timeout": {
+            "description": "Timeout",
+            "hint": "In seconds; large texts may need a larger value"
+          },
+          "proxy": {
+            "description": "Proxy address",
+            "hint": "Optional; may be needed for access from mainland China, e.g. http://127.0.0.1:7890"
+          },
+          "use_pronunciation_dictionary": {
+            "description": "Enable pronunciation dictionary"
+          },
+          "pronunciation_dictionary_id": {
+            "description": "Dictionary ID",
+            "hint": "Regex ^[A-Za-z0-9_-]{1,128}$"
+          },
+          "pronunciation_dictionary_version": {
+            "description": "Dictionary version",
+            "hint": "Must be given explicitly (no latest); regex ^[A-Za-z0-9_-]{1,128}$"
+          },
+          "temperature": {
+            "description": "Sampling temperature",
+            "hint": "Range 0~1; recommended to keep default"
+          },
+          "top_p": {
+            "description": "Top-p (nucleus) sampling",
+            "hint": "Range 0~1; recommended to keep default"
+          },
+          "repetition_penalty": {
+            "description": "Repetition penalty",
+            "hint": "Must be >1.0; recommended to keep default"
+          },
+          "chunk_length": {
+            "description": "Text chunk size",
+            "hint": "Range 100~300; recommended to keep default"
+          },
+          "min_chunk_length": {
+            "description": "New chunk minimum characters",
+            "hint": "Range 0~100; recommended to keep default"
+          },
+          "max_new_tokens": {
+            "description": "Max audio tokens per chunk",
+            "hint": "Per-chunk audio token cap; recommended to keep default"
+          },
+          "condition_on_previous_chunks": {
+            "description": "Voice consistency",
+            "hint": "Keep voice consistent with previous audio; recommended to keep default"
+          },
+          "early_stop_threshold": {
+            "description": "Batch early-stop threshold",
+            "hint": "Range 0~1; recommended to keep default"
           },
           "features": {
             "description": "Feature flags",

@@ -452,7 +452,7 @@
           }
         },
         "fish_audio_s2": {
-          "hint": "感情マーカーをテキストに記述",
+          "hint": "角括弧の感情、自然言語記述、効果音と間",
           "name": "Fish Audio S2 Family",
           "display_name": {
             "description": "表示名",
@@ -554,6 +554,111 @@
           "normalize_loudness": {
             "description": "ラウドネス正規化",
             "hint": "既定値を維持することを推奨"
+          },
+          "features": {
+            "description": "機能フラグ",
+            "hint": "カンマ区切り（例：quality-guard）。空欄は既定値。既定値を維持することを推奨"
+          }
+        },
+        "fish_audio_drama_3": {
+          "hint": "自然言語の演技指示、効果音・間、部分指定タグ",
+          "name": "Fish Audio Drama 3",
+          "display_name": {
+            "description": "表示名",
+            "hint": "同一タイプの複数プロバイダーを区別するため"
+          },
+          "priority": {
+            "description": "優先度",
+            "hint": "数値が小さいほど優先"
+          },
+          "persona_id": {
+            "description": "ペルソナ紐付け",
+            "hint": "このペルソナでのみ使用；空欄の場合は共通のフォールバック音色として使用"
+          },
+          "api_key": {
+            "description": "APIキー",
+            "hint": "Fish Audio APIキー"
+          },
+          "model": {
+            "description": "モデル",
+            "hint": "drama-3 に固定。自然言語の演技指示、効果音・間、部分指定タグに対応します"
+          },
+          "reference_id": {
+            "description": "音声ID",
+            "hint": "Voice Library の音声モデル ID を 1 つ入力します。音声ライブラリ: https://fish.audio/zh-CN/discovery"
+          },
+          "format": {
+            "description": "出力フォーマット"
+          },
+          "mp3_bitrate": {
+            "description": "MP3 ビットレート",
+            "hint": "単位はkbps、mp3でのみ有効"
+          },
+          "sample_rate": {
+            "description": "サンプリングレート",
+            "hint": "単位はHz、wav/pcmでのみ有効（8000/16000/24000/32000/44100対応）。mp3/opus選択時は無視"
+          },
+          "opus_bitrate": {
+            "description": "Opus ビットレート",
+            "hint": "単位はbps、-1000で自動。opusでのみ有効"
+          },
+          "latency": {
+            "description": "遅延のトレードオフ"
+          },
+          "normalize": {
+            "description": "テキスト正規化",
+            "hint": "数字／日付などを話し言葉に書き換えてから合成（読み方のみに影響し、アクセントは変わりません）。既定で有効"
+          },
+          "timeout": {
+            "description": "タイムアウト時間",
+            "hint": "単位は秒。長文合成では大きくする必要がある場合があります"
+          },
+          "proxy": {
+            "description": "プロキシアドレス",
+            "hint": "任意。国内からのアクセスで必要になる場合があります（例：http://127.0.0.1:7890）"
+          },
+          "use_pronunciation_dictionary": {
+            "description": "発音辞書を有効化"
+          },
+          "pronunciation_dictionary_id": {
+            "description": "辞書ID",
+            "hint": "正規表現 ^[A-Za-z0-9_-]{1,128}$"
+          },
+          "pronunciation_dictionary_version": {
+            "description": "辞書バージョン",
+            "hint": "明示的に指定が必要（latestはなし）。正規表現 ^[A-Za-z0-9_-]{1,128}$"
+          },
+          "temperature": {
+            "description": "サンプリング温度",
+            "hint": "範囲0～1。既定値を維持することを推奨"
+          },
+          "top_p": {
+            "description": "Top-p（核）サンプリング",
+            "hint": "範囲0～1。既定値を維持することを推奨"
+          },
+          "repetition_penalty": {
+            "description": "リピートペナルティ",
+            "hint": "1.0より大きい必要があります。既定値を維持することを推奨"
+          },
+          "chunk_length": {
+            "description": "テキスト分割サイズ",
+            "hint": "範囲100～300。既定値を維持することを推奨"
+          },
+          "min_chunk_length": {
+            "description": "新しいブロックの最小文字数",
+            "hint": "範囲0～100。既定値を維持することを推奨"
+          },
+          "max_new_tokens": {
+            "description": "1ブロックあたりの最大音声トークン数",
+            "hint": "1ブロックあたりの音声トークン上限。既定値を維持することを推奨"
+          },
+          "condition_on_previous_chunks": {
+            "description": "音声の一貫性",
+            "hint": "前の音声で音声を一致させます。既定値を維持することを推奨"
+          },
+          "early_stop_threshold": {
+            "description": "バッチ早期停止しきい値",
+            "hint": "範囲0～1。既定値を維持することを推奨"
           },
           "features": {
             "description": "機能フラグ",
