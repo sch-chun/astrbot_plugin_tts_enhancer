@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 - **Fish Audio 公共请求层**：将 S2 的 `/v1/tts` 请求、Bearer 鉴权、模型头、格式编码、代理、错误处理和音频保存抽到 `_fish_audio.py`，S2 与 Drama 3 共享；Drama 3 不发送仅适用于 S2 家族的 `normalize_loudness`。
 - **Fish Audio S2 表达指引**：明确方括号支持自然语言描述而非固定标签集，逐项列出 71 个官方参考标签，补充音效与停顿标记的位置说明，并移除“中文必须使用英文标记”的无依据表述。
+- **Fish Audio 参数约束清理**：移除无依据的 ±20 dB 音量裁剪和 `language` 长度说明，音量原样下发；Drama 3 固定 `SUPPORTED_MODELS = ("drama-3",)`，S2 模型常量更名为 `S2_MODELS`，语速边界抽为 `MIN_SPEED` / `MAX_SPEED`，并补充 S2 与 Drama 3 的 `normalize_loudness` 请求断言。
 
 ## [1.5.0] - 2026-11-24
 

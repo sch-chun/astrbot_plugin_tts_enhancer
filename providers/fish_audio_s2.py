@@ -4,12 +4,12 @@ from typing import Any
 
 from astrbot.api import logger
 
-from ._fish_audio import FISH_AUDIO_MODELS, FishAudioAdapter
+from ._fish_audio import MAX_SPEED, MIN_SPEED, S2_MODELS, FishAudioAdapter
 
 
 class FishAudioS2Adapter(FishAudioAdapter):
     DISPLAY_NAME = "Fish Audio S2"
-    SUPPORTED_MODELS = FISH_AUDIO_MODELS
+    SUPPORTED_MODELS = S2_MODELS
 
     def __init__(self, entry: dict) -> None:
         super().__init__(entry)
@@ -53,16 +53,16 @@ class FishAudioS2Adapter(FishAudioAdapter):
                     },
                     "speed": {
                         "type": "number",
-                        "description": "语速，范围 0.5~2.0，默认 1.0。",
+                        "description": f"语速，范围 {MIN_SPEED}~{MAX_SPEED}，默认 1.0。",
                     },
                     "volume": {
                         "type": "number",
-                        "description": "音量，单位 dB，默认 0；正数更响、负数更轻；范围 -20~20，超出由适配器裁剪到边界。",
+                        "description": "音量，单位 dB，默认 0；正数更响、负数更轻。",
                     },
                     "language": {
                         "type": "string",
                         "description": (
-                            "BCP-47 语言标签（≤35 字符，仅字母/数字/“-”/“_”），"
+                            "BCP-47 语言标签，"
                             "仅控制数字/日期/单位的口语化读法，不改变口音或音质。"
                         ),
                     },
@@ -78,9 +78,9 @@ class FishAudioS2Adapter(FishAudioAdapter):
             "- text 必填，为待合成文本；情绪/风格标记（如 [happy]、[warm and happy]）"
             "直接写进 text，可跨句改变，每句最多约 3 个；\n"
             "- 笑声、叹气等音效和 [break]/[long-break] 停顿放在实际发生的位置；\n"
-            "- speed 可选，语速 0.5~2.0；\n"
-            "- volume 可选，音量 dB（默认 0，范围 -20~20，超出由适配器裁剪）；\n"
-            "- language 可选，BCP-47 标签（≤35 字符，仅字母/数字/“-”/“_”），仅控制数字/日期/单位读法（不影响口音/音质）。\n"
+            f"- speed 可选，语速 {MIN_SPEED}~{MAX_SPEED}；\n"
+            "- volume 可选，音量 dB（默认 0，正数更响、负数更轻）；\n"
+            "- language 可选，BCP-47 标签，仅控制数字/日期/单位读法（不影响口音/音质）。\n"
             "根据对话内容与情绪，为合适的句子加 [标记] 来表达语气/情绪。直接调用工具，不要额外解释。\n\n"
             "参考能力说明：\n"
             f"{self.docs_content}"

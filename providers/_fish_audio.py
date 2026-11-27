@@ -11,11 +11,13 @@ from .utils.audio import save_audio_bytes
 from .utils.http import bearer_headers, extract_error_message
 
 API_URL = "https://api.fish.audio/v1/tts"
-FISH_AUDIO_MODELS = ["s2.1-pro", "s2.1-pro-free", "s2-pro"]
+S2_MODELS = ("s2.1-pro", "s2.1-pro-free", "s2-pro")
+MIN_SPEED = 0.5
+MAX_SPEED = 2.0
 
 
 class FishAudioAdapter(TTSProviderAdapter):
-    SUPPORTED_MODELS = FISH_AUDIO_MODELS
+    SUPPORTED_MODELS = S2_MODELS
     DEFAULT_MODEL = "s2.1-pro-free"
     MODEL_NAME = ""
     SUPPORTS_LOUDNESS_NORMALIZATION = True
@@ -33,8 +35,8 @@ class FishAudioAdapter(TTSProviderAdapter):
     def validate_params(self, params: dict) -> tuple[bool, str]:
         if "speed" in params and params["speed"] is not None:
             speed = self._as_float(params["speed"])
-            if speed is None or not (0.5 <= speed <= 2.0):
-                return False, "speed 必须在 0.5~2.0 之间"
+            if speed is None or not (MIN_SPEED <= speed <= MAX_SPEED):
+                return False, f"speed 必须在 {MIN_SPEED}~{MAX_SPEED} 之间"
         if "volume" in params and params["volume"] is not None:
             if self._as_float(params["volume"]) is None:
                 return False, "volume 必须是数字"
@@ -46,7 +48,7 @@ class FishAudioAdapter(TTSProviderAdapter):
     def sanitize_params(self, params: dict) -> dict:
         out: dict[str, Any] = {"text": params.get("text", "")}
         speed = self._as_float(params.get("speed"))
-        if speed is not None and 0.5 <= speed <= 2.0:
+        if speed is not None and MIN_SPEED <= speed <= MAX_SPEED:
             out["speed"] = speed
         volume = self._as_float(params.get("volume"))
         if volume is not None:
@@ -119,11 +121,11 @@ class FishAudioAdapter(TTSProviderAdapter):
 
         prosody: dict[str, Any] = {}
         speed = self._as_float(raw_params.get("speed"))
-        if speed is not None and 0.5 <= speed <= 2.0:
+        if speed is not None and MIN_SPEED <= speed <= MAX_SPEED:
             prosody["speed"] = speed
         volume = self._as_float(raw_params.get("volume"))
         if volume is not None:
-            prosody["volume"] = max(-20.0, min(20.0, volume))
+            prosody["volume"] = volume
         normalize_loudness = config.get("normalize_loudness", True)
         if self.SUPPORTS_LOUDNESS_NORMALIZATION and isinstance(
             normalize_loudness, bool

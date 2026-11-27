@@ -69,6 +69,7 @@ def test_discovery_and_shared_base():
     adapter = ProviderFactory.get_adapter({"__template_key": KEY})
     assert isinstance(adapter, FishAudioDrama3Adapter)
     assert isinstance(adapter, FishAudioAdapter)
+    assert adapter.SUPPORTED_MODELS == ("drama-3",)
     assert isinstance(
         FishAudioS2Adapter({"__template_key": "fish_audio_s2"}), FishAudioAdapter
     )
@@ -124,6 +125,8 @@ def test_prompt_and_docs_omit_speaker_orchestration():
     assert "音素" not in combined
     assert "多角色" not in combined
     assert "超出由适配器裁剪" not in combined
+    assert "-20~20" not in combined
+    assert "≤35" not in combined
     assert "UTF-8 字节数计费" not in combined
     assert "指令可以与台词同语言" in adapter.docs_content
     assert "<french>" in combined
@@ -155,7 +158,12 @@ async def test_drama3_request_uses_fixed_model_and_single_reference(
     tmp_path, monkeypatch
 ):
     adapter = FishAudioDrama3Adapter(
-        {"__template_key": KEY, "api_key": "test-key", "reference_id": "voice-a"}
+        {
+            "__template_key": KEY,
+            "api_key": "test-key",
+            "reference_id": "voice-a",
+            "normalize_loudness": True,
+        }
     )
     config = dict(adapter.entry, _data_dir=str(tmp_path))
     client = _mock_client(monkeypatch)
@@ -173,6 +181,7 @@ async def test_drama3_request_uses_fixed_model_and_single_reference(
     assert payload["text"] == text
     assert payload["reference_id"] == "voice-a"
     assert payload["prosody"] == {"speed": 1.1, "volume": -3.0}
+    assert "normalize_loudness" not in payload["prosody"]
 
 
 @pytest.mark.asyncio

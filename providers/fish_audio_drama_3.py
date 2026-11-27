@@ -2,12 +2,13 @@
 
 from typing import Any
 
-from ._fish_audio import FishAudioAdapter
+from ._fish_audio import MAX_SPEED, MIN_SPEED, FishAudioAdapter
 
 
 class FishAudioDrama3Adapter(FishAudioAdapter):
     DISPLAY_NAME = "Fish Audio Drama 3"
     MODEL_NAME = "drama-3"
+    SUPPORTED_MODELS = ("drama-3",)
     SUPPORTS_LOUDNESS_NORMALIZATION = False
 
     def get_tool_schema(self) -> Any:
@@ -34,11 +35,11 @@ class FishAudioDrama3Adapter(FishAudioAdapter):
                     },
                     "speed": {
                         "type": "number",
-                        "description": "整体语速，范围 0.5~2.0，默认 1.0；局部速度优先用文本指令。",
+                        "description": f"整体语速，范围 {MIN_SPEED}~{MAX_SPEED}，默认 1.0；局部速度优先用文本指令。",
                     },
                     "volume": {
                         "type": "number",
-                        "description": "整体音量，单位 dB，默认 0；范围 -20~20。",
+                        "description": "整体音量，单位 dB，默认 0；正数更响、负数更轻。",
                     },
                     "language": {
                         "type": "string",
