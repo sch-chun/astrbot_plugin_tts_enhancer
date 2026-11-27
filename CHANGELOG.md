@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
-## [Unreleased]
+## [1.6.0] - 2026-11-27
+
+新增 Fish Audio Drama 3 独立供应商与公共请求层，完善自然语言导演指令、音效停顿和局部标签支持，并清理无依据的 Fish Audio 参数限制。
 
 ### Added
 
