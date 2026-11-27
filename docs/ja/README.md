@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.5.0-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.6.0-green)](../../CHANGELOG.md)
 
 ---
 
@@ -34,7 +34,7 @@ AstrBot はデフォルトでは LLM にテキストしか渡せません。し�
 
 ### 1️⃣ マルチプロバイダーアダプター（Provider Adapter）
 
-各 TTS プロバイダーは `TTSProviderAdapter` 抽象クラス（または既存の `BailianSpeechSynthesizerAdapter` / カスタムの共通基底クラス）を継承し、以下を実装するだけです：
+各 TTS プロバイダーは `TTSProviderAdapter` 抽象クラス（または既存の `BailianSpeechSynthesizerAdapter`、`FishAudioAdapter` などの共通基底クラス）を継承し、以下を実装するだけです：
 
 - `get_tool_schema()` → Function Calling のパラメータ構造を定義
 - `get_subagent_system_prompt()` → ケイパビリティドキュメントを SubAgent に注入
@@ -97,7 +97,8 @@ SubAgent は合成時に**このドキュメントを動的に読み取り**、�
 | **Bailian MiniMax Speech 2.8** | HD / Turbo | テキスト内の間投詞 | ✅ | ✅ | ✅ | 広東語 | 39 種 | ✅ |
 | **Xiaomi MiMo V2.5 TTS** | プリセット音色 / テキストデザイン / 音声クローン | 豊富なタグ + 自然言語指示 | ✅ | ✅ | ✅ | ✅ | 中国語中心 | ❌ |
 | **Google Gemini 3.8 Flash TTS** | Flash / Flash-Lite | 自然言語スタイル + テキスト内の発声マーカー（`<laugh>`、`<sigh>`） | ✅ | ✅ | ✅ | ❌ | 多言語 | ❌ |
-| **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | 角括弧の感情タグ（64 種以上、文をまたいで自由に切り替え） | ✅ | ✅ | ❌ | ❌ | 13 種 | ❌ |
+| **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | 角括弧の感情・自然言語記述（71 個の参考タグ、文をまたいで切替） | ✅ | ✅ | ❌ | ❌ | 13 種 | ❌ |
+| **Fish Audio Drama 3** | drama-3（固定） | 自然言語の演技指示 + 効果音・間 + 7 個の部分指定タグ | ✅ | ✅ | ❌ | ❌ | 多言語 | ❌ |
 | **Eleven v4** | v4 / v4 Turbo | 角括弧の感情タグ + `/IPA/` 発音 + `<break>` による一時停止 | ✅ | ✅ | ✅ | 広東語 | 90 種 | ❌ |
 | **StepFun StepAudio 3 TTS** | stepaudio-3-tts | `instruction` + テキスト内の `()` 指示 | ✅ | ✅ | ❌ | ❌ | 中国語中心 | ❌ |
 | **Bailian Qwen Audio 3.1 TTS Next** | qwen-audio-3.1-tts-next | 自然言語によるシーン記述（声質 / 感情 / 効果音） | ❌ | ❌ | ❌ | ❌ | 中国語、英語 | ❌ |
@@ -189,6 +190,7 @@ providers:                        # プロバイダー一覧（複数設定し�
 │ [メインモデル]  "<tts>今日はいい天気ですね</tts>" を出力       │
 │   - GoogleGemini3_8FlashTTSAdapter                          │
 │   - FishAudioS2Adapter                                      │
+│   - FishAudioDrama3Adapter                                  │
 │   - ElevenLabsV4Adapter                                     │
 └──────────────────────────┬──────────────────────────────────┘
                            ▼
@@ -215,6 +217,7 @@ providers:                        # プロバイダー一覧（複数設定し�
 │   - MimoV2_5TTSAdapter                                      │
 │   - GoogleGemini3_8FlashTTSAdapter                          │
 │   - FishAudioS2Adapter                                      │
+│   - FishAudioDrama3Adapter                                  │
 │   - ElevenLabsV4Adapter                                     │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -251,6 +254,8 @@ TTS プロバイダーの追加を歓迎します！手順はわずかです：
   - `providers/docs/minimax_speech_2_8.md`
   - `providers/docs/mimo_v2_5_tts.md`
   - `providers/docs/mimo_v2_5_tts_preset.md`
+  - [Fish Audio S2 能力説明](../../providers/docs/fish_audio_s2.md)
+  - [Fish Audio Drama 3 能力説明](../../providers/docs/fish_audio_drama_3.md)
 
 ## ライセンス
 

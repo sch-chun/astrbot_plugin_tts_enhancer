@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.5.0-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.6.0-green)](../../CHANGELOG.md)
 
 ---
 
@@ -34,7 +34,7 @@ AstrBot по умолчанию может передавать LLM только
 
 ### 1️⃣ Мульти-провайдерные адаптеры
 
-Каждому TTS-провайдеру достаточно унаследовать `TTSProviderAdapter` (или готовую общую базу, например `BailianSpeechSynthesizerAdapter`) и реализовать:
+Каждому TTS-провайдеру достаточно унаследовать `TTSProviderAdapter` (или готовую общую базу, например `BailianSpeechSynthesizerAdapter` или `FishAudioAdapter`) и реализовать:
 
 - `get_tool_schema()` → определяет структуру параметров Function Calling
 - `get_subagent_system_prompt()` → внедряет документ о возможностях в SubAgent
@@ -97,7 +97,8 @@ SubAgent **динамически читает этот документ** в м
 | **Bailian MiniMax Speech 2.8** | HD / Turbo | Встроенные междометия в тексте | ✅ | ✅ | ✅ | Кантонский | 39 | ✅ |
 | **Xiaomi MiMo V2.5 TTS** | Пресет / Текст-дизайн / Аудио-клонирование | Богатые теги + инструкции на ест. языке | ✅ | ✅ | ✅ | ✅ | В основном zh | ❌ |
 | **Google Gemini 3.8 Flash TTS** | Flash / Flash-Lite | Стиль на ест. языке + встроенные голосовые теги (`<laugh>`, `<sigh>`) | ✅ | ✅ | ✅ | ❌ | Мультиязычный | ❌ |
-| **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | Скобочные теги эмоций (64+, свободное переключение между предложениями) | ✅ | ✅ | ❌ | ❌ | 13 | ❌ |
+| **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | Эмоции в скобках / свободные описания (71 справочный тег, переключение между предложениями) | ✅ | ✅ | ❌ | ❌ | 13 | ❌ |
+| **Fish Audio Drama 3** | drama-3 (фиксированная) | Указания на естественном языке + звуки и паузы + 7 локальных тегов | ✅ | ✅ | ❌ | ❌ | Многоязычный | ❌ |
 | **Eleven v4** | v4 / v4 Turbo | Скобочные теги эмоций + `/IPA/` произношение + пауза `<break>` | ✅ | ✅ | ✅ | Кантонский | 90 | ❌ |
 | **StepFun StepAudio 3 TTS** | stepaudio-3-tts | `instruction` + встроенные `()` директивы | ✅ | ✅ | ❌ | ❌ | В основном zh | ❌ |
 | **Bailian Qwen Audio 3.1 TTS Next** | qwen-audio-3.1-tts-next | Описание сцены на ест. языке (голос / эмоции / эффекты) | ❌ | ❌ | ❌ | ❌ | Китайский, английский | ❌ |
@@ -210,6 +211,7 @@ providers:                        # Список провайдеров (нес�
 │   - MimoV2_5TTSAdapter                                      │
 │   - GoogleGemini3_8FlashTTSAdapter                          │
 │   - FishAudioS2Adapter                                      │
+│   - FishAudioDrama3Adapter                                  │
 │   - ElevenLabsV4Adapter                                     │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -246,6 +248,8 @@ providers:                        # Список провайдеров (нес�
   - `providers/docs/minimax_speech_2_8.md`
   - `providers/docs/mimo_v2_5_tts.md`
   - `providers/docs/mimo_v2_5_tts_preset.md`
+  - [Руководство Fish Audio S2](../../providers/docs/fish_audio_s2.md)
+  - [Руководство Fish Audio Drama 3](../../providers/docs/fish_audio_drama_3.md)
 
 ## Лицензия
 

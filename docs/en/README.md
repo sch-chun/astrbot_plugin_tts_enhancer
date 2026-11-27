@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.5.0-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.6.0-green)](../../CHANGELOG.md)
 
 ---
 
@@ -34,7 +34,7 @@ The traditional calling style can only throw a single `text` parameter at them, 
 
 ### 1️⃣ Multi-Provider Adapters
 
-Each TTS provider only needs to subclass `TTSProviderAdapter` (or an existing common base such as `BailianSpeechSynthesizerAdapter`) and implement:
+Each TTS provider only needs to subclass `TTSProviderAdapter` (or an existing common base such as `BailianSpeechSynthesizerAdapter` or `FishAudioAdapter`) and implement:
 
 - `get_tool_schema()` → defines the Function Calling parameter structure
 - `get_subagent_system_prompt()` → injects the capability doc into the SubAgent
@@ -97,7 +97,8 @@ Per provider:
 | **Bailian MiniMax Speech 2.8** | HD / Turbo | Inline interjections | ✅ | ✅ | ✅ | Cantonese | 39 | ✅ |
 | **Xiaomi MiMo V2.5 TTS** | Preset / Text-design / Audio-clone | Rich tags + NL instruction | ✅ | ✅ | ✅ | ✅ | Mostly zh | ❌ |
 | **Google Gemini 3.8 Flash TTS** | Flash / Flash-Lite | NL style + inline vocal tags (`<laugh>`, `<sigh>`) | ✅ | ✅ | ✅ | ❌ | Multilingual | ❌ |
-| **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | Bracket emotion tags (64+, switch freely across sentences) | ✅ | ✅ | ❌ | ❌ | 13 | ❌ |
+| **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | Bracket emotions / free-form descriptions (71 reference tags, switch across sentences) | ✅ | ✅ | ❌ | ❌ | 13 | ❌ |
+| **Fish Audio Drama 3** | drama-3 (fixed) | Natural-language direction + sound/pause cues + 7 scoped tags | ✅ | ✅ | ❌ | ❌ | Multilingual | ❌ |
 | **Eleven v4** | v4 / v4 Turbo | Bracket emotion tags + `/IPA/` pronunciation + `<break>` pause | ✅ | ✅ | ✅ | Cantonese | 90 | ❌ |
 | **StepFun StepAudio 3 TTS** | stepaudio-3-tts | `instruction` + inline `()` directives | ✅ | ✅ | ❌ | ❌ | Mostly zh | ❌ |
 | **Bailian Qwen Audio 3.1 TTS Next** | qwen-audio-3.1-tts-next | Natural-language scene description (voice / emotion / effects) | ❌ | ❌ | ❌ | ❌ | Chinese, English | ❌ |
@@ -210,6 +211,7 @@ See the help text in the plugin config page for the full list of configuration i
 │   - MimoV2_5TTSAdapter                                      │
 │   - GoogleGemini3_8FlashTTSAdapter                          │
 │   - FishAudioS2Adapter                                      │
+│   - FishAudioDrama3Adapter                                  │
 │   - ElevenLabsV4Adapter                                     │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -246,6 +248,8 @@ All new providers are auto-discovered and loaded by the factory — no core code
   - `providers/docs/minimax_speech_2_8.md`
   - `providers/docs/mimo_v2_5_tts.md`
   - `providers/docs/mimo_v2_5_tts_preset.md`
+  - [Fish Audio S2 capability guide](../../providers/docs/fish_audio_s2.md)
+  - [Fish Audio Drama 3 capability guide](../../providers/docs/fish_audio_drama_3.md)
 
 ## License
 

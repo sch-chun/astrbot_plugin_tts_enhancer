@@ -39,6 +39,9 @@ def test_discovery():
 def test_docs_loaded():
     adapter = _make_adapter()
     assert adapter.docs_content.strip(), "缺少能力文档 docs/fish_audio_s2.md"
+    assert "不限于固定标签集" in adapter.docs_content
+    assert "-20~20" not in adapter.docs_content
+    assert "≤35" not in adapter.docs_content
 
 
 def test_tool_schema_contract():
@@ -48,11 +51,28 @@ def test_tool_schema_contract():
     assert tool.name == "tts_enhance"
     assert "text" in tool.parameters["properties"]
     assert "text" in tool.parameters["required"]
+    assert "[warm and happy]" in tool.description
+    assert "[break]" in tool.description
+    assert "官方参考标签枚举" in tool.description
+    for marker in ("[sarcastic]", "[resigned]", "[clear throat]", "[long-break]"):
+        assert marker in tool.description
+    assert "-20~20" not in tool.description
+    assert "裁剪" not in tool.description
+    assert "≤35" not in tool.description
+    volume_description = tool.parameters["properties"]["volume"]["description"]
+    language_description = tool.parameters["properties"]["language"]["description"]
+    assert "-20~20" not in volume_description
+    assert "裁剪" not in volume_description
+    assert "≤35" not in language_description
 
 
 def test_system_prompt_nonempty():
     adapter = _make_adapter()
-    assert adapter.get_subagent_system_prompt().strip()
+    prompt = adapter.get_subagent_system_prompt()
+    assert prompt.strip()
+    assert "[long-break]" in prompt
+    assert "裁剪" not in prompt
+    assert "≤35" not in prompt
 
 
 def test_validate_accepts_empty():
@@ -94,12 +114,12 @@ def test_http_kwargs_injects_proxy():
 
 @pytest.mark.asyncio
 async def test_model_fallback_for_unknown(tmp_path, monkeypatch):
-    # 未知模型应回退到 s2.1-pro-free（FISH_AUDIO_MODELS[1]）
+    # 未知模型应回退到 s2.1-pro-free（S2_MODELS[1]）
     adapter = _make_adapter(model="bogus")
     entry = dict(adapter.entry, _data_dir=str(tmp_path))
     fake = _FakeClient(_FakeResp(b"\x00\x01" * 100))
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.fish_audio_s2.httpx.AsyncClient",
+        "astrbot_plugin_tts_enhancer.providers._fish_audio.httpx.AsyncClient",
         lambda *a, **k: fake,
     )
     path = await adapter.call_api(text="hi", raw_params={}, config=entry)
@@ -157,7 +177,7 @@ async def test_call_api_saves_audio(tmp_path, monkeypatch):
     entry = dict(ENTRY, _data_dir=str(tmp_path))
     fake = _FakeClient(_FakeResp(b"\x00\x01" * 2000))
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.fish_audio_s2.httpx.AsyncClient",
+        "astrbot_plugin_tts_enhancer.providers._fish_audio.httpx.AsyncClient",
         lambda *a, **k: fake,
     )
     path = await adapter.call_api(
@@ -174,6 +194,7 @@ async def test_call_api_saves_audio(tmp_path, monkeypatch):
     assert payload["text"] == "你好"
     assert payload["format"] == "mp3"
     assert payload["prosody"]["speed"] == 1.2
+    assert payload["prosody"]["normalize_loudness"] is True
     assert payload["reference_id"] == "voice-abc"
     assert payload["mp3_bitrate"] == 128
 
@@ -193,7 +214,7 @@ async def test_call_api_http_error_returns_empty(monkeypatch):
     entry = dict(ENTRY, _data_dir="/tmp/x")
     fake = _FakeClient(_FakeResp(b"", status=402))
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.fish_audio_s2.httpx.AsyncClient",
+        "astrbot_plugin_tts_enhancer.providers._fish_audio.httpx.AsyncClient",
         lambda *a, **k: fake,
     )
     path = await adapter.call_api(text="hi", raw_params={}, config=entry)
@@ -210,7 +231,7 @@ async def test_call_api_pronunciation_dictionary(tmp_path, monkeypatch):
     entry = dict(adapter.entry, _data_dir=str(tmp_path))
     fake = _FakeClient(_FakeResp(b"\x00\x01" * 100))
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.fish_audio_s2.httpx.AsyncClient",
+        "astrbot_plugin_tts_enhancer.providers._fish_audio.httpx.AsyncClient",
         lambda *a, **k: fake,
     )
     path = await adapter.call_api(text="hi", raw_params={}, config=entry)
@@ -225,7 +246,7 @@ async def test_call_api_opus_uses_opus_bitrate(tmp_path, monkeypatch):
     entry = dict(adapter.entry, _data_dir=str(tmp_path), format="opus")
     fake = _FakeClient(_FakeResp(b"\x00\x01" * 100))
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.fish_audio_s2.httpx.AsyncClient",
+        "astrbot_plugin_tts_enhancer.providers._fish_audio.httpx.AsyncClient",
         lambda *a, **k: fake,
     )
     path = await adapter.call_api(text="hi", raw_params={}, config=entry)
@@ -236,24 +257,22 @@ async def test_call_api_opus_uses_opus_bitrate(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_call_api_clamps_volume(tmp_path, monkeypatch):
+async def test_call_api_preserves_volume(tmp_path, monkeypatch):
     adapter = _make_adapter()
     entry = dict(ENTRY, _data_dir=str(tmp_path))
     fake = _FakeClient(_FakeResp(b"\x00\x01" * 100))
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.fish_audio_s2.httpx.AsyncClient",
+        "astrbot_plugin_tts_enhancer.providers._fish_audio.httpx.AsyncClient",
         lambda *a, **k: fake,
     )
-    # 上边界：30 -> 20
     await adapter.call_api(
         text="hi", raw_params={"text": "hi", "volume": 30}, config=entry
     )
-    assert fake.last_kwargs["json"]["prosody"]["volume"] == 20.0
-    # 下边界：-50 -> -20
+    assert fake.last_kwargs["json"]["prosody"]["volume"] == 30.0
     await adapter.call_api(
         text="hi", raw_params={"text": "hi", "volume": -50}, config=entry
     )
-    assert fake.last_kwargs["json"]["prosody"]["volume"] == -20.0
+    assert fake.last_kwargs["json"]["prosody"]["volume"] == -50.0
 
 
 @pytest.mark.asyncio
@@ -273,7 +292,7 @@ async def test_call_api_http_error_surfaces_reason(monkeypatch):
     )
     fake = _FakeClient(_ReasonResp(b"", status=402))
     monkeypatch.setattr(
-        "astrbot_plugin_tts_enhancer.providers.fish_audio_s2.httpx.AsyncClient",
+        "astrbot_plugin_tts_enhancer.providers._fish_audio.httpx.AsyncClient",
         lambda *a, **k: fake,
     )
     path = await adapter.call_api(text="hi", raw_params={}, config=entry)

@@ -53,6 +53,7 @@ astrbot_plugin_tts_enhancer/
 │   ├── __init__.py              # ProviderFactory（自動検出）
 │   ├── base.py                  # TTSProviderAdapter 抽象基底クラス
 │   ├── _bailian_speech_synthesizer.py  # Bailian 共通基底（アンダースコア接頭辞、検出対象外）
+│   ├── _fish_audio.py          # Fish Audio 共通基底（S2 / Drama 3 のリクエスト層を共有）
 │   ├── <vendor>_<model>.py      # 具体アダプター（すなわち template_key）
 │   ├── utils/{http,audio}.py    # 共通 HTTP / 音声ユーティリティ
 │   └── docs/<docs_key>.md       # ケイパビリティドキュメント（*_design.md を含む）

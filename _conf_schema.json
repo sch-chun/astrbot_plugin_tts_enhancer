@@ -942,7 +942,7 @@
       },
       "fish_audio_s2": {
         "name": "Fish Audio S2 Family",
-        "hint": "情绪标记写进文本",
+        "hint": "方括号情绪、自然语言描述与音效停顿",
         "display_item": "display_name",
         "items": {
           "display_name": {
@@ -1146,6 +1146,213 @@
             "type": "bool",
             "default": true,
             "hint": "建议保持默认"
+          },
+          "features": {
+            "description": "功能标志",
+            "type": "string",
+            "default": "",
+            "hint": "逗号分隔，如 quality-guard；留空默认，建议保持默认"
+          }
+        }
+      },
+      "fish_audio_drama_3": {
+        "name": "Fish Audio Drama 3",
+        "hint": "自然语言导演指令、音效停顿与局部标签",
+        "display_item": "display_name",
+        "items": {
+          "display_name": {
+            "description": "显示名称",
+            "type": "string",
+            "default": "Fish Audio Drama 3",
+            "hint": "用于区分多个相同类型的供应商"
+          },
+          "priority": {
+            "description": "优先级",
+            "type": "int",
+            "default": 0,
+            "hint": "数字越小越优先"
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "type": "string",
+            "_special": "select_persona",
+            "default": "",
+            "hint": "仅在该人格下使用；留空表示作为通用兜底音色"
+          },
+          "api_key": {
+            "description": "API Key",
+            "type": "string",
+            "default": "",
+            "secret": true,
+            "hint": "Fish Audio 密钥"
+          },
+          "model": {
+            "description": "模型",
+            "type": "string",
+            "default": "drama-3",
+            "options": [
+              "drama-3"
+            ],
+            "hint": "固定使用 drama-3；支持自然语言导演指令、音效停顿与局部标签"
+          },
+          "reference_id": {
+            "description": "音色 ID",
+            "type": "string",
+            "default": "",
+            "hint": "填写一个 Voice Library 音色模型 ID。音色库：https://fish.audio/zh-CN/discovery"
+          },
+          "format": {
+            "description": "输出格式",
+            "type": "string",
+            "default": "mp3",
+            "options": [
+              "mp3",
+              "wav",
+              "pcm",
+              "opus"
+            ]
+          },
+          "mp3_bitrate": {
+            "description": "MP3 码率",
+            "type": "int",
+            "default": 128,
+            "options": [
+              64,
+              128,
+              192
+            ],
+            "condition": {
+              "format": "mp3"
+            },
+            "hint": "单位 kbps，仅 mp3 生效"
+          },
+          "sample_rate": {
+            "description": "采样率",
+            "type": "int",
+            "default": 44100,
+            "options": [
+              8000,
+              16000,
+              24000,
+              32000,
+              44100
+            ],
+            "hint": "单位 Hz，仅 wav/pcm 生效（支持 8000/16000/24000/32000/44100）；选 mp3/opus 时忽略"
+          },
+          "opus_bitrate": {
+            "description": "Opus 码率",
+            "type": "int",
+            "default": -1000,
+            "options": [
+              -1000,
+              24000,
+              32000,
+              48000,
+              64000
+            ],
+            "condition": {
+              "format": "opus"
+            },
+            "hint": "单位 bps，-1000 为自动，仅 opus 生效"
+          },
+          "latency": {
+            "description": "延迟权衡",
+            "type": "string",
+            "default": "normal",
+            "options": [
+              "low",
+              "normal",
+              "balanced"
+            ]
+          },
+          "normalize": {
+            "description": "文本归一化",
+            "type": "bool",
+            "default": true,
+            "hint": "将数字/日期等重写为口语词后再合成（仅影响读法，不改变口音），默认开启"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "type": "int",
+            "default": 120,
+            "hint": "单位秒；长文本合成可能需要调大"
+          },
+          "proxy": {
+            "description": "代理地址",
+            "type": "string",
+            "default": "",
+            "hint": "可选；国内访问可能需要，如 http://127.0.0.1:7890"
+          },
+          "use_pronunciation_dictionary": {
+            "description": "启用发音词典",
+            "type": "bool",
+            "default": false
+          },
+          "pronunciation_dictionary_id": {
+            "description": "词典 ID",
+            "type": "string",
+            "default": "",
+            "condition": {
+              "use_pronunciation_dictionary": true
+            },
+            "hint": "正则 ^[A-Za-z0-9_-]{1,128}$"
+          },
+          "pronunciation_dictionary_version": {
+            "description": "词典版本",
+            "type": "string",
+            "default": "",
+            "condition": {
+              "use_pronunciation_dictionary": true
+            },
+            "hint": "必须显式给出（无 latest）；正则 ^[A-Za-z0-9_-]{1,128}$"
+          },
+          "temperature": {
+            "description": "采样温度",
+            "type": "number",
+            "default": 0.7,
+            "hint": "范围 0~1，建议保持默认"
+          },
+          "top_p": {
+            "description": "核采样",
+            "type": "number",
+            "default": 0.7,
+            "hint": "范围 0~1，建议保持默认"
+          },
+          "repetition_penalty": {
+            "description": "重复惩罚",
+            "type": "number",
+            "default": 1.2,
+            "hint": "需 >1.0，建议保持默认"
+          },
+          "chunk_length": {
+            "description": "文本分块大小",
+            "type": "int",
+            "default": 300,
+            "hint": "范围 100~300，建议保持默认"
+          },
+          "min_chunk_length": {
+            "description": "新块最小字符数",
+            "type": "int",
+            "default": 50,
+            "hint": "范围 0~100，建议保持默认"
+          },
+          "max_new_tokens": {
+            "description": "单块最大音频 token 数",
+            "type": "int",
+            "default": 1024,
+            "hint": "每块音频 token 上限，建议保持默认"
+          },
+          "condition_on_previous_chunks": {
+            "description": "音色一致性",
+            "type": "bool",
+            "default": true,
+            "hint": "用前序音频保持音色一致，建议保持默认"
+          },
+          "early_stop_threshold": {
+            "description": "批处理早停阈值",
+            "type": "number",
+            "default": 1,
+            "hint": "范围 0~1，建议保持默认"
           },
           "features": {
             "description": "功能标志",

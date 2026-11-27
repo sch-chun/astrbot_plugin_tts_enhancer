@@ -227,7 +227,17 @@ The shared base for Bailian-family adapters (`providers/_bailian_speech_synthesi
 
 Concrete Bailian adapters (e.g. `bailian_qwen_audio_3_0_tts.py`) are often just a few lines, declaring only differences such as `MODEL_NAME`.
 
-### 5.4 Capability Docs Mechanism
+### 5.4 Common Base Class `FishAudioAdapter`
+
+The shared base for Fish Audio adapters (`providers/_fish_audio.py`, underscore-prefixed to avoid auto-discovery):
+
+- Wraps `POST https://api.fish.audio/v1/tts`, Bearer authentication, and the `model` request header.
+- Centralizes parameter validation/sanitization, proxies, text and language fields, `prosody` speed/volume, audio format and bitrate/sample-rate handling, sampling/chunk parameters, pronunciation-dictionary references, error handling, and audio persistence.
+- `_resolve_model()`: a non-empty `MODEL_NAME` on a subclass returns that fixed model directly; S2 instead selects `s2.1-pro`, `s2.1-pro-free`, or `s2-pro` from config.
+- `_resolve_reference_id()`: preview `voice_id` takes precedence; otherwise the single configured `reference_id` is used.
+- `FishAudioS2Adapter` keeps the S2 tool schema and capability doc. `FishAudioDrama3Adapter` fixes `MODEL_NAME = "drama-3"`, disables `normalize_loudness` (S2-family only), and provides its own director-instruction tool schema and capability doc.
+
+### 5.5 Capability Docs Mechanism
 
 "Capability docs" are the basis on which the SubAgent intelligently generates params, and are stored at `providers/docs/<docs_key>.md`:
 

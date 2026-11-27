@@ -53,6 +53,7 @@ astrbot_plugin_tts_enhancer/
 │   ├── __init__.py              # ProviderFactory（自动发现）
 │   ├── base.py                  # TTSProviderAdapter 抽象基类
 │   ├── _bailian_speech_synthesizer.py  # 百炼公共基类（下划线前缀，不被发现）
+│   ├── _fish_audio.py          # Fish Audio 公共基类（S2 / Drama 3 共享请求层）
 │   ├── <vendor>_<model>.py      # 具体适配器（即 template_key）
 │   ├── utils/{http,audio}.py    # 公共 HTTP / 音频工具
 │   └── docs/<docs_key>.md       # 能力说明书（含 *_design.md）

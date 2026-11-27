@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.5.0-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.6.0-green)](CHANGELOG.md)
 
 ---
 
@@ -34,7 +34,7 @@ AstrBot 默认只能向 LLM 传递文本，但现代 TTS 服务早已不满足�
 
 ### 1️⃣ 多供应商适配器（Provider Adapter）
 
-每个 TTS 供应商只需继承 `TTSProviderAdapter` 抽象类（或已有的 `BailianSpeechSynthesizerAdapter` / 自定义公共基类），实现：
+每个 TTS 供应商只需继承 `TTSProviderAdapter` 抽象类（或已有的 `BailianSpeechSynthesizerAdapter`、`FishAudioAdapter` 等公共基类），实现：
 
 - `get_tool_schema()` → 定义 Function Calling 的参数结构
 - `get_subagent_system_prompt()` → 将能力说明书注入 SubAgent
@@ -97,7 +97,8 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 | **百炼 MiniMax Speech 2.8** | HD / Turbo | 文本内联语气词 | ✅ | ✅ | ✅ | 粤语 | 39 种 | ✅ |
 | **小米 MiMo V2.5 TTS** | 预置音色 / 文本设计 / 音频复刻 | 富语言标签 + 自然语言指令 | ✅ | ✅ | ✅ | ✅ | 中文为主 | ❌ |
 | **Google Gemini 3.8 Flash TTS** | Flash / Flash-Lite | 自然语言 style + 文本内联发声标记（`<laugh>`、`<sigh>`） | ✅ | ✅ | ✅ | ❌ | 多语种 | ❌ |
-| **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | 方括号情绪标记（64+ 种，跨句自由切换） | ✅ | ✅ | ❌ | ❌ | 13 种 | ❌ |
+| **Fish Audio S2 Family** | s2.1-pro / s2.1-pro-free / s2-pro | 方括号情绪/自然语言描述（71 个参考标签，跨句切换） | ✅ | ✅ | ❌ | ❌ | 13 种 | ❌ |
+| **Fish Audio Drama 3** | drama-3（固定） | 自然语言导演指令 + 音效停顿 + 7 个局部标签 | ✅ | ✅ | ❌ | ❌ | 多语种 | ❌ |
 | **Eleven v4** | v4 / v4 Turbo | 方括号情绪标记 + `/IPA/` 发音 + `<break>` 停顿 | ✅ | ✅ | ✅ | 粤语 | 90 种 | ❌ |
 | **StepFun StepAudio 3 TTS** | stepaudio-3-tts | `instruction` + `()` 内联指令 | ✅ | ✅ | ❌ | ❌ | 中文为主 | ❌ |
 | **百炼 Qwen Audio 3.1 TTS Next** | qwen-audio-3.1-tts-next | 自然语言场景描述（音色 / 情绪 / 音效） | ❌ | ❌ | ❌ | ❌ | 中文、英文 | ❌ |
@@ -192,6 +193,7 @@ providers:                        # 供应商列表（支持多个回退）
 │ [主模型]  输出 "<tts>今天天气真好</tts>"                     │
 │   - GoogleGemini3_8FlashTTSAdapter                          │
 │   - FishAudioS2Adapter                                      │
+│   - FishAudioDrama3Adapter                                  │
 │   - ElevenLabsV4Adapter                                     │
 └──────────────────────────┬──────────────────────────────────┘
                            ▼
@@ -218,6 +220,7 @@ providers:                        # 供应商列表（支持多个回退）
 │   - MimoV2_5TTSAdapter                                      │
 │   - GoogleGemini3_8FlashTTSAdapter                          │
 │   - FishAudioS2Adapter                                      │
+│   - FishAudioDrama3Adapter                                  │
 │   - ElevenLabsV4Adapter                                     │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -254,6 +257,8 @@ providers:                        # 供应商列表（支持多个回退）
   - `providers/docs/minimax_speech_2_8.md`
   - `providers/docs/mimo_v2_5_tts.md`
   - `providers/docs/mimo_v2_5_tts_preset.md`
+  - [Fish Audio S2 能力说明](providers/docs/fish_audio_s2.md)
+  - [Fish Audio Drama 3 能力说明](providers/docs/fish_audio_drama_3.md)
 
 ## 许可
 
