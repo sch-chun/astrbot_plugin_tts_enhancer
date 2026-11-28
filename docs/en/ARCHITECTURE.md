@@ -13,7 +13,7 @@ Core design principles:
 
 - **Highly pluggable multi-provider architecture**: each provider is an independent adapter that never interferes with others; adding a provider is plug-and-play.
 - **Capability Docs mechanism**: each provider ships a Markdown document describing its parameters and usage; the SubAgent uses it to dynamically generate optimal parameters that "never overstep boundaries".
-- **On-demand frontend**: reusable management components are provided only for providers lacking an official web console; providers that already have a console simply link out, avoiding duplicated implementation.
+- **On-demand frontend**: reusable management components fill gaps for providers lacking a management UI; providers with an official console can include links to it without reimplementing the console.
 - **Defensive boundaries**: explicit security constraints apply to file IDs, route parameters, upload extensions, API Key handling, and more.
 
 ---
@@ -108,10 +108,11 @@ Responsibilities: initialization, event hooks, Web API routes, and security vali
   - `on_llm_req`: injects the TTS prompt.
   - `on_decorate`: parses and replaces `<tts>` tags.
 - **Web API** (all mounted under the `/<plugin_name>/` prefix; see Section 10 on security design):
-  - `GET /providers`: returns the provider list grouped by `template_key`, with `api_key` masked.
-  - `POST /voice/{create,list,delete}`: voice management, routed to the adapter by `entry_id`.
+  - `GET /providers`: returns the provider list grouped by `template_key`, with `api_key` masked. Each group includes `display_name` (from the adapter's `DISPLAY_NAME`, falling back to `template_key`), `capabilities` (`voice_management` / `file_management`), and `ui_component` (the component identifier, conventionally equal to `template_key`).
+  - `POST /voice/{create,list,delete}`: optional voice-management operations, routed to the adapter by `entry_id`; unsupported operations return `501`.
+  - `POST /voice/query`: queries one voice's status via `query_voice(voice_id, custom_speaker_id=None)`; the body requires `entry_id` and `voice_id`, with optional `custom_speaker_id`.
   - `POST /upload`: local audio upload (extension whitelist).
-  - `POST /voice/preview`: voice preview (returned as Base64).
+  - `POST /voice/preview`: voice preview through synthesis (returned as Base64); this does not require an adapter-level `preview_voice()` method.
   - `POST /kv/{set,get,delete}`: generic KV storage (used by the frontend/adapters to store metadata).
   - `POST /file/{upload,list,get,delete}`: provider file management (passes `**kwargs` through).
 - **Security helpers**: `_SAFE_FILE_ID_RE`, `_validate_file_id()`, `_resolve_uploads_path()` (compares the parent directory after `resolve()` to prevent traversal), `_parse_entry_id()` (type and bounds checks, excluding `bool`).
@@ -191,7 +192,7 @@ See Section 5.
 
 **Optional capabilities (default `raise NotImplementedError`):**
 
-- Voice management: `create_voice(params)`, `list_voice(**kwargs)`, `delete_voice(**kwargs)`.
+- Voice management (independent optional operations): `create_voice(params)`, `query_voice(voice_id, custom_speaker_id=None)`, `list_voice(**kwargs)`, `delete_voice(**kwargs)`. Adapters implement only what the provider supports; voice preview uses the shared `/voice/preview` synthesis route.
 - File management: `upload_file(...)`, `list_files(**kwargs)`, `get_file_content(file_id)`, `delete_file(file_id, **kwargs)`.
 
 **Common utilities (implemented in the base class, ready to use):**
@@ -237,7 +238,16 @@ The shared base for Fish Audio adapters (`providers/_fish_audio.py`, underscore-
 - `_resolve_reference_id()`: preview `voice_id` takes precedence; otherwise the single configured `reference_id` is used.
 - `FishAudioS2Adapter` keeps the S2 tool schema and capability doc. `FishAudioDrama3Adapter` fixes `MODEL_NAME = "drama-3"`, disables `normalize_loudness` (S2-family only), and provides its own director-instruction tool schema and capability doc.
 
-### 5.5 Capability Docs Mechanism
+### 5.5 Volcengine Seed TTS 3.0 Adapter
+
+- **Identity**: `VolcengineSeedTts30Adapter` in `providers/volcengine_seed_tts_3_0.py`; provider key `volcengine_seed_tts_3_0`; display name `Seed TTS 3.0`.
+- **Synthesis transport**: `POST /api/v3/text-to-speech/{voice_id}/streaming`, authenticated with `X-Api-Key`. The adapter accumulates JSONL streaming events and saves audio only after a valid final event with nonempty audio.
+- **Tool-specific fields**: `instructions` (an ordered array of natural-language direction strings) and `language_code` (`auto` plus 119 official language/dialect codes), alongside the common synthesis controls.
+- **Voice management**: `create_voice`, `query_voice`, and preview via `/voice/preview`; there is intentionally no `list_voice` or `delete_voice` implementation. The frontend component provides manual cloning, single-voice status queries, preview, slot-billing guidance, and official resource links.
+- **Voice slots**: supplying an existing voice ID reuses its account slot. A custom voice ID is postpaid, and its slot fee is charged on the first formal synthesis. Purchased Mega slot listing is not integrated because those APIs use different OpenAPI AK/SK authentication.
+- **Official resources**: [voice list](https://docs.volcengine.com/docs/doubao-voice/voice-list-3-0-1) · [voice design console](https://console.volcengine.com/speech/new/experience/timbre).
+
+### 5.6 Capability Docs Mechanism
 
 "Capability docs" are the basis on which the SubAgent intelligently generates params, and are stored at `providers/docs/<docs_key>.md`:
 
@@ -263,7 +273,15 @@ The shared base for Fish Audio adapters (`providers/_fish_audio.py`, underscore-
 
 Robustness design of the enhancement flow:
 
-- **Structured output**: use `tts_enhance` Function Calling to have the model output a param object (text/instruction/volume/rate/pitch/language_hints, etc.) rather than free text.
+- **Structured output**: use `tts_enhance` Function Calling to have the model output a param object (text plus provider-specific fields) rather than free text. Common examples include `instruction`/`volume`/`rate`/`pitch`/`language_hints`; Seed TTS 3.0 instead exposes `instructions` and `language_code`:
+
+  ```json
+  {
+    "text": "Nice weather today",
+    "instructions": ["温柔自然", "句末稍作停顿"],
+    "language_code": "auto"
+  }
+  ```
 - **Two-stage validation**: first `validate_params` (range/enum) → on final failure `sanitize_params` (discard invalid values, keep valid ones).
 - **Context awareness**: inject the recent conversation and `persona` prompt into the SubAgent so that emotion / speed / language decisions fit the context.
 - **Degradation chain**: tool call failure → text-parsing fallback → return `None` → the main flow switches provider or falls back to plain text.
@@ -278,18 +296,19 @@ The frontend is a **build-free** Vue 3 app:
 - `index.html` loads the local `static/vue.global.prod.js` via `<script>` (UMD, works offline, no CDN dependency), and `app.js` is loaded with `type="module"`.
 - `app.js`:
   - `bridge = window.AstrBotPluginPage`; all backend calls go through `bridge` (including `bridge.ready()`, `bridge.apiGet('providers')`, and `bridge.upload`), bypassing Pages' `asset_token` auth and cross-origin issues.
-  - `componentMap`: maps `template_key` to the corresponding Vue component; `getDisplayName()` provides the Chinese labels.
+  - Provider metadata comes from `GET /providers`: `display_name` comes from the backend adapter's `DISPLAY_NAME`, tab visibility comes from `capabilities.voice_management`, and `ui_component` identifies the frontend component by the `template_key` convention.
+  - `componentMap`: resolves each `template_key` to its Vue component; providers with voice management must register their UI here.
   - Renders Tabs grouped by `template_key`; the current component is loaded dynamically via `<component :is>` and receives `entries / bridge / template-key`.
 - **Component organization**:
   - `components/common/`: components shared across providers (`bailian_speech_synthesizer.js` for clone/design modes — clone audio is encoded by the browser as a Data URL before submission, `voice_preview_modal.js` preview modal, `delete_confirm_modal.js` delete confirmation).
-  - `components/*.js`: thin wrappers per provider, referencing common components and configuring differences via `providerConfig` (language list, help links, whether system voices are supported, etc.).
+  - `components/*.js`: reusable wrappers or provider-specific components; options, help links, and interactions live in the component. For example, `volcengine_seed_tts_3_0.js` implements Seed's clone/query/preview flow and official resource links.
   - `composables/`: `useAudioManager` (global audio singleton/volume), `useTextValidator` (Chinese character = 2 counting and validation), `useClipboard`, and `useToast`.
 - Styles are centralized in `style.css`; the frontend has no build step or ESLint config, so no npm toolchain is required.
 - **Configurable background image**: the management page supports uploading a single background image via the config item `page_background` (file type); the backend `/<plugin>/page-background` route reads the image as a base64 Data URL (avoiding binary bridging and cross-origin/external links); the frontend `applyPageBackground()` only renders the fixed `#page-bg` background layer when `data_url` is non-empty, applying opacity and blur per `page_background_opacity` / `page_background_blur`. Content cards and form fields are made semi-transparent/frosted so the background shows through.
 - **Floating-layer architecture (modals / Toast / volume bar)**: the global volume bar, all modal overlays, and notification toasts are mounted under `body` via `<Teleport to="body">` (fixed + `100vw/100vh`). Page-level fade-in animations use `animation-fill-mode: both`, which leaves two kinds of persistent side effects on ancestor elements after completion — a compositor transform (the computed transform is an identity matrix rather than `none`, becoming the containing block for `position: fixed` descendants) and a compositing layer (i.e. a stacking context, locking z-index within the subtree); teleporting to `body` is immune to both, and new floating layers should follow this pattern.
 - **Animation conventions**: one-shot enter/leave animations (modals, page/tab entry) always use `<Transition>` — animation classes are removed once finished, leaving no residue; continuous transitions (tab highlight bar) use transform compositor animations + `will-change` to avoid per-frame layout. All are disabled under `@media (prefers-reduced-motion: reduce)`.
 
-> Design trade-off: only fill the management gap for providers that "have an API but no UI"; providers with an official console link out directly rather than reimplementing.
+> Design trade-off: fill the management gap for providers that "have an API but no UI". Where a provider has an official console, link to the relevant console/resources rather than reimplementing the console itself.
 
 ---
 

@@ -9,6 +9,7 @@ import BailianCosyvoiceV3_5 from './components/bailian_cosyvoice_v3_5.js';
 import MinimaxSpeech2_8 from './components/minimax_speech_2_8.js';
 import BailianMinimaxSpeech2_8 from './components/bailian_minimax_speech_2_8.js';
 import StepfunStepaudio3Tts from './components/stepfun_stepaudio_3_tts.js';
+import VolcengineSeedTts30 from './components/volcengine_seed_tts_3_0.js';
 import { useAudioManager, base64ToBlobUrl } from './composables/useAudioManager.js';
 import { selectVoiceTabs, firstUsableTab } from './voiceTabs.js';
 import { clearVoiceListCache } from './composables/useVoiceListCache.js';
@@ -155,6 +156,7 @@ const app = createApp({
             'minimax_speech_2_8': MinimaxSpeech2_8,
             'bailian_minimax_speech_2_8': BailianMinimaxSpeech2_8,
             'stepfun_stepaudio_3_tts': StepfunStepaudio3Tts,
+            'volcengine_seed_tts_3_0': VolcengineSeedTts30,
             // template_key → 前端 Vue 组件，仅负责「该供应商的 UI 由哪个组件实现」。
             // 可见性已由后端 capabilities.voice_management 决定（见 visibleGroups），不再依赖此 map；
             // 若新增支持音色管理的供应商，务必在此同步注册组件，否则 switchTab 会

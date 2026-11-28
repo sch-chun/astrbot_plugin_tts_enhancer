@@ -9,10 +9,10 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-
 from astrbot_plugin_tts_enhancer.main import TTSEnhancerPlugin
-from astrbot_plugin_tts_enhancer.src.config import TTSEnhancerConfig
 from astrbot_plugin_tts_enhancer.providers import ProviderFactory
+from astrbot_plugin_tts_enhancer.src.config import TTSEnhancerConfig
+
 from astrbot.api import web as web_mod
 
 
@@ -93,6 +93,26 @@ class TestVoiceQueryRoute:
         assert body["data"]["voice_id"] == "vid-1"
         assert body["data"]["status"] == "DEPLOYING"
 
+    async def test_forwards_custom_name_query_fields(self, tmp_path, patched_adapter):
+        """自定义名称查询应原样委托适配器，不在路由层拼接供应商载荷。"""
+
+        async def _q(voice_id, custom_speaker_id=None):
+            assert voice_id == "custom_speaker_id"
+            assert custom_speaker_id == "custom_zh_voice01"
+            return {"status": 2}
+
+        patched_adapter.query_voice = _q
+        handler = _make_voice_query_plugin(tmp_path, {"providers": [PROVIDER_ENTRY]})
+        resp = await _call(
+            handler,
+            {
+                "entry_id": 0,
+                "voice_id": "custom_speaker_id",
+                "custom_speaker_id": "custom_zh_voice01",
+            },
+        )
+        assert resp.status_code == 200
+
     async def test_returns_501_when_adapter_unsupported(self, tmp_path, monkeypatch):
         """适配器未实现 query_voice 时应返回 501，而非把错误耦合进路由。"""
         unsupported = MagicMock(spec=[])  # 没有任何方法，query_voice 不存在
@@ -129,7 +149,10 @@ class TestProvidersDescriptor:
     async def test_enriches_display_name_and_capabilities(self, tmp_path):
         raw_config = {
             "providers": [
-                {"__template_key": "bailian_qwen_audio_3_0_tts", "api_key": "sk-secret-12345"},
+                {
+                    "__template_key": "bailian_qwen_audio_3_0_tts",
+                    "api_key": "sk-secret-12345",
+                },
                 {"__template_key": "fish_audio_s2", "api_key": "sk-secret-12345"},
                 {"__template_key": "minimax_speech_2_8", "api_key": "sk-secret-12345"},
             ]
@@ -141,13 +164,22 @@ class TestProvidersDescriptor:
         by_key = {g["template_key"]: g for g in body["data"]}
 
         # 展示名来自后端适配器的 DISPLAY_NAME，而非前端硬编码映射。
-        assert by_key["bailian_qwen_audio_3_0_tts"]["display_name"] == "百炼 Qwen Audio 3.0 TTS"
+        assert (
+            by_key["bailian_qwen_audio_3_0_tts"]["display_name"]
+            == "百炼 Qwen Audio 3.0 TTS"
+        )
         assert by_key["fish_audio_s2"]["display_name"] == "Fish Audio S2"
 
         # 能力标记来自 mixin 继承关系：百炼支持音色管理、MiniMax 二者皆支持、
         # Fish Audio 二者皆不支持。
-        assert by_key["bailian_qwen_audio_3_0_tts"]["capabilities"]["voice_management"] is True
-        assert by_key["bailian_qwen_audio_3_0_tts"]["capabilities"]["file_management"] is False
+        assert (
+            by_key["bailian_qwen_audio_3_0_tts"]["capabilities"]["voice_management"]
+            is True
+        )
+        assert (
+            by_key["bailian_qwen_audio_3_0_tts"]["capabilities"]["file_management"]
+            is False
+        )
         assert by_key["minimax_speech_2_8"]["capabilities"]["voice_management"] is True
         assert by_key["minimax_speech_2_8"]["capabilities"]["file_management"] is True
         assert by_key["fish_audio_s2"]["capabilities"]["voice_management"] is False

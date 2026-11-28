@@ -43,6 +43,7 @@ astrbot_plugin_tts_enhancer/
 ├── _conf_schema.json            # 配置 Schema（含各供应商模板）
 ├── README.md / CHANGELOG.md
 ├── requirements-tests.txt       # 测试依赖（pytest / pytest-asyncio）
+├── .astrbot-plugin/i18n/         # zh-CN / en-US / ja-JP / ru-RU 界面文案
 ├── src/
 │   ├── config.py                # TTSEnhancerConfig：配置加载/排序/去重
 │   ├── tts_parser.py            # <tts> 标签解析
@@ -75,8 +76,9 @@ astrbot_plugin_tts_enhancer/
 | 1. 写适配器 | `providers/<template_key>.py` | ✅ |
 | 2. 写能力说明书 | `providers/docs/<docs_key>.md`（可能含 `_design.md`） | ✅（否则降级纯文本） |
 | 3. 配置 Schema | `_conf_schema.json` 的 `providers.templates` 新增模板 | ✅ |
-| 4. 前端接入 | `pages/tts_studio/components/*.js` + `app.js` 注册 | 仅当需 UI |
-| 5. 测试 | `tests/` 新增用例 | 强烈建议 |
+| 4. 四语言 i18n | `.astrbot-plugin/i18n/{zh-CN,en-US,ja-JP,ru-RU}.json` 同步键与文案 | ✅ |
+| 5. 前端接入 | `pages/tts_studio/components/*.js` + `app.js` 的 `componentMap` 注册 | 仅当需 UI |
+| 6. 测试 | `tests/` 新增适配器、前端契约与 i18n 漂移用例 | ✅ |
 
 > 所有新增供应商会被 `ProviderFactory` **自动发现并加载**，无需修改核心代码。文件名（去掉 `.py`）即 `template_key`，必须与 `_conf_schema.json` 的 `templates` key 一致。
 
@@ -127,7 +129,7 @@ class ExampleTtsAdapter(TTSProviderAdapter):
 
 默认 `raise NotImplementedError`，由 `main.py` 路由捕获后返回 `501`。实现后即被前端/路由调用：
 
-- 音色：`create_voice(params)`、`list_voice(**kwargs)`、`delete_voice(**kwargs)`。
+- 音色：`create_voice(params)`、`query_voice(voice_id, custom_speaker_id=None)`、`list_voice(**kwargs)`、`delete_voice(**kwargs)`。
 - 文件：`upload_file(file_path, **kwargs)`、`list_files(**kwargs)`、`get_file_content(file_id)`、`delete_file(file_id, **kwargs)`。
 
 > 文件管理路由（`/file/*`）会把除 `entry_id`/`file_id` 外的参数以 `**kwargs` 透传给适配器，保持扩展弹性。
@@ -210,29 +212,22 @@ if not voice:
 
 ### 7.1 何时需要前端
 
-- **已有官方控制台**：仅在 `app.js` 的 `getDisplayName` 增加显示名，`providerConfig` 配外链即可，**无需写组件**。
-- **只有 API**：在 `components/` 下写组件，复用 `components/common/` 公共组件，并在 `app.js` 的 `componentMap` 注册。
+- **需要插件内管理**：适配器实现相应音色/文件能力并继承 `VoiceManageable` / `FileManageable`，后端 `/providers` 返回 `capabilities`，前端据此显示管理页。
+- **只有 API 或官方控制台**：可编写自定义组件提供说明与官方资源外链；是否显示管理页仍由后端能力元数据决定，不再通过 `providerConfig` 或 `getDisplayName()` 控制。
+- **特殊交互**：独立编写组件，例如 Seed TTS 3.0 的手动复刻、单音色查询、试听与槽位计费说明。
 
 ### 7.2 组件注册（`app.js`）
 
 ```js
 import MyProvider from './components/my_provider.js';
 // componentMap 增加：'my_provider': MyProvider
-// getDisplayName 增加：'my_provider': '我的供应商'
 ```
 
-### 7.3 providerConfig 与通用组件
+显示名来自适配器类属性 `DISPLAY_NAME`，由 `/providers` 返回；`ui_component` 约定等于 `template_key`，用于定位 `componentMap` 中的组件。
 
-百炼系供应商直接复用 `components/common/bailian_speech_synthesizer.js`，薄封装只声明差异：
+### 7.3 组件组织
 
-```js
-export default {
-  components: { BailianSpeechSynthesizer },
-  // providerConfig: { displayName, supportedLanguages, supportsSystemVoices, systemVoiceLinks, designHelpLink }
-};
-```
-
-通用组件已封装复刻/设计两模式（复刻音频经浏览器编码为 Data URL 直接提交）、试听、列表、删除，以及 `voice_preview_modal` / `delete_confirm_modal`（沙箱下替代 `confirm()`）。
+百炼系供应商可复用 `components/common/bailian_speech_synthesizer.js`；特殊供应商可编写独立组件。公共组件已封装复刻/设计两模式（复刻音频经浏览器编码为 Data URL 直接提交）、试听、列表、删除，以及 `voice_preview_modal` / `delete_confirm_modal`（沙箱下替代 `confirm()`）。Seed TTS 3.0 则使用 `volcengine_seed_tts_3_0.js` 实现官方双字段查询、102 个复刻语言选项和槽位计费确认。
 
 ### 7.4 bridge API
 
@@ -241,7 +236,7 @@ export default {
 - `await bridge.ready()`：确保 bridge 就绪。
 - `await bridge.apiGet('providers')`：取分组供应商列表。
 - `bridge.upload(...)`：文件上传（绕开 `asset_token` 鉴权与跨域）。
-- 其余路由以 `bridge.apiPost('<route>', payload)` 形式调用（如 `voice/create`、`file/upload`、`kv/set` 等）。
+- 其余路由以 `bridge.apiPost('<route>', payload)` 形式调用（如 `voice/create`、`voice/query`、`voice/preview`、`file/upload`、`kv/set` 等）。
 
 ### 7.5 composables
 
@@ -297,7 +292,7 @@ pytest tests/test_xxx.py -k "case"   # 单文件/单用例
 
 ## 10. 发布与版本
 
-1. **代码改动** → 2. **版本号**（`metadata.yaml` 的 `version`，保持 `vX.Y.Z`）→ 3. **README/CHANGELOG** 更新 → 4. **分支 + 提交** → 5. **推送**（个人 GitHub 账号，PAT）。
+1. **代码改动** → 2. **版本号**（`metadata.yaml` 的 `version`，保持 `vX.Y.Z`）→ 3. **文档同步**（`CHANGELOG.md`、根 `README.md` 与 `docs/{en,ja,ru}/README.md` 的版本徽章和供应商表、相关架构/开发文档）→ 4. **分支 + 提交** → 5. **推送**（个人 GitHub 账号，PAT）。
 2. `CHANGELOG.md` 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) + 语义化版本。
 3. 多轮任务以"wrap-up 验证 + CHANGELOG 条目"收尾。
 

@@ -108,7 +108,7 @@
             "description": "显示名称",
             "type": "string",
             "default": "Qwen Audio 3.0 TTS",
-            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+            "hint": "用于区分多个相同类型的供应商"
           },
           "priority": {
             "description": "优先级",
@@ -221,7 +221,7 @@
             "description": "显示名称",
             "type": "string",
             "default": "Qwen Audio 3.1 TTS",
-            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+            "hint": "用于区分多个相同类型的供应商"
           },
           "priority": {
             "description": "优先级",
@@ -335,7 +335,7 @@
             "description": "显示名称",
             "type": "string",
             "default": "CosyVoice 3.5",
-            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+            "hint": "用于区分多个相同类型的供应商"
           },
           "priority": {
             "description": "优先级",
@@ -425,7 +425,7 @@
             "description": "显示名称",
             "type": "string",
             "default": "Minimax Speech 2.8",
-            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+            "hint": "用于区分多个相同类型的供应商"
           },
           "priority": {
             "description": "优先级",
@@ -532,7 +532,7 @@
             "description": "显示名称",
             "type": "string",
             "default": "百炼 MiniMax Speech 2.8",
-            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+            "hint": "用于区分多个相同类型的供应商"
           },
           "priority": {
             "description": "优先级",
@@ -640,7 +640,7 @@
             "description": "显示名称",
             "type": "string",
             "default": "MiMo V2.5 TTS",
-            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+            "hint": "用于区分多个相同类型的供应商"
           },
           "priority": {
             "description": "优先级",
@@ -740,6 +740,177 @@
           }
         }
       },
+      "volcengine_seed_tts_3_0": {
+        "name": "豆包 Seed TTS 3.0",
+        "hint": "单向流式合成，支持 Inline Tag、多语种与方言",
+        "display_item": "display_name",
+        "items": {
+          "display_name": {
+            "description": "显示名称",
+            "type": "string",
+            "default": "Seed TTS 3.0",
+            "hint": "用于区分多个相同类型的供应商"
+          },
+          "priority": {
+            "description": "优先级",
+            "type": "int",
+            "default": 0,
+            "hint": "数字越小越优先"
+          },
+          "persona_id": {
+            "description": "绑定人格",
+            "type": "string",
+            "_special": "select_persona",
+            "default": "",
+            "hint": "仅在该人格下使用；留空表示作为通用兜底音色"
+          },
+          "api_key": {
+            "description": "API Key",
+            "type": "string",
+            "default": "",
+            "secret": true,
+            "hint": "火山引擎豆包语音 API Key，通过 X-Api-Key 请求头鉴权"
+          },
+          "voice_id": {
+            "description": "音色 ID",
+            "type": "string",
+            "default": "",
+            "hint": "音色 ID；可在该供应商的音色管理中手动复刻，也可填写控制台已创建的 Seed 3.0 音色 ID"
+          },
+          "timeout": {
+            "description": "超时时间",
+            "type": "int",
+            "default": 180,
+            "hint": "单位：秒。流式合成较长文本时可能需要增加此值"
+          },
+          "proxy": {
+            "description": "代理地址",
+            "type": "string",
+            "default": "",
+            "hint": "可选代理（如 http://127.0.0.1:7890），留空则直连"
+          },
+          "format": {
+            "description": "音频格式",
+            "type": "string",
+            "default": "mp3",
+            "options": [
+              "mp3",
+              "pcm",
+              "ogg_opus"
+            ],
+            "hint": "输出音频格式"
+          },
+          "sample_rate": {
+            "description": "采样率",
+            "type": "int",
+            "default": 24000,
+            "options": [
+              8000,
+              16000,
+              22050,
+              24000,
+              32000,
+              44100,
+              48000
+            ],
+            "hint": "单位 Hz；OGG Opus 固定使用 48000 Hz"
+          },
+          "bit_rate": {
+            "description": "码率",
+            "type": "int",
+            "default": 64000,
+            "options": [
+              64000,
+              160000
+            ],
+            "hint": "单位 bps；仅 MP3 和 OGG Opus 生效，PCM 会自动忽略"
+          },
+          "text_normalization": {
+            "description": "文本归一化",
+            "type": "bool",
+            "default": true,
+            "hint": "处理数字、日期等内容的读法"
+          },
+          "enable_markdown_filter": {
+            "description": "过滤 Markdown",
+            "type": "bool",
+            "default": true,
+            "hint": "使用 Inline Tag 时建议保持开启，避免标签与 Markdown 语法冲突"
+          },
+          "silence_duration": {
+            "description": "结尾静音时长",
+            "type": "int",
+            "default": 0,
+            "hint": "单位 ms，范围 0~30000；静音追加在整段文本最后一句末尾"
+          },
+          "max_input_chars": {
+            "description": "输入字符上限",
+            "type": "int",
+            "default": 10000,
+            "hint": "官方上限 10000，仅可向下调整；用于提前拦截超长文本"
+          },
+          "similarity_boost": {
+            "description": "声音相似度增强",
+            "type": "bool",
+            "default": false,
+            "hint": "仅复刻音色支持开启，可增强合成语音与参考音频的相似度"
+          },
+          "dialect_boost": {
+            "description": "方言表现增强",
+            "type": "bool",
+            "default": false,
+            "hint": "根据 instructions[0] 中的指令增强方言表现；未提供表达指令时自动忽略"
+          },
+          "aigc_watermark": {
+            "description": "音频节奏水印",
+            "type": "bool",
+            "default": false,
+            "hint": "开启后在合成结尾增加音频节奏标识"
+          },
+          "aigc_metadata_enable": {
+            "description": "隐式水印",
+            "type": "bool",
+            "default": false,
+            "hint": "在支持的音频中嵌入 AIGC 隐式标识"
+          },
+          "aigc_content_producer": {
+            "description": "内容制作者标识",
+            "type": "string",
+            "default": "",
+            "condition": {
+              "aigc_metadata_enable": true
+            },
+            "hint": "合成服务提供者的名称或编码；留空则不下发"
+          },
+          "aigc_produce_id": {
+            "description": "内容制作编号",
+            "type": "string",
+            "default": "",
+            "condition": {
+              "aigc_metadata_enable": true
+            },
+            "hint": "内容制作编号；留空则不下发"
+          },
+          "aigc_content_propagator": {
+            "description": "内容传播者标识",
+            "type": "string",
+            "default": "",
+            "condition": {
+              "aigc_metadata_enable": true
+            },
+            "hint": "内容传播服务提供者的名称或编码；留空则不下发"
+          },
+          "aigc_propagate_id": {
+            "description": "内容传播编号",
+            "type": "string",
+            "default": "",
+            "condition": {
+              "aigc_metadata_enable": true
+            },
+            "hint": "内容传播编号；留空则不下发"
+          }
+        }
+      },
       "qwen_audio_3_1_tts_next": {
         "name": "百炼 Qwen Audio 3.1 TTS Next",
         "hint": "单说话人，参考音频与场景音效",
@@ -749,7 +920,7 @@
             "description": "显示名称",
             "type": "string",
             "default": "Qwen Audio 3.1 TTS Next",
-            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+            "hint": "用于区分多个相同类型的供应商"
           },
           "priority": {
             "description": "优先级",
@@ -889,7 +1060,7 @@
             "description": "显示名称",
             "type": "string",
             "default": "Google Gemini 3.8 Flash TTS",
-            "hint": "此供应商配置的显示名称（用于区分多个相同类型的供应商）"
+            "hint": "用于区分多个相同类型的供应商"
           },
           "priority": {
             "description": "优先级",

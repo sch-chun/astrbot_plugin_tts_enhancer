@@ -72,13 +72,21 @@ astrbot_plugin_tts_enhancer/
 
 | 手順 | 成果物 | 必須？ |
 |------|--------|--------|
-| 1. アダプターを書く | `providers/<template_key>.py` | ✅ |
-| 2. ケイパビリティドキュメントを書く | `providers/docs/<docs_key>.md`（`_design.md` を含む場合あり） | ✅（なければプレーンテキストに降级） |
+| 1. アダプターを書く | `providers/<template_key>.py`（`DISPLAY_NAME` も定義） | ✅ |
+| 2. ケイパビリティドキュメントを書く | `providers/docs/<docs_key>.md`（必須セクション `## 你的任务` を含む） | ✅（なければプレーンテキストに降级） |
 | 3. 設定スキーマ | `_conf_schema.json` の `providers.templates` にテンプレートを追加 | ✅ |
-| 4. フロントエンド対応 | `pages/tts_studio/components/*.js` + `app.js` に登録 | UI が必要な場合のみ |
-| 5. テスト | `tests/` にケースを追加 | 強く推奨 |
+| 4. 4 言語の i18n を同期 | `.astrbot-plugin/i18n/{zh-CN,en-US,ja-JP,ru-RU}.json` | ✅ |
+| 5. フロントエンド対応 | `pages/tts_studio/components/*.js` + `app.js` の `componentMap` に登録 | カスタム UI が必要な場合のみ |
+| 6. テスト | `tests/` にケースを追加 | ✅ |
 
 > 追加したプロバイダーはすべて `ProviderFactory` によって**自動的に検出・ロード**され、コアコードの変更は不要です。ファイル名（`.py` を除く）が `template_key` であり、`_conf_schema.json` の `templates` キーと一致している必要があります。
+>
+> **4 言語の i18n 同期は必須です。** 次の 4 ファイルすべてに同じキー構造で文言を追加し、翻訳の抜けを確認してください：
+>
+> - `.astrbot-plugin/i18n/zh-CN.json`
+> - `.astrbot-plugin/i18n/en-US.json`
+> - `.astrbot-plugin/i18n/ja-JP.json`
+> - `.astrbot-plugin/i18n/ru-RU.json`
 
 ---
 
@@ -127,7 +135,7 @@ class ExampleTtsAdapter(TTSProviderAdapter):
 
 デフォルトは `raise NotImplementedError` で、`main.py` のルートがこれを捕捉して `501` を返す。実装すればフロントエンド / ルートから呼び出されます：
 
-- 音色：`create_voice(params)`、`list_voice(**kwargs)`、`delete_voice(**kwargs)`。
+- 音色：`create_voice(params)`、`query_voice(voice_id, custom_speaker_id=None)`、`list_voice(**kwargs)`、`delete_voice(**kwargs)`。プロバイダーの API に合わせて必要な操作だけを実装してください（例：Seed TTS 3.0 は作成 / 照会のみ。プレビューは共通の `/voice/preview` ルートを使用）。
 - ファイル：`upload_file(file_path, **kwargs)`、`list_files(**kwargs)`、`get_file_content(file_id)`、`delete_file(file_id, **kwargs)`。
 
 > ファイル管理ルート（`/file/*`）は `entry_id`/`file_id` 以外の引数を `**kwargs` としてアダプターへ透過的に渡し、拡張の柔軟性を保持します。
@@ -171,7 +179,7 @@ if not voice:
 2. **コアパラメータ表**：必須 / 任意パラメータ（型、範囲、デフォルト値、説明）。
 3. **列挙**：言語、感情タグ、方言など。
 4. **使用例**：完全な `tts_enhance` パラメータ例を含む。
-5. **`## 你的任务`**（重要）：SubAgent に、コンテキストに基づいてパラメータを選択する方法と `tts_enhance` を呼び出すタイミングを明示的に伝える。
+5. **`## 你的任务`（必須）**：SubAgent に、コンテキストに基づいてパラメータを選択する方法と `tts_enhance` を呼び出すタイミングを明示的に伝える。この見出しを省略しないでください。
    - 例：「コンテキストの口調に応じて text に制御タグを追加；instruction/rate/volume で詳細を制御；直接 tts_enhance を呼び出す。」
 
 ある種の音色（例：デザイン音色）の機能が制限されている場合（方言非対応）、`<docs_key>_design.md` に個別に記述し、アダプターの `get_docs_for_voice(voice)` で音色 ID に応じて自動切り替え；同じモデルではサブクラスの `DOCS_KEY` でドキュメントを再利用できます。
@@ -210,29 +218,24 @@ if not voice:
 
 ### 7.1 フロントエンドが必要な場合
 
-- **公式コンソールあり**：`app.js` の `getDisplayName` に表示名を追加し、`providerConfig` で外部リンクを設定するだけ、**コンポーネントを書く必要はありません**。
-- **API のみ**：`components/` 下にコンポーネントを書き、`components/common/` の共通コンポーネントを再利用し、`app.js` の `componentMap` に登録。
+- **表示名**：バックエンドのアダプターに `DISPLAY_NAME` を定義します。`GET /providers` が返す `display_name` をフロントエンドが表示するため、フロントエンドでの表示名のハードコードは不要です。
+- **タブの表示可否**：音色管理機能を持つアダプターは `VoiceManageable` を継承します。`GET /providers` の `capabilities.voice_management` がタブ表示の単一のデータソースです。
+- **カスタム UI**：`components/` 下にコンポーネントを書き、必要に応じて `components/common/` の共通コンポーネントを再利用して、`app.js` の `componentMap` に登録します。登録しないと、バックエンドが音色管理対応と宣言してもタブを選択できません。
+- **公式コンソールの補完**：音色デザインやスロット購入など、プラグインが操作を提供しない機能はコンポーネント内から公式コンソールへリンクします。外部リンクだけでプロバイダー統合が完了するわけではありません。
 
 ### 7.2 コンポーネント登録（`app.js`）
 
 ```js
 import MyProvider from './components/my_provider.js';
 // componentMap に追加：'my_provider': MyProvider
-// getDisplayName に追加：'my_provider': '我的供应商'
+// 表示名はバックエンドの DISPLAY_NAME、タブ表示は capabilities.voice_management に従う
 ```
 
-### 7.3 providerConfig と共通コンポーネント
+### 7.3 共通コンポーネントとカスタム UI の例
 
-Bailian 系プロバイダーは `components/common/bailian_speech_synthesizer.js` を直接再利用し、薄いラッパーは差異のみを宣言：
+Bailian 系プロバイダーは `components/common/bailian_speech_synthesizer.js` を再利用し、薄いラッパーはプロバイダー固有の違いだけを実装します。共通コンポーネントはクローン / デザインの 2 モード（クローン音声はブラウザで Data URL にエンコードして直接送信）、試聴、一覧、削除、および `voice_preview_modal` / `delete_confirm_modal`（サンドボックス下で `confirm()` の代替）をカプセル化済みです。
 
-```js
-export default {
-  components: { BailianSpeechSynthesizer },
-  // providerConfig: { displayName, supportedLanguages, supportsSystemVoices, systemVoiceLinks, designHelpLink }
-};
-```
-
-共通コンポーネントはクローン / デザインの 2 モード（クローン音声はブラウザで Data URL にエンコードして直接送信）、試聴、一覧、削除、および `voice_preview_modal` / `delete_confirm_modal`（サンドボックス下で `confirm()` の代替）をカプセル化済み。
+Seed TTS 3.0 は一覧 / 削除を提供しないため、Bailian 系の共通 UI をそのまま使わず、`volcengine_seed_tts_3_0.js` にクローン / 単一音色の照会 / プレビュー専用のカスタム UI を実装しています。公式音色リストと音色デザインコンソールへのリンクもこのコンポーネントが提供します。
 
 ### 7.4 bridge API
 
@@ -297,9 +300,11 @@ pytest tests/test_xxx.py -k "case"   # 単一ファイル / 単一ケース
 
 ## 10. リリースとバージョン
 
-1. **コード変更** → 2. **バージョン番号**（`metadata.yaml` の `version`、`vX.Y.Z` 形式を維持）→ 3. **README/CHANGELOG** の更新 → 4. **ブランチ + コミット** → 5. **プッシュ**（個人 GitHub アカウント、PAT）。
+1. **コード変更** → 2. **バージョン番号**（`metadata.yaml` の `version`、`vX.Y.Z` 形式を維持）→ 3. **README / CHANGELOG の更新** → 4. **ブランチ + コミット** → 5. **プッシュ**（個人 GitHub アカウント、PAT）。
 2. `CHANGELOG.md` は [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) とセマンティックバージョニングに従う。
-3. 複数ラウンドのタスクは「wrap-up 検証 + CHANGELOG エントリ」で締める。
+3. **4 言語すべての README を同期**：ルートの `README.md`（中国語）、`docs/en/README.md`（英語）、`docs/ja/README.md`（日本語）、`docs/ru/README.md`（ロシア語）のバージョンバッジとプロバイダーテーブルを同じリリース内容に更新してください。
+4. **`CHANGELOG.md` も同期**：README のバージョンと機能説明に合わせて変更内容を追記します。
+5. 複数ラウンドのタスクは「wrap-up 検証 + CHANGELOG エントリ」で締める。
 
 ---
 
