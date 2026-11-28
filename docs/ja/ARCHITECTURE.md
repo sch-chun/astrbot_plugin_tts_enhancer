@@ -13,7 +13,7 @@ AstrBot のメインモデル（LLM）はデフォルトでは TTS 処理にプ�
 
 - **高い拡張性を持つマルチプロバイダーアーキテクチャ**：各プロバイダーは独立したアダプター（Adapter）であり、互いに干渉せず、新しいプロバイダーはそのまま追加できます。
 - **ケイパビリティドキュメントの仕組み（Capability Docs）**：各プロバイダーにパラメータと使い方を記述した Markdown ドキュメントが付属し、SubAgent はそれに基づいて「範囲を逸脱しない」最適なパラメータを動的に生成します。
-- **オンデマンドなフロントエンド**：公式 Web コンソールのないプロバイダーにのみ再利用可能な管理コンポーネントを提供；コンソールを持つプロバイダーは外部リンクへ直接遷移させ、重複実装を避けます。
+- **オンデマンドなフロントエンド**：音色管理などの UI が必要なプロバイダーに再利用可能な管理コンポーネントを提供。公式コンソールを持つプロバイダーでも、プラグイン内で必要な操作を提供するか、公式コンソールへのリンクを案内します。表示名・ケイパビリティ・UI コンポーネントの解決はバックエンドとフロントエンドの契約に従います。
 - **防御的な境界**：ファイル ID、ルートパラメータ、アップロード拡張子、API Key の取り扱いなどに明示的なセキュリティ制約を設けています。
 
 ---
@@ -110,8 +110,8 @@ flowchart TD
   - `on_llm_req`：TTS プロンプトを注入。
   - `on_decorate`：`<tts>` タグを解析して置換。
 - **Web API**（すべて `/<plugin_name>/` プレフィックス下、セキュリティ設計は第 10 節を参照）：
-  - `GET /providers`：`template_key` ごとにグループ化したプロバイダー一覧を返し、`api_key` はマスキング。
-  - `POST /voice/{create,list,delete}`：ボイス管理。`entry_id` に基づいてアダプターへルーティング。
+  - `GET /providers`：`template_key` ごとにグループ化したプロバイダー一覧を返し、`api_key` はマスキング。各グループにはバックエンドのアダプター由来の `display_name`（`DISPLAY_NAME`、未定義時は `template_key`）、`capabilities`（`voice_management` / `file_management`）、`ui_component`（規約上は `template_key` と同値）を含みます。
+  - `POST /voice/{create,query,list,delete}`：ボイス管理。`entry_id` に基づいてアダプターへルーティング。`query` は `entry_id` と `voice_id` を必須とし、アダプターの `query_voice()` を呼び出して状態を返します。
   - `POST /upload`：ローカル音声のアップロード（拡張子ホワイトリスト）。
   - `POST /voice/preview`：ボイスのプレビュー（Base64 で返す）。
   - `POST /kv/{set,get,delete}`：汎用 KV ストレージ（フロントエンド / アダプターがメタデータを読み書き）。
@@ -193,7 +193,7 @@ flowchart TD
 
 **任意機能（デフォルトは `raise NotImplementedError`）：**
 
-- ボイス管理：`create_voice(params)`、`list_voice(**kwargs)`、`delete_voice(**kwargs)`。
+- ボイス管理：`create_voice(params)`、`query_voice(voice_id, custom_speaker_id=None)`、`list_voice(**kwargs)`、`delete_voice(**kwargs)`。これらは任意機能で、プロバイダーが対応する操作だけを実装します。
 - ファイル管理：`upload_file(...)`、`list_files(**kwargs)`、`get_file_content(file_id)`、`delete_file(file_id, **kwargs)`。
 
 **汎用ツール（基底クラスが実装済みで、そのまま利用可能）：**
@@ -239,7 +239,19 @@ Fish Audio 系アダプターが共有する基底（`providers/_fish_audio.py`�
 - `_resolve_reference_id()`：プレビューの `voice_id` を優先し、それ以外は設定の単一 `reference_id` を使用します。
 - `FishAudioS2Adapter` は S2 のツールスキーマと能力説明書を保持します。`FishAudioDrama3Adapter` は `MODEL_NAME = "drama-3"` を固定し、S2 系専用の `normalize_loudness` を無効化して、独立した演技指示のツールスキーマと能力説明書を提供します。
 
-### 5.5 ケイパビリティドキュメントの仕組み
+### 5.5 Volcengine Seed TTS 3.0 アダプター
+
+`providers/volcengine_seed_tts_3_0.py` の `VolcengineSeedTts30Adapter`（クラス名の `ts` は小文字）は、火山エンジンの Seed TTS 3.0 に接続します。
+
+- **識別情報**：プロバイダーキー（`template_key`）は `volcengine_seed_tts_3_0`、表示名（`DISPLAY_NAME`）は `Seed TTS 3.0`、モデル ID は `doubao-seed-tts-3.0`。
+- **合成 API**：`POST /api/v3/text-to-speech/{voice_id}/streaming` を `X-Api-Key` で認証して呼び出します。レスポンスは JSONL ストリームで、イベントを順に蓄積します。有効な最終イベントを受信し、音声データが空でない場合にのみ音声を保存します。最終イベントより前の断片だけが揃った場合は保存しません。
+- **プロバイダー固有のツールパラメータ**：`instructions`（文字列配列）と `language_code` を構造化出力で扱います。`language_code` は `auto` と 119 個の言語コードに対応します。
+- **音色管理**：`create_voice()`（手動クローン）と `query_voice()`（単一音色の状態照会）を提供します。`list_voice()` / `delete_voice()` は提供しません。プレビューは共通の `/voice/preview` ルートで実行し、音色デザインは公式コンソールで行います。
+- **音色 ID と課金**：既存の音色 ID を指定するとアカウント内の既存スロットを再利用します。カスタム音色 ID は後課金のスロットで、スロット料金は初回の正式合成時に発生します。
+- **フロントエンド**：`volcengine_seed_tts_3_0.js` はクローン / 照会 / プレビュー専用のカスタムコンポーネントです。[公式音色リスト](https://docs.volcengine.com/docs/doubao-voice/voice-list-3-0-1) と[音色デザインコンソール](https://console.volcengine.com/speech/new/experience/timbre)へのリンクを含みます。
+- **Mega スロット一覧の非対応**：購入済み Mega 音色スロットの一覧は意図的に統合していません。これらの API は合成・音色管理 API とは異なる OpenAPI AK/SK 認証を使うためです。
+
+### 5.6 ケイパビリティドキュメントの仕組み
 
 「ケイパビリティドキュメント」は SubAgent がインテリジェントにパラメータを生成する根拠であり、`providers/docs/<docs_key>.md` に格納されます：
 
@@ -265,7 +277,7 @@ Fish Audio 系アダプターが共有する基底（`providers/_fish_audio.py`�
 
 拡張フローのロバスト性設計：
 
-- **構造化された出力**：`tts_enhance` Function Calling により、モデルに自由形式のテキストではなくパラメータオブジェクト（text/instruction/volume/rate/pitch/language_hints など）を出力させます。
+- **構造化された出力**：`tts_enhance` Function Calling により、モデルに自由形式のテキストではなくパラメータオブジェクトを出力させます。共通パラメータ（text/instruction/volume/rate/pitch/language_hints など）に加え、プロバイダー固有のパラメータもツールスキーマで定義します。例えば Seed TTS 3.0 は `instructions`（文字列配列）と `language_code`（`auto` + 119 言語コード）を渡します。
 - **2 段階の検証**：まず `validate_params`（範囲 / 列挙）→ 最終失敗時に `sanitize_params`（不正値を破棄し合法値を保持）。
 - **コンテキスト認識**：直近の会話と `persona` プロンプトを SubAgent に注入し、感情 / 話速 / 言語の判断を文脈に即させます。
 - **降级チェーン**：ツール呼び出し失敗 → テキスト解析への降级 → `None` を返す → メインフローがプロバイダーを切り替えるかプレーンテキストへ。
@@ -280,18 +292,18 @@ Fish Audio 系アダプターが共有する基底（`providers/_fish_audio.py`�
 - `index.html` は `<script>` でローカルの `static/vue.global.prod.js`（UMD、オフライン利用可、CDN 依存なし）を読み込み、`app.js` は `type="module"` でロード。
 - `app.js`：
   - `bridge = window.AstrBotPluginPage`。すべてのバックエンド呼び出しは `bridge` を経由（`bridge.ready()`、`bridge.apiGet('providers')`、`bridge.upload` を含む）。Pages の `asset_token` 認証とクロスオリジンを回避。
-  - `componentMap`：`template_key` を対応する Vue コンポーネントにマッピング；`getDisplayName()` が中国語ラベルを提供。
-  - `template_key` ごとにタブをグループ表示し、現在のコンポーネントは `<component :is>` で動的にロード。`entries / bridge / template-key` を渡す。
+  - `componentMap`：`template_key` を対応する Vue コンポーネントにマッピング。タブの表示名は `GET /providers` が返す `display_name`（アダプターの `DISPLAY_NAME`）を使い、フロントエンドでハードコードしません。`ui_component` は対応コンポーネントの識別子（規約上 `template_key` と同値）です。
+  - `template_key` ごとにタブをグループ表示し、現在のコンポーネントは `<component :is>` で動的にロード。タブの表示可否は `GET /providers` の `capabilities.voice_management` で判定します。`entries / bridge / template-key` を渡します。
 - **コンポーネント構成**：
   - `components/common/`：プロバイダー間で共有するコンポーネント（`bailian_speech_synthesizer.js` はクローン / デザインの 2 モード（クローン音声はブラウザで Data URL にエンコードして送信）、`voice_preview_modal.js` はプレビューモーダル、`delete_confirm_modal.js` は削除確認）。
-  - `components/*.js`：各プロバイダーの薄いラッパー。common コンポーネントを参照し、`providerConfig` で差異（言語一覧、ヘルプリンク、システムボイス対応可否など）を設定。
+  - `components/*.js`：各プロバイダーの薄いラッパー、または専用のカスタムコンポーネント。必要に応じて common コンポーネントを参照し、`componentMap` に登録します。例として `volcengine_seed_tts_3_0.js` は Seed TTS 3.0 のクローン / 単一音色の照会 / プレビューを実装し、公式音色リストと音色デザインコンソールへのリンクを提供します。
   - `composables/`：`useAudioManager`（グローバル音声シングルトン / 音量）、`useTextValidator`（漢字 = 2 文字のカウントと検証）、`useClipboard`、`useToast`。
 - スタイルは `style.css` に集約；フロントエンドにはビルド手順も ESLint 設定もないため、npm ツールチェーンは不要です。
 - **設定可能な背景画像**：管理ページは設定項目 `page_background`（file 型）で単一の背景画像をアップロード可能；バックエンドの `/<plugin>/page-background` ルートが画像を base64 Data URL として読み出して返す（バイナリがブリッジを通ることとクロスオリジン / 外部リンクを回避）。フロントエンドの `applyPageBackground()` は `data_url` が空でない場合のみ `#page-bg` の固定背景レイヤーを描画し、`page_background_opacity` / `page_background_blur` に従って不透明度とぼかしを適用。コンテンツカードとフォーム項目も半透明のすりガラス風に変更し、背景が透けて見えるようにしています。
 - **フローティングレイヤーアーキテクチャ（モーダル / Toast / 音量バー）**：グローバル音量バー、すべてのモーダルオーバーレイ、通知トーストは `<Teleport to="body">` で body 直下にマウント（fixed + `100vw/100vh`）。ページレベルのフェードインアニメーションは `animation-fill-mode: both` を使用し、終了後に祖先要素へ 2 種類の永続的な副作用を残します——合成トランスフォーム（computed transform が `none` ではなく単位行列となり、`position: fixed` の子孫の包含ブロックになる）と合成レイヤー（すなわち重ね合わせコンテキストで、サブツリー内の z-index を固定）。body への Teleport はこれら 2 つの副作用に対して堅牢なアーキテクチャであり、新しい浮層を追加する際はこれに従うべきです。
 - **アニメーション規約**：一度きりの出入り（モーダル、ページ / タブの進入）はすべて `<Transition>` を使用——アニメーションクラスが再生されれば削除され、残骸が出ません。継続的なトランジション（タブのハイライトバー）は transform のコンポジターアニメーション + `will-change` を使用し、毎フレームのレイアウトを回避。`@media (prefers-reduced-motion: reduce)` 下ではすべて無効化。
 
-> 設計上の取舍：API のみで UI のないプロバイダーの管理体験だけを補完する；公式コンソールを持つプロバイダーは外部リンクとし、重複実装しない。
+> 設計上の取舍：API のみで UI のないプロバイダーの管理体験を補完する。公式コンソールを持つプロバイダーでも、プラグイン内で必要な管理操作を提供する場合はカスタム UI を実装し、音色デザインやスロット購入などプラグインが扱わない機能は公式コンソールへのリンクとして案内します。
 
 ---
 

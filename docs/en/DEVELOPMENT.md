@@ -75,10 +75,11 @@ astrbot_plugin_tts_enhancer/
 | 1. Write the adapter | `providers/<template_key>.py` | ✅ |
 | 2. Write the capability doc | `providers/docs/<docs_key>.md` (possibly with `_design.md`) | ✅ (otherwise falls back to plain text) |
 | 3. Config schema | Add a template under `providers.templates` in `_conf_schema.json` | ✅ |
-| 4. Frontend integration | `pages/tts_studio/components/*.js` + registration in `app.js` | Only if a UI is needed |
-| 5. Tests | Add cases under `tests/` | Strongly recommended |
+| 4. i18n | Synchronize `.astrbot-plugin/i18n/zh-CN.json`, `.astrbot-plugin/i18n/en-US.json`, `.astrbot-plugin/i18n/ja-JP.json`, and `.astrbot-plugin/i18n/ru-RU.json` | ✅ (all four locales) |
+| 5. Frontend integration | `pages/tts_studio/components/*.js` + registration in `componentMap` in `app.js` | Only if custom UI is needed |
+| 6. Tests | Add cases under `tests/` | ✅ |
 
-> All new providers are **auto-discovered and loaded** by `ProviderFactory`, with no core code changes required. The file name (without `.py`) is the `template_key` and must match the `templates` key in `_conf_schema.json`.
+> All new adapters are **auto-discovered and loaded** by `ProviderFactory`. The file name (without `.py`) is the `template_key` and must match the `templates` key in `_conf_schema.json`. Discovery alone is not complete integration: the schema, all four i18n locales, tests, and any custom UI registration are also required.
 
 ---
 
@@ -127,7 +128,7 @@ class ExampleTtsAdapter(TTSProviderAdapter):
 
 By default these `raise NotImplementedError`, which the `main.py` routes catch and return `501` for. Once implemented they are called by the frontend/routes:
 
-- Voice: `create_voice(params)`, `list_voice(**kwargs)`, `delete_voice(**kwargs)`.
+- Voice (implement only the supported operations): `create_voice(params)`, `query_voice(voice_id, custom_speaker_id=None)`, `list_voice(**kwargs)`, `delete_voice(**kwargs)`. Voice preview is handled by the shared `/voice/preview` synthesis route.
 - File: `upload_file(file_path, **kwargs)`, `list_files(**kwargs)`, `get_file_content(file_id)`, `delete_file(file_id, **kwargs)`.
 
 > The file management routes (`/file/*`) pass through all parameters except `entry_id`/`file_id` to the adapter as `**kwargs`, keeping extension flexible.
@@ -171,7 +172,7 @@ File: `providers/docs/<docs_key>.md`, read and injected directly by the SubAgent
 2. **Core parameter table**: required/optional params (type, range, default, description).
 3. **Enums**: languages, emotion tags, dialects, etc.
 4. **Usage examples**: including a complete `tts_enhance` param example.
-5. **`## 你的任务`** (key section): explicitly tell the SubAgent how to choose params from context and when to call `tts_enhance`.
+5. **`## 你的任务`** (required key section): explicitly tell the SubAgent how to choose params from context and when to call `tts_enhance`.
    - Example: "Add control tags to text according to the context tone; use instruction/rate/volume to control the details; call tts_enhance directly."
 
 If a class of voices (e.g. designed voices) has limited capabilities (no dialect support), describe it separately in `<docs_key>_design.md` and switch automatically by voice ID in the adapter via `get_docs_for_voice(voice)`; providers using the same model can set the subclass `DOCS_KEY` to reuse a doc.
@@ -208,27 +209,37 @@ Key points:
 
 ## 7. Frontend Integration
 
-### 7.1 When a Frontend Is Needed
+### 7.1 Backend Metadata and UI Requirements
 
-- **Already has an official console**: just add a display name in `getDisplayName` in `app.js` and configure an external link in `providerConfig` — **no component needed**.
-- **API only**: write a component under `components/`, reuse the shared components in `components/common/`, and register it in `componentMap` in `app.js`.
+- **Display name**: declare `DISPLAY_NAME` on the adapter. `GET /providers` returns it as `display_name`; the frontend does not maintain a separate label map.
+- **Tab visibility**: backend `capabilities.voice_management` is the single source of truth. Implement the voice-management capability contract and only the operations the provider supports.
+- **Component resolution**: `GET /providers` returns `ui_component` (conventionally the `template_key`), while `componentMap` in `app.js` resolves that key to the Vue component. Register custom UI there whenever the provider supports voice management.
+- **Official console**: include official console/resource links in the provider component where useful; a link alone does not replace component registration.
 
 ### 7.2 Component Registration (`app.js`)
 
 ```js
 import MyProvider from './components/my_provider.js';
-// add to componentMap: 'my_provider': MyProvider
-// add to getDisplayName: 'my_provider': 'My Provider'
+// Add to componentMap: 'my_provider': MyProvider
+// No frontend display-name or visibility entry is needed.
 ```
 
-### 7.3 providerConfig and Shared Components
+For Seed TTS 3.0, the custom component provides the actual integration pattern:
 
-Bailian-family providers directly reuse `components/common/bailian_speech_synthesizer.js`; the thin wrapper declares only the differences:
+```js
+import VolcengineSeedTts30 from './components/volcengine_seed_tts_3_0.js';
+// Add to componentMap: 'volcengine_seed_tts_3_0': VolcengineSeedTts30
+```
+
+`volcengine_seed_tts_3_0.js` implements manual cloning, single-voice status queries, preview, slot-billing guidance, and links to the official voice list and design console.
+
+### 7.3 Shared Components
+
+Bailian-family providers reuse `components/common/bailian_speech_synthesizer.js`; thin wrappers keep provider-specific options in the component:
 
 ```js
 export default {
   components: { BailianSpeechSynthesizer },
-  // providerConfig: { displayName, supportedLanguages, supportsSystemVoices, systemVoiceLinks, designHelpLink }
 };
 ```
 
@@ -298,8 +309,9 @@ pytest tests/test_xxx.py -k "case"   # single file / single case
 ## 10. Release and Versioning
 
 1. **Code changes** → 2. **Version number** (`version` in `metadata.yaml`, kept as `vX.Y.Z`) → 3. **README/CHANGELOG** update → 4. **Branch + commit** → 5. **Push** (personal GitHub account, PAT).
-2. `CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) + Semantic Versioning.
-3. Multi-round tasks end with "wrap-up verification + a CHANGELOG entry".
+2. Synchronize the version badge and provider table in all four READMEs: `README.md`, `docs/en/README.md`, `docs/ja/README.md`, and `docs/ru/README.md`.
+3. Synchronize `CHANGELOG.md` with the release; it follows [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) + Semantic Versioning.
+4. Multi-round tasks end with "wrap-up verification + a CHANGELOG entry".
 
 ---
 

@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.6.0-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.7.0-green)](../../CHANGELOG.md)
 
 ---
 
@@ -26,7 +26,7 @@ AstrBot はデフォルトでは LLM にテキストしか渡せません。し�
 
 - **高い拡張性を持つマルチプロバイダーアーキテクチャ** – 各プロバイダーは独立したアダプターとして実装され、互いに干渉しません。
 - **ケイパビリティドキュメント（Capability Docs）の仕組み** – 各プロバイダーに、サポートするパラメータと使い方を記述した Markdown ドキュメントが付属し、SubAgent はそれに基づいて最適なパラメータをインテリジェントに生成します。
-- **オンデマンドなフロントエンド UI** – Web UI のないプロバイダー向けに再利用可能な管理コンポーネントを提供します。公式コンソールを持つプロバイダーは外部リンクを設定するだけで、重複実装は不要です。
+- **オンデマンドなフロントエンド UI** – Web UI のないプロバイダー向けに再利用可能な管理コンポーネントを提供します。公式コンソールを持つプロバイダーでも、プラグイン内で必要な管理操作を提供するか、公式リソースへのリンクを案内します。
 
 ---
 
@@ -39,9 +39,13 @@ AstrBot はデフォルトでは LLM にテキストしか渡せません。し�
 - `get_tool_schema()` → Function Calling のパラメータ構造を定義
 - `get_subagent_system_prompt()` → ケイパビリティドキュメントを SubAgent に注入
 - `call_api()` → 実際の API を呼び出す
-- `create_voice() / list_voice() / delete_voice()` → ボイス管理
+- `create_voice()` → ボイスの作成（任意）
+- `query_voice()` → ボイスの状態照会（任意）
+- `list_voice()` / `delete_voice()` → ボイス一覧 / 削除（任意）
 
-プロバイダーを追加するには、Python ファイル 1 つと Markdown ドキュメント 1 つを書くだけで、プラグインが自動的に検出します。
+音色管理メソッドはすべて任意です。プロバイダーの API に合わせて必要なものだけを実装します。例えば Seed TTS 3.0 は `create_voice()` / `query_voice()` を提供し、一覧取得と削除には対応していません。プレビューは共通の `/voice/preview` ルートで実行します。
+
+Python アダプター 1 つと Markdown のケイパビリティドキュメント 1 つを追加すれば、アダプターの自動検出とドキュメント読み込みが可能になります。ただし、実際に利用できるプロバイダーとして統合するには、`_conf_schema.json` の設定テンプレート、4 言語の i18n（中国語 / 英語 / 日本語 / ロシア語）、カスタム UI を使う場合は `app.js` の `componentMap` へのコンポーネント登録、およびテストも必要です。
 
 ### 2️⃣ ケイパビリティドキュメント（Capability Docs）
 
@@ -60,6 +64,7 @@ SubAgent は合成時に**このドキュメントを動的に読み取り**、�
 - `bailian_speech_synthesizer.js` – ボイスクローン / サウンドデザインの 2 モード、試聴、一覧、削除
 - `voice_preview_modal.js` – ボイスプレビューのモーダル。試聴と保持 / 削除に対応
 - `delete_confirm_modal.js` – 削除確認モーダル。サンドボックス環境で `confirm()` がブロックされるのを回避
+- `volcengine_seed_tts_3_0.js` – Seed TTS 3.0 の手動クローン、単一音色のステータス照会、スロット課金の説明、公式リソースへのリンク
 
 さらに各プロバイダーごとの**カスタム操作**（例：MiniMax の「未アクティベート音色 → プレビュー → アクティベート決定」の 3 段階フロー）にも対応しています。
 
@@ -78,9 +83,9 @@ SubAgent は合成時に**このドキュメントを動的に読み取り**、�
 
 各プロバイダーごとに：
 
-- **UI が必要** → 共通コンポーネントを再利用してカスタム拡張。`app.js` で登録し、`providerConfig`（言語一覧、ヘルプリンクなど）を設定するだけ
-- **公式 Web コンソールあり** → 外部リンクを設定するだけ。重複実装は不要
-- **特殊な操作ニーズあり** → 専用のカスタムコンポーネントを個別に作成（例：MiniMax の音声一覧、Hex デコードなど）
+- **カスタム UI で管理機能を提供** → 共通コンポーネントを再利用するか、専用の Vue コンポーネントを作成し、`app.js` の `componentMap` に `template_key` との対応を登録。タブの表示名はバックエンドのアダプターが提供する `DISPLAY_NAME` を使用します。
+- **タブの表示条件** → バックエンドの `capabilities.voice_management` を単一のデータソースとして判定。フロントエンドでプロバイダーごとに表示名や対応可否をハードコードしません。
+- **公式リソースへの誘導** → 音色デザインなど、プラグインが操作を提供しない機能は公式コンソールへのリンクを案内します。Seed TTS 3.0 のカスタムコンポーネントは、クローン / 単一音色の照会 / プレビューと公式音色リスト・デザインコンソールへのリンクを提供します。
 
 > この設計の狙いは、**API のみで UI のないプロバイダーの管理体験を補完すること**であり、強制的な統一ではありません。
 
@@ -101,9 +106,12 @@ SubAgent は合成時に**このドキュメントを動的に読み取り**、�
 | **Fish Audio Drama 3** | drama-3（固定） | 自然言語の演技指示 + 効果音・間 + 7 個の部分指定タグ | ✅ | ✅ | ❌ | ❌ | 多言語 | ❌ |
 | **Eleven v4** | v4 / v4 Turbo | 角括弧の感情タグ + `/IPA/` 発音 + `<break>` による一時停止 | ✅ | ✅ | ✅ | 広東語 | 90 種 | ❌ |
 | **StepFun StepAudio 3 TTS** | stepaudio-3-tts | `instruction` + テキスト内の `()` 指示 | ✅ | ✅ | ❌ | ❌ | 中国語中心 | ❌ |
+| **火山エンジン Seed TTS 3.0** | doubao-seed-tts-3.0（固定） | Inline Tag + 自然言語指示 | ✅ | ✅ | ✅（公式コンソール） | 16 種 | 119 種 + auto | ❌ |
 | **Bailian Qwen Audio 3.1 TTS Next** | qwen-audio-3.1-tts-next | 自然言語によるシーン記述（声質 / 感情 / 効果音） | ❌ | ❌ | ❌ | ❌ | 中国語、英語 | ❌ |
 
 > StepFun のクローン音色は**読み取り専用プレビュー**です（公式プレイグラウンドでクローンすると自動的に一覧表示）。音色デザインは公式スタジオで行い、プラグイン内では書き込み操作を行いません。
+
+> Seed TTS 3.0 で既存の音色 ID を指定すると、アカウント内の既存スロットを再利用します。カスタム音色 ID は後課金スロットで、スロット料金は初回の正式合成時に発生します。手動クローンと単一音色のステータス照会に対応し、音色デザインは公式コンソールを開きます。購入済み Mega 音色スロットの一覧は認証方式が異なる OpenAPI を使用するため、現時点では統合していません。
 
 > Xiaomi MiMo V2.5 のクローン用サンプル（Base64 後 10MB 以下）は、超過時に**自動的に切り詰められ通知**されます（エラーにはなりません）。百錬の音声生成と同じキャッシュ機構を共有しています。
 
@@ -189,6 +197,8 @@ providers:                        # プロバイダー一覧（複数設定し�
 ┌─────────────────────────────────────────────────────────────┐
 │ [メインモデル]  "<tts>今日はいい天気ですね</tts>" を出力       │
 │   - GoogleGemini3_8FlashTTSAdapter                          │
+│   - StepfunStepaudio3TtsAdapter                               │
+│   - VolcengineSeedTts30Adapter                               │
 │   - FishAudioS2Adapter                                      │
 │   - FishAudioDrama3Adapter                                  │
 │   - ElevenLabsV4Adapter                                     │
@@ -219,6 +229,8 @@ providers:                        # プロバイダー一覧（複数設定し�
 │   - FishAudioS2Adapter                                      │
 │   - FishAudioDrama3Adapter                                  │
 │   - ElevenLabsV4Adapter                                     │
+│   - StepfunStepaudio3TtsAdapter                               │
+│   - VolcengineSeedTts30Adapter                               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -226,17 +238,19 @@ providers:                        # プロバイダー一覧（複数設定し�
 
 ## コントリビューションガイド
 
-TTS プロバイダーの追加を歓迎します！手順はわずかです：
+TTS プロバイダーの追加を歓迎します！主な手順は以下のとおりです：
 
-1. **アダプターを書く**：`providers/` の下に `<vendor>_<model>.py` を新規作成し、`TTSProviderAdapter` または既存の共通基底クラスを継承。
-2. **能力説明書を書く**：`providers/docs/<template_key>.md` を作成し、パラメータ、タグ、例を詳しく記述。
-3. **フロントエンド対応（必要に応じて）**：
-   - UI が必要：`pages/tts_studio/components/` の下に Vue コンポーネントを新規作成し、`components/common/` の共通コンポーネントを参照して `providerConfig` を設定；`app.js` でマッピングを登録。
-   - 公式コンソールあり：`app.js` で外部リンクを設定するだけ。
-   - 特殊な操作ニーズあり（例：MiniMax の「未アクティベート → プレビュー → アクティベート」の 3 段階）：専用のカスタムコンポーネントを個別に作成。
-4. **設定テンプレートを追加**：`_conf_schema.json` にプロバイダーの設定項目を補足。
+1. **アダプターを書く**：`providers/` の下に `<vendor>_<model>.py` を新規作成し、`TTSProviderAdapter` または既存の共通基底クラスを継承。表示名は `DISPLAY_NAME` に定義します。
+2. **能力説明書を書く**：`providers/docs/<template_key>.md` を作成し、パラメータ、タグ、例を詳しく記述。SubAgent 向けの必須セクション `## 你的任务` を忘れないでください。
+3. **設定テンプレートを追加**：`_conf_schema.json` にプロバイダーの設定項目を補足。
+4. **4 言語の i18n を同期**：`.astrbot-plugin/i18n/zh-CN.json`、`en-US.json`、`ja-JP.json`、`ru-RU.json` に同じキー構造で翻訳を追加。
+5. **フロントエンド対応（必要に応じて）**：
+   - カスタム UI が必要：`pages/tts_studio/components/` の下に Vue コンポーネントを新規作成し、`components/common/` の共通コンポーネントを活用。`app.js` の `componentMap` に `template_key` とコンポーネントの対応を必ず登録してください。
+   - タブの表示名と表示可否はバックエンドの `DISPLAY_NAME` と `capabilities.voice_management` に従い、フロントエンドでハードコードしません。
+   - プラグインが操作を提供しない公式コンソールの機能は、コンポーネント内から公式リソースへのリンクを案内します。
+6. **テストを追加**：`tests/` に、パラメータ検証、API 呼び出し、音声保存、音色管理など、当該プロバイダーの動作を確認するケースを追加します。
 
-追加されたすべてのプロバイダーはファクトリによって自動的に検出・ロードされ、コアコードの変更は不要です。
+アダプターはファクトリによって自動的に検出・ロードされますが、設定・翻訳・フロントエンド登録・テストを含めて初めて完全なプロバイダー統合となります。
 
 ---
 
@@ -256,6 +270,7 @@ TTS プロバイダーの追加を歓迎します！手順はわずかです：
   - `providers/docs/mimo_v2_5_tts_preset.md`
   - [Fish Audio S2 能力説明](../../providers/docs/fish_audio_s2.md)
   - [Fish Audio Drama 3 能力説明](../../providers/docs/fish_audio_drama_3.md)
+  - `providers/docs/volcengine_seed_tts_3_0.md`
 
 ## ライセンス
 

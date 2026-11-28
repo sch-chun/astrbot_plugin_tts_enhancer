@@ -234,6 +234,15 @@ h1 { font-size: 1.8rem; margin-top: 0; }
     color: var(--text);
     box-sizing: border-box;
 }
+.seed-checkbox-label { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.form-group .seed-checkbox-label { display: flex; }
+.seed-checkbox-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    margin: 0;
+    flex: 0 0 auto;
+}
 .btn {
     padding: 8px 16px;
     border: none;

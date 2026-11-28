@@ -13,7 +13,7 @@ AstrBot 的主模型（LLM）默认只能向 TTS 环节传递纯文本。然而�
 
 - **高可插拔的多供应商架构**：每个供应商是一个独立适配器（Adapter），互不干扰，新增供应商即插即用。
 - **能力说明书机制（Capability Docs）**：每个供应商配套一份 Markdown 文档，描述其参数与用法；SubAgent 据此动态生成"不越界"的最优参数。
-- **按需前端**：仅为缺乏官方 Web 控制台的供应商提供可复用管理组件；已有控制台的供应商直接外链跳转，避免重复实现。
+- **按需前端**：可复用管理组件用于补齐缺失的管理界面；已有官方控制台的供应商可链接到官方资源，同时按 API 能力保留必要的插件内交互，避免重复实现控制台本身。
 - **防御性边界**：文件 ID、路由参数、上传扩展名、API Key 处理等均有显式安全约束。
 
 ---
@@ -108,8 +108,9 @@ flowchart TD
   - `on_llm_req`：注入 TTS 提示词。
   - `on_decorate`：解析并替换 `<tts>` 标签。
 - **Web API**（全部挂在 `/<plugin_name>/` 前缀下，见第 10 节安全设计）：
-  - `GET /providers`：按 `template_key` 分组返回供应商列表，`api_key` 脱敏。
+  - `GET /providers`：按 `template_key` 分组返回供应商列表，`api_key` 脱敏；每组包含后端 `display_name`、`capabilities`（`voice_management` / `file_management`）和 `ui_component`。
   - `POST /voice/{create,list,delete}`：音色管理，按 `entry_id` 路由到适配器。
+  - `POST /voice/query`：查询单个音色状态，仅转发 `entry_id`、`voice_id` 与供应商特定参数，不耦合具体供应商请求格式。
   - `POST /upload`：本地上传音频（扩展名白名单）。
   - `POST /voice/preview`：音色预览（Base64 返回）。
   - `POST /kv/{set,get,delete}`：通用 KV 存储（前端/适配器存取元数据）。
@@ -191,7 +192,7 @@ flowchart TD
 
 **可选能力（默认 `raise NotImplementedError`）：**
 
-- 音色管理：`create_voice(params)`、`list_voice(**kwargs)`、`delete_voice(**kwargs)`。
+- 音色管理：`create_voice(params)`、`query_voice(voice_id, custom_speaker_id=None)`、`list_voice(**kwargs)`、`delete_voice(**kwargs)`。
 - 文件管理：`upload_file(...)`、`list_files(**kwargs)`、`get_file_content(file_id)`、`delete_file(file_id, **kwargs)`。
 
 **通用工具（基类已实现，可直接用）：**
@@ -237,7 +238,17 @@ Fish Audio 适配器共享的基底（`providers/_fish_audio.py`，以下划线�
 - `_resolve_reference_id()`：预览 `voice_id` 优先，否则使用配置中的单一 `reference_id`。
 - `FishAudioS2Adapter` 保留 S2 工具 schema 与能力文档；`FishAudioDrama3Adapter` 固定 `MODEL_NAME = "drama-3"`，关闭仅适用于 S2 家族的 `normalize_loudness`，并提供独立的导演指令工具 schema 与能力文档。
 
-### 5.5 能力说明书机制
+### 5.5 `VolcengineSeedTts30Adapter`
+
+Seed TTS 3.0 使用独立的 `X-Api-Key` 鉴权与 `POST /api/v3/text-to-speech/{voice_id}/streaming` 单向流式接口，模型固定为 `doubao-seed-tts-3.0`：
+
+- **流式响应**：增量累积 JSONL 记录，正确处理跨分片拆分或合并的事件；仅在收到正常完成事件且音频非空时落盘，错误事件、无效 Base64、提前 EOF 或异常完成都会丢弃部分音频。
+- **合成参数**：除通用 `text` 外支持 `instructions`、`speed`、`volume`、`pitch`、`language_code` 等字段；Inline Tag 由能力说明书约束，`language_code` 提供 `auto` 加 119 个官方语种/方言代码。
+- **音色管理**：实现 `create_voice()`、`query_voice()`，预览走共享 `/voice/preview` 路由，不提供插件内列表/删除；已有音色 ID 复用账号槽位，自定义 ID 为后付费槽位并在首次正式合成时收费。
+- **复刻能力**：手动提交 Base64 音频，校验格式、时长、大小与 PCM 参数；官方 119 行复刻语言映射为 102 个数值编号，中文、粤语和中文方言合并为编号 `0`。
+- **前端入口**：`volcengine_seed_tts_3_0.js` 提供复刻、单音色查询、试听与槽位计费说明，并链接[官方音色列表](https://docs.volcengine.com/docs/doubao-voice/voice-list-3-0-1)和[官方音色设计](https://console.volcengine.com/speech/new/experience/timbre)。已购 Mega 音色槽位列表因使用不同的 OpenAPI AK/SK 鉴权，暂不接入。
+
+### 5.6 能力说明书机制
 
 "能力说明书"是 SubAgent 智能生成参数的依据，存放在 `providers/docs/<docs_key>.md`：
 
@@ -263,7 +274,7 @@ Fish Audio 适配器共享的基底（`providers/_fish_audio.py`，以下划线�
 
 增强流程的稳健性设计：
 
-- **结构化产出**：通过 `tts_enhance` Function Calling 让模型输出参数对象（text/instruction/volume/rate/pitch/language_hints 等），而非自由文本。
+- **结构化产出**：通过 `tts_enhance` Function Calling 让模型输出参数对象（通用字段如 `text` / `instruction` / `volume` / `rate` / `pitch` / `language_hints`，供应商字段如 Seed 的 `instructions` / `language_code`），而非自由文本。
 - **两段式校验**：先 `validate_params`（范围/枚举）→ 末次失败 `sanitize_params`（丢弃非法值，保留合法值）。
 - **上下文感知**：将最近对话、`persona` 提示注入 SubAgent，使情感/语速/语种判断贴合语境。
 - **降级链**：工具调用失败 → 文本解析降级 → 返回 `None` → 主流程切换供应商或纯文本。
@@ -278,18 +289,18 @@ Fish Audio 适配器共享的基底（`providers/_fish_audio.py`，以下划线�
 - `index.html` 通过 `<script>` 引入本地 `static/vue.global.prod.js`（UMD，离线可用，无 CDN 依赖），`app.js` 以 `type="module"` 加载。
 - `app.js`：
   - `bridge = window.AstrBotPluginPage`，所有后端调用走 `bridge`（含 `bridge.ready()`、`bridge.apiGet('providers')`、`bridge.upload`），绕开 Pages 的 `asset_token` 鉴权与跨域。
-  - `componentMap`：把 `template_key` 映射到对应 Vue 组件；`getDisplayName()` 提供中文标签。
-  - 按 `template_key` 分组渲染 Tabs，当前组件通过 `<component :is>` 动态装载，并传入 `entries / bridge / template-key`。
+  - `componentMap`：把 `template_key` / 后端 `ui_component` 约定映射到对应 Vue 组件；显示名直接使用 `/providers` 返回的后端 `display_name`。
+  - 按 `template_key` 分组渲染 Tabs，并根据后端 `capabilities.voice_management` / `file_management` 决定是否显示对应管理页；当前组件通过 `<component :is>` 动态装载，并传入 `entries / bridge / template-key`。
 - **组件组织**：
   - `components/common/`：跨供应商共享组件（`bailian_speech_synthesizer.js` 复刻/设计两模式（复刻音频经浏览器编码为 Data URL 提交）、`voice_preview_modal.js` 预览模态框、`delete_confirm_modal.js` 删除确认）。
-  - `components/*.js`：各供应商薄封装，引用 common 组件并通过 `providerConfig` 配置差异（语言列表、帮助链接、是否支持系统音色等）。
+  - `components/*.js`：各供应商自定义组件，通过 `componentMap` 注册；例如 `volcengine_seed_tts_3_0.js` 实现复刻、单音色查询、试听与官方资源入口，不再使用散落的 `providerConfig` 作为能力来源。
   - `composables/`：`useAudioManager`（全局音频单例/音量）、`useTextValidator`（汉字=2 字符计数与校验）、`useClipboard`、`useToast`。
 - 样式集中在 `style.css`；前端无构建步骤、也没有 ESLint 配置，无需 npm 工具链。
 - **可配置背景图**：管理页支持通过配置项 `page_background`（file 类型）上传单张背景图；后端 `/<plugin>/page-background` 路由将图片读取为 base64 Data URL 返回（避免二进制穿桥与跨域/外链），前端 `applyPageBackground()` 仅在 `data_url` 非空时渲染 `#page-bg` 固定背景层，并按 `page_background_opacity` / `page_background_blur` 应用不透明度与模糊。内容卡片与表单字段均改为半透明磨砂，使背景透出。
 - **浮层架构（模态 / Toast / 音量条）**：全局音量条与全部模态遮罩、通知 toast 均以 `<Teleport to="body">` 挂载到 body 下（fixed + `100vw/100vh`）。页面级淡入动画使用 `animation-fill-mode: both`，结束后会在祖先元素上留下两类持久副作用——合成器变换（computed transform 为单位矩阵而非 `none`，成为 `position: fixed` 后代的包含块）与合成层（即层叠上下文，锁死子树内 z-index）；Teleport 到 body 是免疫这两类副作用的稳健架构，新增浮层时应遵循。
 - **动画约定**：一次性出入场（模态、页面 / 标签进场）一律用 `<Transition>`——动画类播完即移除，无残留；持续性过渡（标签高亮条）用 transform 合成器动画 + `will-change`，避免逐帧布局。`@media (prefers-reduced-motion: reduce)` 下全部禁用。
 
-> 设计取舍：仅补齐"只有 API、没有 UI"的供应商管理体验；已有官方控制台者直接外链，不重复实现。
+> 设计取舍：仅补齐“只有 API、没有 UI”的供应商管理体验；是否显示插件内管理页由后端能力元数据决定，官方控制台入口作为组件内资源链接提供，不强制重复实现。
 
 ---
 

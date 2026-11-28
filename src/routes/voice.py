@@ -164,7 +164,10 @@ def register_voice(plugin) -> None:
         if not callable(getattr(adapter, "query_voice", None)):
             return error_response("该供应商不支持查询音色状态", status_code=501)
         try:
-            status = await adapter.query_voice(voice_id)
+            query_kwargs = {}
+            if "custom_speaker_id" in payload:
+                query_kwargs["custom_speaker_id"] = payload["custom_speaker_id"]
+            status = await adapter.query_voice(voice_id, **query_kwargs)
             return json_response(
                 {"code": 0, "data": {"voice_id": voice_id, "status": status}}
             )

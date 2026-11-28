@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.6.0-green)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.7.0-green)](../../CHANGELOG.md)
 
 ---
 
@@ -26,7 +26,7 @@ The traditional calling style can only throw a single `text` parameter at them, 
 
 - **Highly pluggable multi-provider architecture** — each provider is an independent adapter that never interferes with others.
 - **Capability docs mechanism** — each provider ships a Markdown document describing its supported parameters and usage; the SubAgent uses it to intelligently generate optimal parameters.
-- **On-demand frontend UI** — reusable management components for providers lacking a web console; providers with an official console can simply link out, with no need to re-implement.
+- **On-demand frontend UI** — reusable management components for providers lacking a web console; providers with an official console can include console/resource links without reimplementing that console.
 
 ---
 
@@ -39,9 +39,9 @@ Each TTS provider only needs to subclass `TTSProviderAdapter` (or an existing co
 - `get_tool_schema()` → defines the Function Calling parameter structure
 - `get_subagent_system_prompt()` → injects the capability doc into the SubAgent
 - `call_api()` → calls the real API
-- `create_voice() / list_voice() / delete_voice()` → voice management
+- Voice management (optional) → implement only the supported operations: `create_voice()`, `query_voice()`, `list_voice()`, `delete_voice()`. Seed TTS 3.0 provides create/query plus the shared preview route, with no list or delete operation.
 
-Adding a provider means writing one Python file plus one Markdown doc — the plugin discovers it automatically.
+One Python adapter plus one Markdown capability doc enables adapter discovery. Complete provider integration also requires a `_conf_schema.json` template, synchronized four-language i18n, tests, and, when custom UI is needed, frontend component registration in `componentMap`.
 
 ### 2️⃣ Capability Docs
 
@@ -55,11 +55,12 @@ The SubAgent **reads this document dynamically** at synthesis time and generates
 
 ### 3️⃣ Frontend: reusable components + on-demand customization
 
-The plugin provides **reusable frontend components** (`components/common/`) that encapsulate the standard voice-management interactions:
+The plugin provides **reusable frontend components** (`components/common/`) for standard voice-management interactions, plus provider-specific components (`components/`):
 
 - `bailian_speech_synthesizer.js` — clone / design modes (clone audio is encoded as a Data URL in the browser), preview, listing, deletion
 - `voice_preview_modal.js` — voice preview modal with listen / keep / delete
 - `delete_confirm_modal.js` — delete confirmation modal (avoids `confirm()` being blocked in sandboxes)
+- `volcengine_seed_tts_3_0.js` — Seed TTS 3.0 manual cloning, single-voice status queries, slot-billing guidance, and official resource links
 
 Custom interactions per provider are also supported (e.g. MiniMax's "inactive → preview → activate" three-step flow).
 
@@ -78,9 +79,11 @@ Page-level interaction details:
 
 Per provider:
 
-- **Needs a UI** → reuse common components + a thin customization; just register and configure `providerConfig` (language list, help links, etc.) in `app.js`.
-- **Already has an official console** → configure an external link only; no reimplementation needed.
-- **Has special interaction needs** → write a dedicated custom component (e.g. MiniMax audio list, hex decoding).
+- **Display names** come from the backend adapter's `DISPLAY_NAME`, not a frontend label map.
+- **Tab visibility** comes from backend `capabilities.voice_management`; `ui_component` identifies the frontend component by the `template_key` convention, and `componentMap` resolves the actual Vue component. Any provider with voice management must register its component there.
+- **Needs standard management UI** → reuse common components and keep provider-specific options in the component.
+- **Has special interaction needs** → write a dedicated custom component (e.g. MiniMax audio list or hex decoding).
+- **Seed TTS 3.0** uses a custom clone/query/preview component plus official voice-list and design-console links. An official console may be linked from a provider component; it does not replace required plugin UI automatically.
 
 > The design intent: **fill the management gap for providers that only have an API and no UI**, rather than forcing uniformity.
 
@@ -101,9 +104,12 @@ Per provider:
 | **Fish Audio Drama 3** | drama-3 (fixed) | Natural-language direction + sound/pause cues + 7 scoped tags | ✅ | ✅ | ❌ | ❌ | Multilingual | ❌ |
 | **Eleven v4** | v4 / v4 Turbo | Bracket emotion tags + `/IPA/` pronunciation + `<break>` pause | ✅ | ✅ | ✅ | Cantonese | 90 | ❌ |
 | **StepFun StepAudio 3 TTS** | stepaudio-3-tts | `instruction` + inline `()` directives | ✅ | ✅ | ❌ | ❌ | Mostly zh | ❌ |
+| **Volcengine Seed TTS 3.0** | doubao-seed-tts-3.0 (fixed) | Inline Tags + natural-language instructions | ✅ | ✅ | ✅ (official console) | 16 | 119 + auto | ❌ |
 | **Bailian Qwen Audio 3.1 TTS Next** | qwen-audio-3.1-tts-next | Natural-language scene description (voice / emotion / effects) | ❌ | ❌ | ❌ | ❌ | Chinese, English | ❌ |
 
 > StepFun's cloned voices are **read-only preview** (clone in the official playground and they appear automatically); voice design is done at the official studio — the plugin performs no write operations.
+
+> Seed TTS 3.0 reuses an existing account slot when an existing voice ID is supplied. A custom voice ID is a postpaid slot whose fee is charged on the first formal synthesis. The plugin supports manual cloning and single-voice status queries, while voice design opens the official console. Purchased Mega voice-slot listing is not integrated because it uses different OpenAPI authentication.
 
 > Xiaomi MiMo V2.5 clone samples (under 10MB Base64-encoded) are **trimmed automatically** with a notice when over the limit, rather than rejected; they share the same cache mechanism as Bailian audio generation.
 
@@ -213,6 +219,8 @@ See the help text in the plugin config page for the full list of configuration i
 │   - FishAudioS2Adapter                                      │
 │   - FishAudioDrama3Adapter                                  │
 │   - ElevenLabsV4Adapter                                     │
+│   - StepfunStepaudio3TtsAdapter                             │
+│   - VolcengineSeedTts30Adapter                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -222,15 +230,17 @@ See the help text in the plugin config page for the full list of configuration i
 
 Adding a new TTS provider is easy:
 
-1. **Write the adapter**: create `<vendor>_<model>.py` under `providers/`, subclassing `TTSProviderAdapter` or an existing common base.
-2. **Write the capability doc**: create `providers/docs/<template_key>.md` describing parameters, tags, and examples in detail.
-3. **Frontend (on demand)**:
-   - Needs a UI: create a Vue component under `pages/tts_studio/components/`, reuse `components/common/` and configure `providerConfig`; register the mapping in `app.js`.
-   - Has an official console: just configure an external link in `app.js`.
-   - Has special interaction needs (e.g. MiniMax's "inactive → preview → activate" flow): write a dedicated custom component.
-4. **Add a config template**: extend `_conf_schema.json` with the provider's config items.
+1. **Write the adapter**: create `<template_key>.py` under `providers/`, subclassing `TTSProviderAdapter` or an existing common base, and declare `DISPLAY_NAME`.
+2. **Write the capability doc**: create `providers/docs/<docs_key>.md` describing parameters, tags, and examples, including the required `## 你的任务` section.
+3. **Add a config template**: extend `_conf_schema.json` with the provider's config items.
+4. **Synchronize i18n (mandatory)**: update `.astrbot-plugin/i18n/zh-CN.json`, `en-US.json`, `ja-JP.json`, and `ru-RU.json` together.
+5. **Frontend (on demand)**:
+   - Set backend `capabilities.voice_management` through the voice-management capability contract; do not hardcode frontend visibility.
+   - For custom UI, create a Vue component under `pages/tts_studio/components/`, reuse `components/common/`, and register the mapping in `componentMap` in `app.js`.
+   - Include official console/resource links where useful; an external link alone is not component registration.
+6. **Add tests**: cover the adapter, routes/contracts, and any custom frontend behavior under `tests/`.
 
-All new providers are auto-discovered and loaded by the factory — no core code changes required.
+Adapter discovery is automatic, but complete integration still requires the schema, all four i18n locales, tests, and `componentMap` registration for custom UI.
 
 ---
 
@@ -250,6 +260,7 @@ All new providers are auto-discovered and loaded by the factory — no core code
   - `providers/docs/mimo_v2_5_tts_preset.md`
   - [Fish Audio S2 capability guide](../../providers/docs/fish_audio_s2.md)
   - [Fish Audio Drama 3 capability guide](../../providers/docs/fish_audio_drama_3.md)
+  - [Volcengine Seed TTS 3.0 capability guide](../../providers/docs/volcengine_seed_tts_3_0.md)
 
 ## License
 

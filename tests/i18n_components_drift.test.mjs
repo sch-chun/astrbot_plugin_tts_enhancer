@@ -98,6 +98,7 @@ const SOURCES = [
     { file: 'minimax_speech_2_8.js', mode: 'const', name: 'MM_I18N_DEFS' },
     { file: 'bailian_minimax_speech_2_8.js', mode: 'const', name: 'BLMM_I18N_DEFS' },
     { file: 'stepfun_stepaudio_3_tts.js', mode: 'const', name: 'SF_I18N_DEFS' },
+    { file: 'volcengine_seed_tts_3_0.js', mode: 'const', name: 'I18N_DEFS' },
     { file: path.join('common', 'bailian_speech_synthesizer.js'), mode: 'inline' },
     { file: path.join('common', 'delete_confirm_modal.js'), mode: 'inline' },
     { file: path.join('common', 'voice_preview_modal.js'), mode: 'inline' },

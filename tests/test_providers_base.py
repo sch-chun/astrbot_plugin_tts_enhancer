@@ -145,6 +145,11 @@ class TestVoiceLifecycleDefaults:
         with pytest.raises(NotImplementedError):
             await ad.create_voice({})
 
+    async def test_query_voice_not_implemented(self):
+        ad = ConcreteVoiceAdapter({"__template_key": "voice"})
+        with pytest.raises(NotImplementedError):
+            await ad.query_voice("voice-id")
+
     async def test_list_voice_not_implemented(self):
         ad = ConcreteVoiceAdapter({"__template_key": "voice"})
         with pytest.raises(NotImplementedError):

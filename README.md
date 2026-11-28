@@ -12,7 +12,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.24.0-blueviolet)](https://github.com/AstrBotDevs/AstrBot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v1.6.0-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.7.0-green)](CHANGELOG.md)
 
 ---
 
@@ -26,7 +26,7 @@ AstrBot 默认只能向 LLM 传递文本，但现代 TTS 服务早已不满足�
 
 - **高可插拔的多供应商架构** – 每个供应商独立实现适配器，互不干扰。
 - **能力说明书机制** – 每个供应商配套一份 Markdown 文档，描述其支持的参数与用法，SubAgent 据此智能生成最优参数。
-- **按需前端 UI** – 为缺乏 Web 界面的供应商提供可复用的管理组件；已有官方控制台的供应商可直接跳转链接，无需重复实现。
+- **按需前端 UI** – 为缺乏 Web 界面的供应商提供可复用的管理组件；已有官方控制台的供应商可链接到官方资源，同时按 API 能力保留必要的插件内管理交互。
 
 ---
 
@@ -39,9 +39,9 @@ AstrBot 默认只能向 LLM 传递文本，但现代 TTS 服务早已不满足�
 - `get_tool_schema()` → 定义 Function Calling 的参数结构
 - `get_subagent_system_prompt()` → 将能力说明书注入 SubAgent
 - `call_api()` → 调用真实 API
-- `create_voice() / list_voice() / delete_voice()` → 音色管理
+- `create_voice()` / `query_voice()` / `list_voice()` / `delete_voice()` → 按供应商能力可选实现的音色管理接口
 
-新增一个供应商只需编写一个 Python 文件和一份 Markdown 文档，即可自动被插件发现。
+新增一个 Python 文件和一份 Markdown 文档即可让适配器被自动发现；完整接入通常还需要 `_conf_schema.json` 配置模板、四语言 i18n、按需注册前端组件，以及回归测试。
 
 ### 2️⃣ 能力说明书（Capability Docs）
 
@@ -60,6 +60,7 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 - `bailian_speech_synthesizer.js` – 声音复刻 / 声音设计两种模式、试听、列表、删除
 - `voice_preview_modal.js` – 音色预览模态框，支持试听与保留/删除
 - `delete_confirm_modal.js` – 删除确认模态框，避免沙盒环境 `confirm()` 被拦截
+- `volcengine_seed_tts_3_0.js` – Seed TTS 3.0 手动复刻、单音色查询、槽位计费说明与官方资源入口
 
 同时支持各供应商**自定义交互**（如 MiniMax 的「未激活音色 → 预览 → 决定激活」三段式流程）。
 
@@ -78,9 +79,9 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 
 具体到每个供应商：
 
-- **需要前端界面** → 复用通用组件 + 自定义扩展，仅需在 `app.js` 中注册并配置 `providerConfig`（语言列表、帮助链接等）
-- **已有官方 Web 控制台** → 直接配置外链跳转，无需重复实现
-- **有特殊交互需求** → 可单独编写自定义组件（如 MiniMax 音频列表、Hex 解码等）
+- **需要前端界面** → 在 `pages/tts_studio/components/` 下编写或复用组件，并在 `app.js` 的 `componentMap` 中注册；显示名与页签能力由后端 `DISPLAY_NAME`、`capabilities.voice_management` 决定。
+- **以官方 Web 控制台为主** → 组件内可配置官方资源外链；是否显示插件内管理页仍由后端能力元数据决定。
+- **有特殊交互需求** → 可单独编写自定义组件（如 Seed TTS 3.0 的手动复刻、单音色查询与试听，或 MiniMax 音频列表、Hex 解码等）。
 
 > 这种设计的初衷是：**为那些只有 API、没有 UI 的供应商补齐管理体验**，而非强制统一。
 
@@ -101,9 +102,12 @@ SubAgent 在合成时会**动态读取这份文档**，根据对话上下文生�
 | **Fish Audio Drama 3** | drama-3（固定） | 自然语言导演指令 + 音效停顿 + 7 个局部标签 | ✅ | ✅ | ❌ | ❌ | 多语种 | ❌ |
 | **Eleven v4** | v4 / v4 Turbo | 方括号情绪标记 + `/IPA/` 发音 + `<break>` 停顿 | ✅ | ✅ | ✅ | 粤语 | 90 种 | ❌ |
 | **StepFun StepAudio 3 TTS** | stepaudio-3-tts | `instruction` + `()` 内联指令 | ✅ | ✅ | ❌ | ❌ | 中文为主 | ❌ |
+| **火山引擎 Seed TTS 3.0** | doubao-seed-tts-3.0（固定） | Inline Tag + 自然语言指令 | ✅ | ✅ | ✅（官方控制台） | 16 种 | 119 种 + auto | ❌ |
 | **百炼 Qwen Audio 3.1 TTS Next** | qwen-audio-3.1-tts-next | 自然语言场景描述（音色 / 情绪 / 音效） | ❌ | ❌ | ❌ | ❌ | 中文、英文 | ❌ |
 
 > StepFun 的复刻音色为**只读预览**（在官方 playground 克隆后自动列出）；设计音色需前往官方工作台操作，插件内不做写操作。
+
+> Seed TTS 3.0 的已有音色 ID 会复用账号内现有槽位；自定义音色 ID 属于后付费槽位，首次正式合成时才收取槽位费。插件提供手动复刻与单音色状态查询，音色设计跳转官方控制台；已购 Mega 音色槽位列表因使用不同的 OpenAPI 鉴权，暂不接入。
 
 > MiMo V2.5 的复刻参考音频（Base64 后不超过 10MB）若超限会**自动截断**并提示，不会直接报错；与百炼音频生成的参考音频共用同一套缓存机制。
 
@@ -194,7 +198,9 @@ providers:                        # 供应商列表（支持多个回退）
 │   - GoogleGemini3_8FlashTTSAdapter                          │
 │   - FishAudioS2Adapter                                      │
 │   - FishAudioDrama3Adapter                                  │
+│   - StepfunStepaudio3TtsAdapter                              │
 │   - ElevenLabsV4Adapter                                     │
+│   - VolcengineSeedTts30Adapter                              │
 └──────────────────────────┬──────────────────────────────────┘
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -207,7 +213,8 @@ providers:                        # 供应商列表（支持多个回退）
 ┌─────────────────────────────────────────────────────────────┐
 │ [SubAgent]  调用 tts_enhance 工具                           │
 │   输出结构化参数：{ text, instruction, volume, rate, pitch,  │
-│                     language_hints }                         │
+│                     language_hints, instructions,           │
+│                     language_code }（按供应商能力选用）      │
 └──────────────────────────┬──────────────────────────────────┘
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -221,7 +228,9 @@ providers:                        # 供应商列表（支持多个回退）
 │   - GoogleGemini3_8FlashTTSAdapter                          │
 │   - FishAudioS2Adapter                                      │
 │   - FishAudioDrama3Adapter                                  │
+│   - StepfunStepaudio3TtsAdapter                              │
 │   - ElevenLabsV4Adapter                                     │
+│   - VolcengineSeedTts30Adapter                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -231,15 +240,17 @@ providers:                        # 供应商列表（支持多个回退）
 
 欢迎新增 TTS 供应商！只需几步：
 
-1. **编写适配器**：在 `providers/` 下新建 `<vendor>_<model>.py`，继承 `TTSProviderAdapter` 或已有的公共基类。
-2. **撰写能力说明书**：创建 `providers/docs/<template_key>.md`，详细描述参数、标签、示例。
-3. **前端接入（按需）**：
-   - 需要 UI：在 `pages/tts_studio/components/` 下新建 Vue 组件，引用 `components/common/` 的通用组件并配置 `providerConfig`；在 `app.js` 中注册映射。
-   - 已有官方控制台：仅在 `app.js` 中配置外链即可。
-   - 有特殊交互需求（如 MiniMax 的「未激活 → 预览 → 激活」三段式）：独立写自定义组件。
-4. **添加配置模板**：在 `_conf_schema.json` 中补充供应商配置项。
+1. **编写适配器**：在 `providers/` 下新建 `<vendor>_<model>.py`，继承 `TTSProviderAdapter` 或已有的公共基类，并按需实现音色管理接口。
+2. **撰写能力说明书**：创建 `providers/docs/<template_key>.md`，包含 `## 你的任务` 标题，详细描述参数、标签、示例。
+3. **添加配置模板**：在 `_conf_schema.json` 中补充供应商配置项。
+4. **同步四语言文案**：更新 `.astrbot-plugin/i18n/` 下的 `zh-CN.json`、`en-US.json`、`ja-JP.json` 和 `ru-RU.json`，保持键集合一致。
+5. **前端接入（按需）**：
+   - 需要 UI：在 `pages/tts_studio/components/` 下新建或复用 Vue 组件，并在 `app.js` 的 `componentMap` 中注册。
+   - 官方控制台入口：在自定义组件中配置外链；管理页是否显示由后端 `capabilities.voice_management` 决定。
+   - 特殊交互：独立编写组件，例如 Seed TTS 3.0 的复刻、查询与试听流程。
+6. **补充测试**：覆盖适配器请求、参数校验、前端契约与 i18n 漂移，并运行完整回归。
 
-所有新增供应商将自动被工厂发现并加载，无需修改核心代码。
+所有新增适配器会被工厂自动发现；完整上线还需同步配置、四语文案、按需前端和测试。
 
 ---
 
@@ -259,6 +270,7 @@ providers:                        # 供应商列表（支持多个回退）
   - `providers/docs/mimo_v2_5_tts_preset.md`
   - [Fish Audio S2 能力说明](providers/docs/fish_audio_s2.md)
   - [Fish Audio Drama 3 能力说明](providers/docs/fish_audio_drama_3.md)
+  - [火山引擎 Seed TTS 3.0 能力说明](providers/docs/volcengine_seed_tts_3_0.md)
 
 ## 许可
 
