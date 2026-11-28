@@ -9,9 +9,11 @@
 ``NotImplementedError`` 的语义一致。
 """
 
+from typing import Any
+
 
 class VoiceManageable:
-    """可选能力：音色管理（创建 / 列表 / 删除）。
+    """可选能力：音色管理（创建 / 查询 / 列表 / 删除）。
 
     仅「支持音色创建」的供应商（如百炼、MiniMax）继承本 mixin 并覆写下列方法。
     未覆写时默认抛 ``NotImplementedError``，路由据此返回 501。
@@ -19,6 +21,12 @@ class VoiceManageable:
 
     async def create_voice(self, params: dict) -> dict:
         """创建语音。未实现的适配器应抛 NotImplementedError。"""
+        raise NotImplementedError
+
+    async def query_voice(
+        self, voice_id: str, custom_speaker_id: str | None = None
+    ) -> Any:
+        """查询单个音色状态。未实现的适配器应抛 NotImplementedError。"""
         raise NotImplementedError
 
     async def list_voice(self, **kwargs) -> dict:

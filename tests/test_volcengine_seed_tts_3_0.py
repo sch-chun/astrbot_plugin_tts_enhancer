@@ -13,6 +13,7 @@ import pytest
 from astrbot_plugin_tts_enhancer.providers import ProviderFactory
 from astrbot_plugin_tts_enhancer.providers.base import TTSProviderAdapter
 from astrbot_plugin_tts_enhancer.providers.volcengine_seed_tts_3_0 import (
+    _ERROR_GUIDANCE,
     CLONE_LANGUAGE_IDS,
     CLONE_PROMPT_TEXT_REQUIRED_IDS,
     CLONE_PROSODY_UNSUPPORTED_IDS,
@@ -580,6 +581,53 @@ async def test_proxy_and_timeout_are_used(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_synthesis_connection_settings_come_from_adapter_entry(
+    tmp_path, monkeypatch
+):
+    client = _install(
+        monkeypatch,
+        _FakeClient(_FakeResponse([_jsonl(_audio_event(b"audio"), _final_event())])),
+    )
+    entry = _entry(
+        tmp_path,
+        api_key="entry-key",
+        voice_id="entry-voice",
+        timeout=45,
+        proxy="http://entry-proxy",
+    )
+    config = dict(
+        entry,
+        api_key="argument-key",
+        voice_id="argument-voice",
+        timeout=120,
+        proxy="http://argument-proxy",
+    )
+
+    assert await VolcengineSeedTts30Adapter(entry).call_api("hi", {}, config)
+    assert client.init_kwargs == {"timeout": 45, "proxy": "http://entry-proxy"}
+    method, url, kwargs = client.stream_calls[0]
+    assert method == "POST"
+    assert url.endswith("/entry-voice/streaming")
+    assert kwargs["headers"]["X-Api-Key"] == "entry-key"
+
+
+@pytest.mark.asyncio
+async def test_synthesis_uses_explicit_preview_voice_over_adapter_entry(
+    tmp_path, monkeypatch
+):
+    client = _install(
+        monkeypatch,
+        _FakeClient(_FakeResponse([_jsonl(_audio_event(b"audio"), _final_event())])),
+    )
+    entry = _entry(tmp_path, voice_id="entry-voice")
+
+    assert await VolcengineSeedTts30Adapter(entry).call_api(
+        "hi", {}, entry, voice_id="preview-voice"
+    )
+    assert client.stream_calls[0][1].endswith("/preview-voice/streaming")
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "entry_overrides",
     [
@@ -644,6 +692,48 @@ async def test_http_errors_return_empty_and_log_structured_fields(
     assert "param=text" in log
     assert "request_id=request-1" in log
     assert "same human-readable message" in log
+
+
+def test_error_guidance_covers_all_official_codes():
+    official_codes = {
+        "authentication_error",
+        "authorization_error",
+        "invalid_request",
+        "not_found",
+        "payment_required",
+        "pronunciation_dictionary_not_found",
+        "rate_limit_error",
+        "validation_error",
+        "invalid_parameters",
+        "missing_required_field",
+        "invalid_voice_id",
+        "invalid_voice_settings",
+        "unsupported_model",
+        "text_too_long",
+        "empty_text",
+        "invalid_text",
+        "invalid_output_format",
+        "bad_request",
+        "malformed_json",
+        "invalid_content_type",
+        "request_too_large",
+        "invalid_api_key",
+        "missing_api_key",
+        "invalid_authorization_header",
+        "unauthorized",
+        "insufficient_credits",
+        "forbidden",
+        "insufficient_permissions",
+        "voice_access_denied",
+        "model_access_denied",
+        "voice_not_found",
+        "model_not_found",
+        "rate_limit_exceeded",
+        "concurrent_limit_exceeded",
+        "internal_error",
+    }
+    assert set(_ERROR_GUIDANCE) == official_codes
+    assert all(guidance.strip() for guidance in _ERROR_GUIDANCE.values())
 
 
 @pytest.mark.asyncio

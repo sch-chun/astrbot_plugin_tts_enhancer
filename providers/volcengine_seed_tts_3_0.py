@@ -345,6 +345,14 @@ PARALINGUISTIC_TAGS = frozenset(
 )
 
 _ERROR_GUIDANCE = {
+    "authentication_error": "Check the API Key and authentication headers.",
+    "authorization_error": "Check account access to the requested resource.",
+    "invalid_request": "Check the request method, path, parameters, and body.",
+    "not_found": "Check the requested resource and endpoint.",
+    "payment_required": "Check the account balance and billing status.",
+    "pronunciation_dictionary_not_found": "Check the pronunciation dictionary reference.",
+    "rate_limit_error": "Reduce the request rate before trying again.",
+    "validation_error": "Check field types, values, and required constraints.",
     "invalid_parameters": "Check parameter types, values, and combinations.",
     "missing_required_field": "Provide the missing request field.",
     "invalid_voice_id": "Check the voice_id path segment.",
@@ -860,11 +868,12 @@ class VolcengineSeedTts30Adapter(TTSProviderAdapter, VoiceManageable):
         Returns:
             Saved audio path, or an empty string when synthesis fails.
         """
-        api_key = config.get("api_key")
-        if not isinstance(api_key, str) or not api_key.strip():
+        try:
+            api_key, client_kwargs, timeout = self._voice_client_settings()
+        except ValueError:
             logger.error("[VolcengineSeedTTS3] API Key is not configured")
             return ""
-        selected_voice = voice_id or config.get("voice_id")
+        selected_voice = voice_id or self.entry.get("voice_id")
         if not isinstance(selected_voice, str) or not selected_voice.strip():
             logger.error("[VolcengineSeedTTS3] voice_id is not configured")
             return ""
@@ -887,13 +896,6 @@ class VolcengineSeedTts30Adapter(TTSProviderAdapter, VoiceManageable):
             return ""
 
         payload = self._build_payload(final_text, config, params)
-        timeout = self._as_int(config.get("timeout", 180))
-        if timeout is None or timeout <= 0:
-            timeout = 180
-        client_kwargs: dict[str, Any] = {"timeout": timeout}
-        proxy = config.get("proxy")
-        if isinstance(proxy, str) and proxy.strip():
-            client_kwargs["proxy"] = proxy.strip()
         headers = {
             "X-Api-Key": api_key.strip(),
             "Content-Type": "application/json",

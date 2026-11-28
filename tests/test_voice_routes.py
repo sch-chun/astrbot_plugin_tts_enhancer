@@ -121,6 +121,17 @@ class TestVoiceQueryRoute:
         resp = await _call(handler, {"entry_id": 0, "voice_id": "vid-1"})
         assert resp.status_code == 501
 
+    async def test_returns_501_when_mixin_default_is_not_implemented(
+        self, tmp_path, monkeypatch
+    ):
+        from astrbot_plugin_tts_enhancer.providers.mixins import VoiceManageable
+
+        unsupported = VoiceManageable()
+        monkeypatch.setattr(ProviderFactory, "get_adapter", lambda entry: unsupported)
+        handler = _make_voice_query_plugin(tmp_path, {"providers": [PROVIDER_ENTRY]})
+        resp = await _call(handler, {"entry_id": 0, "voice_id": "vid-1"})
+        assert resp.status_code == 501
+
     async def test_returns_400_when_voice_id_missing(self, tmp_path, patched_adapter):
         handler = _make_voice_query_plugin(tmp_path, {"providers": [PROVIDER_ENTRY]})
         resp = await _call(handler, {"entry_id": 0})
